@@ -7,8 +7,10 @@ import {
 } from "@/lib/runtime-storage";
 
 const auditLogFile = "audit-log.jsonl";
-const maxAuditLogBytes = 100 * 1024 * 1024;
-const targetTrimBytes = 75 * 1024 * 1024;
+// Once the log reaches the limit, the oldest entries are dropped down to the
+// target, so trimming does not run on every append.
+const maxAuditLogBytes = 20 * 1024 * 1024;
+const targetTrimBytes = 15 * 1024 * 1024;
 
 export type AuditAction =
   | "booking.clean"

@@ -1,37 +1,45 @@
-import {
-  CalendarPlus,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Clock3,
-  Save,
-  Trash2,
-} from "lucide-react";
-import Image from "next/image";
+import { Check, ChevronDown, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
-  getSegmentStyle,
   isRecurringBookingId,
   longDateFormatter,
   type DayAvailabilitySegment,
 } from "@/components/booking-dashboard-utils";
 import type { BookingActions } from "@/components/dashboard/use-booking-actions";
+import { buttonSecondary, noticeTone } from "@/components/ui/styles";
+import type { RecurringCancellationNotice } from "@/lib/bookings-db";
 import type { Booking } from "@/lib/schedule";
 
 type BookedSegment = Extract<DayAvailabilitySegment, { kind: "booked" }>;
 
-// The "Vybraný den" card: the selected day split into free / booked / cleanup
-// segments, with inline editing of bookings for users who manage the hall.
+const segmentBarClass = {
+  cleanup: "bg-cleanup-line",
+  closed: "bg-line-strong",
+  departure: "bg-cleanup-line",
+  free: "bg-free-line",
+};
+
+function getBookedBarClass(segment: BookedSegment) {
+  if (isRecurringBookingId(segment.bookingId)) {
+    return "bg-training-line";
+  }
+
+  return segment.status === "maintenance" ? "bg-busy-line" : "bg-event-line";
+}
+
+// Agenda of the selected day: free and booked periods in order, with inline
+// editing for hall managers.
 export function DayDetailPanel({
   actions,
   availableTrainers,
   bookings,
   canManageBookings,
-  className,
+  cancellations,
   currentDateKey,
   currentTimeMinutes,
-  occupancyNotice,
-  onLoginClick,
+  expandedBookingId,
+  onAddBooking,
+  onExpandedBookingChange,
   segments,
   selectedDate,
 }: {
@@ -39,131 +47,134 @@ export function DayDetailPanel({
   availableTrainers: string[];
   bookings: Booking[];
   canManageBookings: boolean;
-  className: string;
+  cancellations: RecurringCancellationNotice[];
   currentDateKey: string;
   currentTimeMinutes: number | null;
-  occupancyNotice: { description: string; title: string } | null;
-  // Shown as a "log in and add" button when set.
-  onLoginClick?: () => void;
+  expandedBookingId: string;
+  onAddBooking: () => void;
+  onExpandedBookingChange: (bookingId: string) => void;
   segments: DayAvailabilitySegment[];
   selectedDate: string;
 }) {
-  const [expandedBookingId, setExpandedBookingId] = useState("");
   const { messages } = actions;
+  const dayCancellations = cancellations.filter(
+    (cancellation) => cancellation.date === selectedDate,
+  );
 
   return (
-    <div className={`rounded-lg border border-[#ded6c9] bg-white p-5 ${className}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-[#66706f]">Vybraný den</p>
-          <h2 className="mt-1 text-2xl font-semibold capitalize">
-            {longDateFormatter.format(new Date(`${selectedDate}T12:00:00`))}
-          </h2>
-        </div>
-        <Image
-          alt=""
-          className="h-auto w-12"
-          height={62}
-          src="/brand/Koskovi_logo_znak.svg"
-          width={71}
-        />
-      </div>
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <p className="text-xs font-semibold uppercase text-ink-muted">Vybraný den</p>
+      <h2 className="mt-0.5 text-xl font-semibold capitalize text-ink">
+        {longDateFormatter.format(new Date(`${selectedDate}T12:00:00`))}
+      </h2>
 
-      {occupancyNotice ? (
-        <div className="mt-5 rounded-md border border-[#c7dce7] bg-[#eef7fb] p-3 text-sm text-[#17475f] shadow-[0_8px_18px_rgba(0,55,88,0.08)]">
-          <p className="flex items-center gap-2 font-semibold">
-            <Clock3 size={16} />
-            {occupancyNotice.title}
-          </p>
-          <p className="mt-1 text-xs text-[#4f6a76]">
-            {occupancyNotice.description}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="mt-5 space-y-2">
+      <ol className="mt-4 grid gap-1.5">
         {segments.map((segment) => {
-          const isEditable = canManageBookings && segment.kind === "booked";
-          const isExpanded =
-            segment.kind === "booked" && expandedBookingId === segment.bookingId;
+          const isBooked = segment.kind === "booked";
+          const isExpanded = isBooked && expandedBookingId === segment.bookingId;
 
           return (
-            <div
-              className={`grid grid-cols-[84px_minmax(0,1fr)] items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                segment.kind === "free"
-                  ? "border-[#d8eadf] bg-[#f3fbf5] text-[#246043]"
-                  : segment.kind === "closed"
-                    ? "border-[#e7dfd4] bg-[#f3f0ea] text-[#66706f]"
-                    : getSegmentStyle(segment)
+            <li
+              className={`overflow-hidden rounded-lg border ${
+                isExpanded ? "border-line-strong" : "border-transparent"
               }`}
               key={`${segment.kind}-${segment.start}-${segment.end}-${segment.title}`}
             >
-              <span className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap font-semibold text-xs sm:text-sm">
-                <Clock3 size={14} />
-                {segment.start}-{segment.end}
-              </span>
-              <div className="min-w-0">
-                <span className="block truncate font-semibold">
-                  {segment.title}
+              <div className="flex items-stretch gap-3 px-1 py-1.5">
+                <span
+                  className={`w-1 shrink-0 rounded-full ${
+                    isBooked ? getBookedBarClass(segment) : segmentBarClass[segment.kind]
+                  }`}
+                />
+                <span className="w-24 shrink-0 pt-0.5 text-sm tabular-nums text-ink-muted">
+                  {segment.start}–{segment.end}
                 </span>
-                {segment.description ? (
-                  <span className="mt-0.5 block truncate text-xs opacity-80">
-                    {segment.description}
-                  </span>
-                ) : null}
-                {isEditable ? (
-                  <div className="mt-1.5">
-                    {segment.trainer ? (
-                      <p className="truncate text-xs opacity-80">
-                        Trenér: {segment.trainer}
-                      </p>
-                    ) : null}
-                    <button
-                      className="mt-1.5 inline-flex min-h-7 items-center justify-center gap-1 rounded-md border border-current/25 px-2 py-1 text-xs font-semibold transition hover:bg-white/50"
-                      onClick={() =>
-                        setExpandedBookingId(isExpanded ? "" : segment.bookingId)
-                      }
-                      type="button"
-                    >
-                      {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                      {isExpanded ? "Skrýt úpravy" : "Upravit"}
-                    </button>
-                  </div>
-                ) : null}
-                {segment.kind === "cleanup" && segment.cleanupBookingId ? (
-                  <CleanupButton
-                    actions={actions}
-                    booking={bookings.find(
-                      (booking) => booking.id === segment.cleanupBookingId,
-                    )}
-                    currentDateKey={currentDateKey}
-                    currentTimeMinutes={currentTimeMinutes}
-                  />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-sm font-semibold ${
+                      segment.kind === "free"
+                        ? "text-free-ink"
+                        : segment.kind === "closed"
+                          ? "text-ink-soft"
+                          : "text-ink"
+                    }`}
+                  >
+                    {segment.title}
+                  </p>
+                  {segment.description ? (
+                    <p className="truncate text-xs text-ink-muted">{segment.description}</p>
+                  ) : null}
+                  {segment.kind === "cleanup" && segment.cleanupBookingId ? (
+                    <CleanupButton
+                      actions={actions}
+                      booking={bookings.find(
+                        (booking) => booking.id === segment.cleanupBookingId,
+                      )}
+                      currentDateKey={currentDateKey}
+                      currentTimeMinutes={currentTimeMinutes}
+                    />
+                  ) : null}
+                </div>
+                {isBooked && canManageBookings ? (
+                  <button
+                    aria-expanded={isExpanded}
+                    aria-label={isExpanded ? "Skrýt úpravy" : "Upravit"}
+                    className="inline-flex h-8 shrink-0 items-center gap-1 self-center rounded-md px-2 text-xs font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
+                    onClick={() =>
+                      onExpandedBookingChange(isExpanded ? "" : segment.bookingId)
+                    }
+                    type="button"
+                  >
+                    {isExpanded ? <ChevronDown className="rotate-180" size={14} /> : <Pencil size={13} />}
+                    {isExpanded ? "Skrýt" : "Upravit"}
+                  </button>
                 ) : null}
               </div>
-              {isEditable && isExpanded ? (
+              {isBooked && isExpanded && canManageBookings ? (
                 <SegmentEditor
                   actions={actions}
                   availableTrainers={availableTrainers}
-                  onDeleted={() => setExpandedBookingId("")}
+                  onDeleted={() => onExpandedBookingChange("")}
                   segment={segment}
                 />
               ) : null}
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
 
-      {onLoginClick ? (
-        <button
-          className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#003758] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(0,55,88,0.16)] transition hover:bg-[#0b4d76]"
-          onClick={onLoginClick}
-          type="button"
-        >
-          <CalendarPlus size={17} />
-          Přihlásit se a přidat akci
-        </button>
+      {dayCancellations.length > 0 ? (
+        <div className="mt-3 grid gap-1.5 border-t border-line pt-3">
+          {dayCancellations.map((cancellation) => (
+            <div className="flex items-center gap-3 px-1 text-sm" key={cancellation.id}>
+              <span className="w-1 self-stretch rounded-full border border-dashed border-line-strong" />
+              <span className="w-24 shrink-0 tabular-nums text-ink-soft">
+                {cancellation.start}–{cancellation.end}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-ink-soft line-through">
+                {cancellation.title}
+              </span>
+              {canManageBookings ? (
+                <button
+                  className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-brand transition hover:bg-subtle disabled:opacity-60"
+                  disabled={actions.pendingId.reinstating === cancellation.id}
+                  onClick={() => actions.reinstate(cancellation.id)}
+                  type="button"
+                >
+                  {actions.pendingId.reinstating === cancellation.id ? "Obnovuji…" : "Obnovit"}
+                </button>
+              ) : (
+                <span className="shrink-0 text-xs text-ink-soft">zrušeno</span>
+              )}
+            </div>
+          ))}
+        </div>
       ) : null}
+
+      <button className={`${buttonSecondary} mt-4 w-full`} onClick={onAddBooking} type="button">
+        <Plus size={16} />
+        Přidat akci na tento den
+      </button>
 
       <StatusMessage tone="warning">{messages.cleanup}</StatusMessage>
       <StatusMessage tone="error">{messages.delete}</StatusMessage>
@@ -191,7 +202,7 @@ function CleanupButton({
 
   return (
     <button
-      className="mt-2 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-[#003758] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:opacity-70"
+      className="mt-1.5 inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-brand px-3 text-xs font-semibold text-on-brand transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
       disabled={isCleaning || !canConfirm}
       onClick={() => (booking ? actions.markCleaned(booking.id) : undefined)}
       title={canConfirm ? undefined : "Úklid lze potvrdit až po skončení akce."}
@@ -199,7 +210,7 @@ function CleanupButton({
     >
       <Check size={13} />
       {isCleaning
-        ? "Potvrzuji..."
+        ? "Potvrzuji…"
         : canConfirm
           ? "Uklidil jsem sál"
           : "Až po skončení akce"}
@@ -226,16 +237,17 @@ function SegmentEditor({
   const { pendingId } = actions;
   const title = titleDraft ?? segment.title;
   const time = timeDraft ?? { end: segment.end, start: segment.start };
-  const inputClass = "field-input mt-1 min-h-8 w-full min-w-0 py-1 text-xs";
-  const saveButtonClass =
-    "inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#c9dce7] bg-[#eef6fa] px-2.5 py-1.5 text-xs font-semibold text-[#003758] transition hover:bg-[#dceef7] disabled:cursor-not-allowed disabled:opacity-50";
+  const isTimeChanged = time.start !== segment.start || time.end !== segment.end;
+  const isTitleChanged = title.trim() !== segment.title;
+  const smallButton =
+    "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <div className="col-span-2 grid min-w-0 gap-2 border-t border-current/20 pt-2">
-      <label className="block min-w-0 text-xs font-semibold">
+    <div className="grid gap-3 border-t border-line bg-subtle px-3 py-3">
+      <label className="field-label">
         Trenér
         <select
-          className={inputClass}
+          className="field-input mt-1 min-h-9 py-1.5 text-sm"
           disabled={pendingId.trainer === bookingId}
           onChange={(event) => actions.updateTrainer(bookingId, event.target.value)}
           value={segment.trainer ?? ""}
@@ -248,70 +260,75 @@ function SegmentEditor({
           ))}
         </select>
       </label>
-      <label className="block min-w-0 text-xs font-semibold">
-        Název aktivity
-        <input
-          className={inputClass}
-          onChange={(event) => setTitleDraft(event.target.value)}
-          value={title}
-        />
-      </label>
-      <div className="grid min-w-0 grid-cols-2 gap-2">
-        <label className="block min-w-0 text-xs font-semibold">
-          Od
+      <div className="grid gap-2">
+        <label className="field-label">
+          Název
           <input
-            className={inputClass}
-            onChange={(event) => setTimeDraft({ ...time, start: event.target.value })}
-            type="time"
-            value={time.start}
+            className="field-input mt-1 min-h-9 py-1.5 text-sm"
+            onChange={(event) => setTitleDraft(event.target.value)}
+            value={title}
           />
         </label>
-        <label className="block min-w-0 text-xs font-semibold">
-          Do
-          <input
-            className={inputClass}
-            onChange={(event) => setTimeDraft({ ...time, end: event.target.value })}
-            type="time"
-            value={time.end}
-          />
-        </label>
+        {isTitleChanged ? (
+          <button
+            className={`${smallButton} bg-brand text-on-brand hover:bg-brand-hover`}
+            disabled={pendingId.title === bookingId}
+            onClick={async () => {
+              if (await actions.updateTitle(bookingId, title, segment.title)) {
+                setTitleDraft(null);
+              }
+            }}
+            type="button"
+          >
+            <Save size={13} />
+            {pendingId.title === bookingId ? "Ukládám…" : "Uložit název"}
+          </button>
+        ) : null}
+      </div>
+      <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="field-label">
+            Od
+            <input
+              className="field-input mt-1 min-h-9 py-1.5 text-sm"
+              onChange={(event) => setTimeDraft({ ...time, start: event.target.value })}
+              type="time"
+              value={time.start}
+            />
+          </label>
+          <label className="field-label">
+            Do
+            <input
+              className="field-input mt-1 min-h-9 py-1.5 text-sm"
+              onChange={(event) => setTimeDraft({ ...time, end: event.target.value })}
+              type="time"
+              value={time.end}
+            />
+          </label>
+        </div>
+        {isTimeChanged ? (
+          <button
+            className={`${smallButton} bg-brand text-on-brand hover:bg-brand-hover`}
+            disabled={pendingId.time === bookingId}
+            onClick={async () => {
+              if (
+                await actions.updateTime(bookingId, time, {
+                  end: segment.end,
+                  start: segment.start,
+                })
+              ) {
+                setTimeDraft(null);
+              }
+            }}
+            type="button"
+          >
+            <Save size={13} />
+            {pendingId.time === bookingId ? "Ukládám…" : "Uložit čas"}
+          </button>
+        ) : null}
       </div>
       <button
-        className={saveButtonClass}
-        disabled={
-          pendingId.time === bookingId ||
-          (time.start === segment.start && time.end === segment.end)
-        }
-        onClick={async () => {
-          if (
-            await actions.updateTime(bookingId, time, {
-              end: segment.end,
-              start: segment.start,
-            })
-          ) {
-            setTimeDraft(null);
-          }
-        }}
-        type="button"
-      >
-        <Save size={13} />
-        {pendingId.time === bookingId ? "Ukládám..." : "Uložit čas"}
-      </button>
-      <button
-        className={saveButtonClass}
-        disabled={pendingId.title === bookingId || title.trim() === segment.title}
-        onClick={async () => {
-          if (await actions.updateTitle(bookingId, title, segment.title)) {
-            setTitleDraft(null);
-          }
-        }}
-        type="button"
-      >
-        <Save size={13} />
-        {pendingId.title === bookingId ? "Ukládám..." : "Uložit změnu aktivity"}
-      </button>
-      <button
-        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#d9a093] bg-[#fff0eb] px-2.5 py-1.5 text-center text-xs font-semibold text-[#8c2f20] transition hover:bg-[#ffe3da] disabled:cursor-not-allowed disabled:opacity-70"
+        className={`${smallButton} border border-busy-line bg-busy text-busy-ink hover:brightness-95`}
         disabled={pendingId.deleting === bookingId}
         onClick={async () => {
           if (await actions.deleteBooking(bookingId, segment.title)) {
@@ -320,9 +337,9 @@ function SegmentEditor({
         }}
         type="button"
       >
-        <Trash2 className="shrink-0" size={13} />
+        <Trash2 size={13} />
         {pendingId.deleting === bookingId
-          ? "Mazu..."
+          ? "Mažu…"
           : isRecurringBookingId(bookingId)
             ? "Zrušit tento termín"
             : "Smazat akci"}
@@ -331,27 +348,19 @@ function SegmentEditor({
   );
 }
 
-const messageToneClass = {
-  error: "border-[#edd3cc] bg-[#fff0eb] text-[#8c2f20]",
-  success: "border-[#cbe3d1] bg-[#f1faf2] text-[#245d3f]",
-  warning: "border-[#dfc36b] bg-[#fff6d8] text-[#5e4300]",
-};
-
 function StatusMessage({
   children,
   tone,
 }: {
   children: string;
-  tone: keyof typeof messageToneClass;
+  tone: keyof typeof noticeTone;
 }) {
   if (!children) {
     return null;
   }
 
   return (
-    <p
-      className={`mt-3 rounded-md border px-3 py-2 text-xs font-semibold ${messageToneClass[tone]}`}
-    >
+    <p className={`mt-3 rounded-lg border px-3 py-2 text-xs font-semibold ${noticeTone[tone]}`}>
       {children}
     </p>
   );

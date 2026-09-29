@@ -1,5 +1,5 @@
-import { AdminBookings } from "@/components/admin-bookings";
+import { AdminOverviewPage } from "@/components/admin/admin-pages";
 
-export default function AdminPage() {
-  return <AdminBookings />;
+export default function Page() {
+  return <AdminOverviewPage />;
 }

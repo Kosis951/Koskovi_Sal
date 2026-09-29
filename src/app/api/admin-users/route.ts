@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMainAdmin } from "@/lib/api-auth";
-import { normalizeUsername, sanitizeLessonFilter, sanitizeRole } from "@/lib/auth";
+import { normalizeUsername, sanitizeRole } from "@/lib/auth";
 import {
   getAdminUsers,
-  upsertAdminUserLessonFilter,
   upsertAdminUserPassword,
   upsertAdminUserRole,
 } from "@/lib/admin-users-db";
@@ -35,10 +34,6 @@ export async function POST(request: NextRequest) {
 
   const actor = auth.access.username;
   const payload = (await request.json()) as {
-    lessonFilter?: {
-      type?: "all" | "dancer" | "trainer";
-      value?: string;
-    };
     password?: unknown;
     role?: unknown;
     username?: unknown;
@@ -84,14 +79,6 @@ export async function POST(request: NextRequest) {
       username,
     });
 
-    if (payload.lessonFilter) {
-      await upsertAdminUserLessonFilter({
-        actor,
-        lessonFilter: sanitizeLessonFilter(payload.lessonFilter),
-        username,
-      });
-    }
-
     if (role) {
       await upsertAdminUserRole({ actor, role, username });
     }
@@ -105,11 +92,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Role je uložená.", user });
   }
 
-  const user = await upsertAdminUserLessonFilter({
-    actor,
-    lessonFilter: sanitizeLessonFilter(payload.lessonFilter),
-    username,
-  });
-
-  return NextResponse.json({ message: "Filtr soustředění je uložený.", user });
+  return NextResponse.json({ message: "Není co uložit." }, { status: 400 });
 }

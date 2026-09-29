@@ -1,43 +1,38 @@
 "use client";
 
-import { MapPin, Sparkles, User } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getDayAvailabilitySegments,
   getMonthDays,
-  getOccupancyNotice,
-  getSlotStateKey,
   getWeekStartDate,
-  isCountableEvent,
-  scrollCurrentTimeIntoView,
-  formatEventCount,
-  type SlotState,
 } from "@/components/booking-dashboard-utils";
 import {
-  MobileCalendarSummary,
-  RecurringCancellationPanel,
-} from "@/components/booking-dashboard-panels";
-import { AccountBar } from "@/components/dashboard/account-bar";
-import { BookingFormPanel } from "@/components/dashboard/booking-form-panel";
-import {
-  DayCalendar,
-  MonthCalendar,
-  WeekCalendar,
-} from "@/components/dashboard/calendar-grids";
+  buildCalendarDays,
+  getFreeMinutes,
+  getHallStatus,
+  minutesToTime,
+  timeToMinutes,
+  type CalendarItem,
+} from "@/components/dashboard/calendar-events";
 import { CalendarToolbar } from "@/components/dashboard/calendar-toolbar";
-import { CampLessonsSection } from "@/components/dashboard/camp-lessons-section";
 import { DayDetailPanel } from "@/components/dashboard/day-detail-panel";
+import { BookingForm } from "@/components/dashboard/booking-form-panel";
+import { HallStatusBanner, ScheduleInfo } from "@/components/dashboard/hall-status";
 import { LoginForm } from "@/components/dashboard/login-form";
 import {
-  allLessonsFilter,
-  type AppMode,
-  type LessonFilter,
-  type ViewMode,
-} from "@/components/dashboard/types";
+  CalendarLegend,
+  DayStrip,
+  MonthCalendar,
+} from "@/components/dashboard/month-calendar";
+import { TimeGridCalendar } from "@/components/dashboard/time-grid-calendar";
+import type { ViewMode } from "@/components/dashboard/types";
 import { useBookingActions } from "@/components/dashboard/use-booking-actions";
 import { useCalendarData } from "@/components/dashboard/use-calendar-data";
 import { useNow } from "@/components/dashboard/use-now";
-import { SiteShell } from "@/components/site-shell";
+import { AppHeader } from "@/components/ui/app-header";
+import { PasswordChangeForm } from "@/components/ui/password-change-form";
+import { Sheet } from "@/components/ui/sheet";
 import {
   canRoleManageBookings,
   getAdminSession,
@@ -50,17 +45,11 @@ import type {
   RecurringOverrideNotice,
 } from "@/lib/bookings-db";
 import {
-  createTimeSlots,
   formatDateKey,
   formatOpeningHoursForDate,
   getOpeningHoursForDate,
   getOpeningHoursGroups,
   getWeekDays,
-  hallSettings,
-  isCleanupSlot,
-  isDepartureSlot,
-  isSlotBooked,
-  isSlotOpen,
   trainerOptions,
   type Booking,
   type BookingRequest,
@@ -71,29 +60,22 @@ const initialRequest: BookingRequest = {
   date: "2026-05-20",
   start: "16:00",
   end: "18:00",
-  eventType: "soustredeni",
+  eventType: "seminar",
   bookingKind: "hall",
   trainer: "",
   note: "",
   cleanupRequired: false,
 };
 
-const closedSlotState: SlotState = {
-  booking: undefined,
-  cleanupBooking: undefined,
-  isDeparture: false,
-  isOpen: false,
-};
+type SheetKind = "booking" | "login" | "password" | null;
 
 type BookingDashboardProps = {
   initialBookings: Booking[];
   initialDate: string;
-  initialAppMode?: AppMode;
   initialRecurringCancellations: RecurringCancellationNotice[];
   initialRecurringOverrides: RecurringOverrideNotice[];
   initialSession: {
     authenticated: boolean;
-    lessonFilter?: LessonFilter;
     role: AdminRole | null;
     username: string | null;
   };
@@ -102,30 +84,27 @@ type BookingDashboardProps = {
 export function BookingDashboard({
   initialBookings,
   initialDate,
-  initialAppMode = "hall",
   initialRecurringCancellations,
   initialRecurringOverrides,
   initialSession,
 }: BookingDashboardProps) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [appMode, setAppMode] = useState<AppMode>(initialAppMode);
   const [request, setRequest] = useState({ ...initialRequest, date: initialDate });
   const [submitMessage, setSubmitMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
-  const [selectedLessonTrainer, setSelectedLessonTrainer] = useState("");
+  const [sheet, setSheet] = useState<SheetKind>(null);
+  // Where to continue after logging in from the "add booking" button.
+  const [openBookingAfterLogin, setOpenBookingAfterLogin] = useState(false);
+  const [expandedBookingId, setExpandedBookingId] = useState("");
+  const [toast, setToast] = useState("");
+  const toastTimeoutRef = useRef<number | null>(null);
   const [session, setSession] = useState({
     isAuthenticated: initialSession.authenticated,
-    lessonFilter: initialSession.lessonFilter ?? allLessonsFilter,
     role: initialSession.role,
     username: initialSession.username,
   });
-  const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
-  const bookingFormPanelRef = useRef<HTMLDivElement | null>(null);
-  const bookingNameInputRef = useRef<HTMLInputElement | null>(null);
-  const bookingTitleSelectRef = useRef<HTMLSelectElement | null>(null);
-  const loginUsernameInputRef = useRef<HTMLInputElement | null>(null);
+  const agendaRef = useRef<HTMLDivElement | null>(null);
 
   const now = useNow();
   const calendar = useCalendarData({
@@ -137,37 +116,52 @@ export function BookingDashboard({
   const actions = useBookingActions(syncCalendar);
 
   const { isAuthenticated } = session;
-  const canUseLessonMode = isAuthenticated || initialAppMode === "lessons";
-  const activeAppMode: AppMode = canUseLessonMode ? appMode : "hall";
   const canManageBookings = isAuthenticated && canRoleManageBookings(session.role);
-  const isMainAdmin = isAuthenticated && session.role === "admin";
-  const shouldShowBookingPanel =
-    (!isAuthenticated || canManageBookings) && isBookingFormOpen;
-  const isExpandedBookingLayout = canManageBookings && isBookingFormOpen;
-  const activeSlotMinutes =
-    activeAppMode === "lessons" ? 45 : hallSettings.slotMinutes;
+  // Anonymous visitors see the button too; it leads them to the login.
+  const canStartBooking = !isAuthenticated || canManageBookings;
   const currentDateKey = now ? formatDateKey(now) : "";
-  const currentTimeMinutes = now ? now.getHours() * 60 + now.getMinutes() : null;
-  const todayDateKey = currentDateKey || initialDate;
+  const nowMinutes = now ? now.getHours() * 60 + now.getMinutes() : null;
+  const todayKey = currentDateKey || initialDate;
 
-  const days = useMemo(
-    () => getWeekDays(getWeekStartDate(selectedDate)),
-    [selectedDate],
+  const hallBookings = useMemo(
+    () => calendar.bookings.filter((booking) => booking.bookingKind !== "individual-lesson"),
+    [calendar.bookings],
   );
-  const selectedMonthKey = `${selectedDate.slice(0, 7)}-01`;
-  const monthDays = useMemo(() => getMonthDays(selectedMonthKey), [selectedMonthKey]);
-  const activeModeBookings = useMemo(
+  const weekDates = useMemo(() => getWeekDays(getWeekStartDate(selectedDate)), [selectedDate]);
+  const monthKey = selectedDate.slice(0, 7);
+  const monthGridDates = useMemo(() => getMonthGridDates(monthKey), [monthKey]);
+  const viewDates = useMemo(
     () =>
-      calendar.bookings.filter((booking) =>
-        activeAppMode === "lessons"
-          ? booking.bookingKind === "individual-lesson"
-          : booking.bookingKind !== "individual-lesson",
-      ),
-    [activeAppMode, calendar.bookings],
+      viewMode === "today"
+        ? [new Date(`${selectedDate}T12:00:00`)]
+        : viewMode === "week"
+          ? weekDates
+          : monthGridDates,
+    [monthGridDates, selectedDate, viewMode, weekDates],
   );
-  const selectedBookings = useMemo(
-    () => activeModeBookings.filter((booking) => booking.date === selectedDate),
-    [activeModeBookings, selectedDate],
+  const cancellations = calendar.recurringCancellations;
+  const viewDays = useMemo(
+    () => buildCalendarDays({ bookings: hallBookings, cancellations, days: viewDates }),
+    [cancellations, hallBookings, viewDates],
+  );
+  const stripDays = useMemo(
+    () => buildCalendarDays({ bookings: hallBookings, cancellations, days: weekDates }),
+    [cancellations, hallBookings, weekDates],
+  );
+  const today = useMemo(
+    () =>
+      buildCalendarDays({
+        bookings: hallBookings,
+        cancellations,
+        days: [new Date(`${todayKey}T12:00:00`)],
+      })[0],
+    [cancellations, hallBookings, todayKey],
+  );
+  const hallStatus = now && nowMinutes !== null ? getHallStatus(today, nowMinutes) : null;
+  const freeHours = now ? Math.round((getFreeMinutes(today) / 60) * 2) / 2 : null;
+  const selectedDaySegments = useMemo(
+    () => getDayAvailabilitySegments(selectedDate, hallBookings, 30),
+    [hallBookings, selectedDate],
   );
   const availableTrainers = useMemo(() => {
     const trainers = new Set(trainerOptions);
@@ -180,109 +174,31 @@ export function BookingDashboard({
 
     return [...trainers];
   }, [calendar.bookings]);
-  const activeLessonTrainer = availableTrainers.includes(selectedLessonTrainer)
-    ? selectedLessonTrainer
-    : availableTrainers[0] ?? "";
-
-  // Rows cover the opening hours of every day the week and month views can
-  // show, extended for bookings that start earlier or end later.
-  const timeSlots = useMemo(() => {
-    const visibleDateKeys = new Set([
-      todayDateKey,
-      ...days.map(formatDateKey),
-      ...monthDays.map(formatDateKey),
-    ]);
-
-    return createTimeSlots(
-      activeSlotMinutes,
-      activeModeBookings
-        .filter((booking) => visibleDateKeys.has(booking.date))
-        .map((booking) => ({ end: booking.end, start: booking.start })),
-    );
-  }, [activeModeBookings, activeSlotMinutes, days, monthDays, todayDateKey]);
-  const bookingDayCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-
-    for (const booking of activeModeBookings) {
-      if (isCountableEvent(booking)) {
-        counts.set(booking.date, (counts.get(booking.date) ?? 0) + 1);
-      }
-    }
-
-    return counts;
-  }, [activeModeBookings]);
-  const weeklyEventCount = useMemo(() => {
-    const weekDateKeys = new Set(days.map(formatDateKey));
-
-    return activeModeBookings.filter(
-      (booking) => weekDateKeys.has(booking.date) && isCountableEvent(booking),
-    ).length;
-  }, [activeModeBookings, days]);
-  // Only the days the current view renders; the selected day is always among
-  // them. The selected date is a dependency only in the day view, so clicking
-  // around a week does not recompute every slot.
-  const dayViewDateKey = viewMode === "today" ? selectedDate : "";
-  const slotDateKeys = useMemo(
-    () =>
-      dayViewDateKey
-        ? [dayViewDateKey]
-        : (viewMode === "week" ? days : monthDays).map(formatDateKey),
-    [dayViewDateKey, days, monthDays, viewMode],
-  );
-  const slotStateMap = useSlotStateMap({
-    activeModeBookings,
-    dateKeys: slotDateKeys,
-    slotMinutes: activeSlotMinutes,
-    timeSlots,
-  });
-  const getSlotState = (dateKey: string, time: string) =>
-    slotStateMap.get(getSlotStateKey(dateKey, time)) ?? closedSlotState;
-  const selectedDaySegments = useMemo(
-    () =>
-      getDayAvailabilitySegments(selectedDate, activeModeBookings, activeSlotMinutes),
-    [activeModeBookings, activeSlotMinutes, selectedDate],
-  );
-  const freeHours =
-    timeSlots.filter((time) => {
-      const slot = getSlotState(selectedDate, time);
-
-      return slot.isOpen && !slot.isDeparture && !slot.booking && !slot.cleanupBooking;
-    }).length *
-    (activeSlotMinutes / 60);
-  const todaysOpeningHours = useMemo(() => formatOpeningHoursForDate(new Date()), []);
-  const openingHoursGroups = useMemo(() => getOpeningHoursGroups(), []);
-  const occupancyNotice = useMemo(
-    () => getOccupancyNotice(selectedBookings, selectedDate, now),
-    [selectedBookings, selectedDate, now],
-  );
+  const isShowingToday =
+    viewMode === "today"
+      ? selectedDate === todayKey
+      : viewMode === "week"
+        ? weekDates.some((date) => formatDateKey(date) === todayKey)
+        : monthKey === todayKey.slice(0, 7);
 
   // Jump to today once the client knows its own date (and again at midnight).
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      setSelectedDate(todayDateKey);
-      setRequest((current) => ({ ...current, date: todayDateKey }));
+      setSelectedDate(todayKey);
+      setRequest((current) => ({ ...current, date: todayKey }));
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [todayDateKey]);
+  }, [todayKey]);
 
-  useEffect(() => {
-    if (!currentDateKey) {
-      return undefined;
+  function showToast(message: string) {
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
     }
 
-    const animationFrame = window.requestAnimationFrame(() => {
-      scrollCurrentTimeIntoView(calendarScrollerRef.current);
-    });
-    const timeout = window.setTimeout(() => {
-      scrollCurrentTimeIntoView(calendarScrollerRef.current);
-    }, 360);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      window.clearTimeout(timeout);
-    };
-  }, [currentDateKey, selectedDate, viewMode]);
+    setToast(message);
+    toastTimeoutRef.current = window.setTimeout(() => setToast(""), 3500);
+  }
 
   function patchRequest(patch: Partial<BookingRequest>) {
     setSubmitMessage("");
@@ -291,26 +207,15 @@ export function BookingDashboard({
 
   function selectDate(dateKey: string) {
     setSelectedDate(dateKey);
-    patchRequest({ date: dateKey });
-  }
-
-  function selectSlot(dateKey: string, time: string, isFree: boolean) {
-    setSelectedDate(dateKey);
-
-    if (isFree) {
-      patchRequest({ date: dateKey, start: time });
-    }
+    setExpandedBookingId("");
+    setRequest((current) => ({ ...current, date: dateKey }));
   }
 
   function changeViewMode(nextViewMode: ViewMode) {
     setViewMode(nextViewMode);
-
-    if (nextViewMode === "today" || nextViewMode === "month") {
-      selectDate(todayDateKey);
-    }
   }
 
-  function changeDisplayedPeriod(offset: number) {
+  function changePeriod(offset: number) {
     const date = new Date(`${selectedDate}T12:00:00`);
 
     if (viewMode === "month") {
@@ -320,17 +225,52 @@ export function BookingDashboard({
       date.setDate(date.getDate() + (viewMode === "week" ? offset * 7 : offset));
     }
 
-    const nextDateKey = formatDateKey(date);
-    setSelectedDate(nextDateKey);
-    setRequest((current) => ({ ...current, date: nextDateKey }));
+    selectDate(formatDateKey(date));
   }
 
-  function showCurrentPeriod() {
-    setSelectedDate(todayDateKey);
-    setRequest((current) => ({ ...current, date: todayDateKey }));
-    window.setTimeout(() => {
-      scrollCurrentTimeIntoView(calendarScrollerRef.current);
-    }, 120);
+  function openBookingForm(prefill?: { date: string; start?: string; end?: string }) {
+    if (!canManageBookings) {
+      setOpenBookingAfterLogin(true);
+      setSheet("login");
+      return;
+    }
+
+    setSubmitMessage("");
+    setRequest((current) => ({
+      ...current,
+      bookingKind: "hall",
+      date: prefill?.date ?? selectedDate,
+      end: prefill?.end ?? current.end,
+      eventType: "seminar",
+      name: "",
+      start: prefill?.start ?? current.start,
+      trainer: "",
+    }));
+    setSheet("booking");
+  }
+
+  function pickTime(dateKey: string, minutes: number) {
+    const openingHours = getOpeningHoursForDate(new Date(`${dateKey}T12:00:00`));
+    const closing = openingHours ? timeToMinutes(openingHours.end) : 24 * 60;
+
+    setSelectedDate(dateKey);
+    openBookingForm({
+      date: dateKey,
+      end: minutesToTime(Math.min(minutes + 60, closing)),
+      start: minutesToTime(minutes),
+    });
+  }
+
+  function selectItem(dateKey: string, item: CalendarItem) {
+    setSelectedDate(dateKey);
+    setRequest((current) => ({ ...current, date: dateKey }));
+    setExpandedBookingId(
+      canManageBookings && item.booking && item.kind !== "cleanup" ? item.booking.id : "",
+    );
+
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      agendaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function setWholeDayBooking() {
@@ -344,86 +284,42 @@ export function BookingDashboard({
     patchRequest({ end: openingHours.end, start: openingHours.start });
   }
 
-  function openBookingForm() {
-    setSubmitMessage("");
-    setIsBookingFormOpen(true);
-    setRequest((current) => ({ ...current, bookingKind: "hall", date: selectedDate }));
-
-    window.setTimeout(() => {
-      if (window.matchMedia("(max-width: 1023px)").matches) {
-        bookingFormPanelRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-    }, 0);
-
-    window.setTimeout(() => {
-      const target = canManageBookings
-        ? bookingTitleSelectRef.current ?? bookingNameInputRef.current
-        : loginUsernameInputRef.current;
-
-      target?.focus({ preventScroll: true });
-    }, 450);
-  }
-
-  function switchAppMode(nextMode: AppMode) {
-    setAppMode(nextMode);
-    setIsBookingFormOpen(false);
-
-    if (nextMode === "lessons") {
-      setViewMode("week");
-    }
-
-    setRequest((current) =>
-      nextMode === "lessons"
-        ? {
-            ...current,
-            bookingKind: "individual-lesson",
-            cleanupRequired: false,
-            eventType: "tanecni-lekce",
-            trainer: activeLessonTrainer,
-          }
-        : {
-            ...current,
-            bookingKind: "hall",
-            eventType: "soustredeni",
-            trainer: "",
-          },
-    );
-  }
-
   async function login(username: string, password: string) {
+    let role: AdminRole | null = null;
+
     try {
       await loginAdmin(username, password);
       const nextSession = await getAdminSession();
 
+      role = nextSession.role ?? null;
       setSession({
         isAuthenticated: true,
-        lessonFilter: nextSession.lessonFilter ?? allLessonsFilter,
-        role: nextSession.role ?? null,
+        role,
         username: nextSession.username ?? username.trim(),
       });
     } catch (error) {
       return error instanceof Error ? error.message : "Přihlášení se nepodařilo.";
     }
 
-    // Signed-in users also receive individual lessons, which anonymous
-    // visitors do not.
     void syncCalendar();
+
+    if (openBookingAfterLogin && canRoleManageBookings(role)) {
+      setOpenBookingAfterLogin(false);
+      setSubmitMessage("");
+      setRequest((current) => ({ ...current, date: selectedDate, eventType: "seminar", name: "" }));
+      setSheet("booking");
+    } else {
+      setSheet(null);
+    }
 
     return null;
   }
 
   async function logout() {
     await logoutAdmin();
-    setSession({
-      isAuthenticated: false,
-      lessonFilter: allLessonsFilter,
-      role: null,
-      username: null,
-    });
-    setSubmitMessage("");
+    setSession({ isAuthenticated: false, role: null, username: null });
+    setExpandedBookingId("");
+    setSheet(null);
     void syncCalendar();
   }
 
@@ -433,11 +329,7 @@ export function BookingDashboard({
 
     try {
       const response = await fetch("/api/booking-request", {
-        body: JSON.stringify({
-          ...request,
-          bookingKind: activeAppMode === "lessons" ? "individual-lesson" : "hall",
-          name: bookingName,
-        }),
+        body: JSON.stringify({ ...request, bookingKind: "hall", name: bookingName }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -456,285 +348,177 @@ export function BookingDashboard({
 
       if (data.booking) {
         calendar.addBooking(data.booking);
+        setSelectedDate(data.booking.date);
       }
 
-      setSubmitMessage("Rezervace je uložena v databázi.");
+      setSheet(null);
+      showToast(`Uloženo: ${bookingName}`);
       await syncCalendar();
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const modeButtonClass = (mode: AppMode) =>
-    `inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition ${
-      activeAppMode === mode
-        ? "border-white/35 bg-white/20 text-white"
-        : "border-white/20 bg-white/10 hover:bg-white/15"
-    }`;
-  const calendarProps = {
-    bookingDayCounts,
-    currentDateKey,
-    currentTimeMinutes,
-    getSlotState,
-    onSelectDate: selectDate,
-    onSelectSlot: selectSlot,
-    scrollerRef: calendarScrollerRef,
-    selectedDate,
-    slotMinutes: activeSlotMinutes,
-    timeSlots,
-  };
+  function closeSheet() {
+    setSheet(null);
+    setOpenBookingAfterLogin(false);
+  }
 
   return (
-    <SiteShell
-      maxWidthClassName="max-w-[1840px]"
-      contentClassName={`grid gap-5 px-4 py-5 transition-[grid-template-columns] duration-300 lg:grid-cols-[minmax(0,1fr)_320px] lg:pl-6 lg:pr-4 xl:pl-8 xl:pr-5 ${
-        isExpandedBookingLayout
-          ? "xl:grid-cols-[minmax(0,1fr)_minmax(560px,620px)] 2xl:grid-cols-[minmax(900px,1fr)_minmax(640px,760px)] 2xl:pl-12"
-          : "xl:grid-cols-[minmax(0,1fr)_340px]"
-      }`}
-      description={<>Přehled dostupnosti sálu TK Koškovi pro volný trénink.</>}
-      eyebrow={
-        <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-[#d7e6ed]">
-          <button
-            className={modeButtonClass("hall")}
-            onClick={() => switchAppMode("hall")}
-            type="button"
-          >
-            <Sparkles size={15} />
-            Rezervace sálu
-          </button>
-          {canUseLessonMode ? (
-            <button
-              className={modeButtonClass("lessons")}
-              onClick={() => switchAppMode("lessons")}
-              type="button"
-            >
-              <User size={15} />
-              Soustředění
-            </button>
-          ) : (
-            <span className="inline-flex items-center gap-2">
-              <MapPin size={15} />
-              {hallSettings.location}
-            </span>
-          )}
+    <div className="min-h-screen bg-page text-ink">
+      <AppHeader
+        activeTab="hall"
+        onChangePassword={() => setSheet("password")}
+        onLogin={() => setSheet("login")}
+        onLogout={logout}
+        session={isAuthenticated ? session : null}
+      />
+
+      <main className="mx-auto grid max-w-[1600px] grid-cols-1 gap-4 px-4 py-4 lg:px-6 lg:py-5">
+            <HallStatusBanner
+              freeHours={freeHours}
+              status={hallStatus}
+              todaysOpeningHours={formatOpeningHoursForDate(new Date(`${todayKey}T12:00:00`))}
+            />
+
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-5">
+              <section className="grid gap-3 rounded-xl border border-line bg-surface p-3 sm:p-4">
+                <CalendarToolbar
+                  isShowingToday={isShowingToday}
+                  onAddBooking={canStartBooking ? () => openBookingForm() : undefined}
+                  onChangePeriod={changePeriod}
+                  onShowToday={() => selectDate(todayKey)}
+                  onViewModeChange={changeViewMode}
+                  selectedDate={selectedDate}
+                  viewMode={viewMode}
+                />
+
+                {viewMode === "month" ? (
+                  <MonthCalendar
+                    days={viewDays}
+                    monthKey={monthKey}
+                    onSelectDate={selectDate}
+                    selectedDate={selectedDate}
+                    todayKey={todayKey}
+                  />
+                ) : (
+                  <>
+                    <div className="lg:hidden">
+                      <DayStrip
+                        days={stripDays}
+                        onSelectDate={selectDate}
+                        selectedDate={selectedDate}
+                        todayKey={todayKey}
+                      />
+                    </div>
+                    <div className="hidden lg:block">
+                      <TimeGridCalendar
+                        canAdd={canManageBookings}
+                        days={viewDays}
+                        nowMinutes={nowMinutes}
+                        onPickTime={pickTime}
+                        onSelectDate={selectDate}
+                        onSelectItem={selectItem}
+                        selectedDate={selectedDate}
+                        todayKey={todayKey}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <CalendarLegend />
+              </section>
+
+              <aside className="grid gap-4 lg:sticky lg:top-[72px]">
+                <div className="scroll-mt-20" ref={agendaRef}>
+                  <DayDetailPanel
+                    actions={actions}
+                    availableTrainers={availableTrainers}
+                    bookings={hallBookings}
+                    canManageBookings={canManageBookings}
+                    cancellations={calendar.recurringCancellations}
+                    currentDateKey={currentDateKey}
+                    currentTimeMinutes={nowMinutes}
+                    expandedBookingId={expandedBookingId}
+                    onAddBooking={() => openBookingForm({ date: selectedDate })}
+                    onExpandedBookingChange={setExpandedBookingId}
+                    segments={selectedDaySegments}
+                    selectedDate={selectedDate}
+                  />
+                </div>
+                <ScheduleInfo
+                  canReinstate={canManageBookings}
+                  cancellations={calendar.recurringCancellations}
+                  changes={calendar.recurringOverrides}
+                  onReinstate={actions.reinstate}
+                  openingHours={getOpeningHoursGroups()}
+                  reinstatingId={actions.pendingId.reinstating}
+                />
+              </aside>
+            </div>
+
+            {canStartBooking ? (
+              <button
+                aria-label="Přidat akci"
+                className="fixed bottom-5 right-5 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-on-brand shadow-lg transition hover:bg-brand-hover lg:hidden"
+                onClick={() => openBookingForm({ date: selectedDate })}
+                type="button"
+              >
+                <Plus size={26} />
+              </button>
+            ) : null}
+      </main>
+
+      {toast ? (
+        <div
+          className="fade-enter fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-page shadow-lg lg:bottom-6"
+          role="status"
+        >
+          {toast}
         </div>
-      }
-      infoPanel={{
-        items: openingHoursGroups.map((group) => ({
-          label: group.days,
-          value: group.hours,
-        })),
-        sideContent: (
-          <RecurringCancellationPanel
-            cancellations={calendar.recurringCancellations}
-            changes={calendar.recurringOverrides}
-            isAuthenticated={isAuthenticated}
-            onReinstate={actions.reinstate}
-            reinstatingId={actions.pendingId.reinstating}
-          />
-        ),
-        subtitle: "Pravidelný provoz sálu",
-        title: "Otevírací doba",
-      }}
-      metrics={[
-        { label: "Dnes volno", value: `${freeHours.toLocaleString("cs-CZ")} h` },
-        { label: "Dnes otevřeno", value: todaysOpeningHours },
-        ...(isAuthenticated
-          ? [{ label: "Tento týden", value: formatEventCount(weeklyEventCount) }]
-          : []),
-      ]}
-      title={activeAppMode === "lessons" ? "Soustředění" : "Dostupnost tanečního sálu"}
-    >
-      <div className="min-w-0 space-y-6">
-        <CalendarToolbar
-          activeAppMode={activeAppMode}
-          onChangePeriod={changeDisplayedPeriod}
-          onShowCurrentPeriod={showCurrentPeriod}
-          onViewModeChange={changeViewMode}
-          selectedDate={selectedDate}
-          viewMode={viewMode}
-        />
+      ) : null}
 
-        {isAuthenticated ? (
-          <AccountBar
-            canManageBookings={canManageBookings}
-            isBookingFormOpen={isBookingFormOpen}
-            isMainAdmin={isMainAdmin}
-            onLogout={logout}
-            onOpenBookingForm={openBookingForm}
-            showAddBooking={activeAppMode === "hall"}
-            username={session.username}
-          />
-        ) : null}
-
-        {activeAppMode === "lessons" ? (
-          <CampLessonsSection
-            accountFilter={session.lessonFilter}
-            availableTrainers={availableTrainers}
-            canImport={isMainAdmin}
-            isAuthenticated={isAuthenticated}
-            loginForm={<LoginForm onLogin={login} variant="lessons" />}
-          />
-        ) : (
-          <>
-            <div className="calendar-view-transition lg:hidden" key={`mobile-${viewMode}`}>
-              <MobileCalendarSummary
-                bookingDayCounts={bookingDayCounts}
-                days={viewMode === "month" ? monthDays : days}
-                onSelectDate={selectDate}
-                selectedDate={selectedDate}
-                viewMode={viewMode}
-              />
-            </div>
-            <div
-              className="calendar-view-transition hidden lg:block"
-              key={`desktop-${viewMode}`}
-            >
-              {viewMode === "today" ? (
-                <DayCalendar {...calendarProps} />
-              ) : viewMode === "week" ? (
-                <WeekCalendar {...calendarProps} days={days} />
-              ) : (
-                <MonthCalendar {...calendarProps} monthDays={monthDays} />
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <aside
-        className={`flex flex-col gap-5 lg:max-h-[min(760px,calc(100svh-112px))] lg:overflow-y-auto lg:pr-1 ${
-          isExpandedBookingLayout
-            ? "xl:grid xl:max-h-none xl:grid-cols-[minmax(360px,1fr)_minmax(220px,260px)] xl:items-start xl:overflow-visible xl:pr-0 2xl:grid-cols-[minmax(420px,1fr)_minmax(260px,320px)]"
-            : ""
-        }`}
-      >
-        <DayDetailPanel
-          actions={actions}
+      <Sheet onClose={closeSheet} open={sheet === "booking"} title="Nová akce">
+        <BookingForm
           availableTrainers={availableTrainers}
-          bookings={calendar.bookings}
-          canManageBookings={canManageBookings}
-          className={isExpandedBookingLayout ? "lg:order-2" : "lg:order-1"}
-          currentDateKey={currentDateKey}
-          currentTimeMinutes={currentTimeMinutes}
-          occupancyNotice={occupancyNotice}
-          onLoginClick={
-            activeAppMode === "hall" && !isAuthenticated && !isBookingFormOpen
-              ? openBookingForm
-              : undefined
-          }
-          segments={selectedDaySegments}
-          selectedDate={selectedDate}
+          bookings={hallBookings}
+          isSubmitting={isSubmitting}
+          onRequestPatch={patchRequest}
+          onSetWholeDay={setWholeDayBooking}
+          onSubmit={submitBooking}
+          request={request}
+          submitMessage={submitMessage}
         />
-
-        {shouldShowBookingPanel ? (
-          <BookingFormPanel
-            activeAppMode={activeAppMode}
-            availableTrainers={availableTrainers}
-            canManageBookings={canManageBookings}
-            className={isExpandedBookingLayout ? "lg:order-1" : "lg:order-2"}
-            isSubmitting={isSubmitting}
-            loginForm={
-              <LoginForm
-                onLogin={login}
-                usernameInputRef={loginUsernameInputRef}
-                variant="panel"
-              />
-            }
-            nameInputRef={bookingNameInputRef}
-            onClearMessage={() => setSubmitMessage("")}
-            onClose={() => setIsBookingFormOpen(false)}
-            onLogout={logout}
-            onRequestPatch={patchRequest}
-            onSetWholeDay={setWholeDayBooking}
-            onSubmit={submitBooking}
-            onTrainerSelected={(trainer) => {
-              if (activeAppMode === "lessons") {
-                setSelectedLessonTrainer(trainer);
-              }
-            }}
-            panelRef={bookingFormPanelRef}
-            request={request}
-            submitMessage={submitMessage}
-            titleSelectRef={bookingTitleSelectRef}
-            username={session.username}
-          />
+      </Sheet>
+      <Sheet onClose={closeSheet} open={sheet === "login"} title="Přihlášení">
+        {openBookingAfterLogin ? (
+          <p className="mb-2 text-sm text-ink-muted">
+            Akce do kalendáře přidávají přihlášení správci sálu.
+          </p>
         ) : null}
-      </aside>
-    </SiteShell>
+        <LoginForm onLogin={login} />
+      </Sheet>
+      <Sheet onClose={closeSheet} open={sheet === "password"} title="Změna hesla">
+        <PasswordChangeForm />
+      </Sheet>
+    </div>
   );
 }
 
-// State of every rendered slot, computed once per data change instead of per
-// cell render.
-function useSlotStateMap({
-  activeModeBookings,
-  dateKeys,
-  slotMinutes,
-  timeSlots,
-}: {
-  activeModeBookings: Booking[];
-  dateKeys: string[];
-  slotMinutes: number;
-  timeSlots: string[];
-}) {
-  const bookingsByDate = useMemo(() => {
-    const groups = new Map<string, Booking[]>();
+// Whole weeks (Monday to Sunday) covering the given month, for the month grid.
+function getMonthGridDates(monthKey: string) {
+  const monthDates = getMonthDays(`${monthKey}-01`);
+  const first = monthDates[0];
+  const last = monthDates[monthDates.length - 1];
+  const start = new Date(first);
+  start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  const end = new Date(last);
+  end.setDate(last.getDate() + (6 - ((last.getDay() + 6) % 7)));
+  const dates: Date[] = [];
 
-    for (const booking of activeModeBookings) {
-      const dateBookings = groups.get(booking.date);
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+    dates.push(new Date(date));
+  }
 
-      if (dateBookings) {
-        dateBookings.push(booking);
-      } else {
-        groups.set(booking.date, [booking]);
-      }
-    }
-
-    return groups;
-  }, [activeModeBookings]);
-  const pendingCleanupBookings = useMemo(
-    () =>
-      activeModeBookings.filter(
-        (booking) => booking.cleanupRequired && !booking.cleanedAt,
-      ),
-    [activeModeBookings],
-  );
-
-  return useMemo(() => {
-    const states = new Map<string, SlotState>();
-
-    for (const dateKey of dateKeys) {
-      const date = new Date(`${dateKey}T12:00:00`);
-      const dateBookings = bookingsByDate.get(dateKey) ?? [];
-
-      for (const time of timeSlots) {
-        const isOpen = isSlotOpen(date, time);
-        const booking = isSlotBooked(dateBookings, dateKey, time, slotMinutes);
-        const cleanupBooking =
-          isOpen && !booking
-            ? pendingCleanupBookings.find((candidate) =>
-                isCleanupSlot(candidate, dateKey, time, activeModeBookings),
-              )
-            : undefined;
-
-        states.set(getSlotStateKey(dateKey, time), {
-          booking,
-          cleanupBooking,
-          isDeparture: isDepartureSlot(date, time, slotMinutes),
-          isOpen,
-        });
-      }
-    }
-
-    return states;
-  }, [
-    activeModeBookings,
-    bookingsByDate,
-    dateKeys,
-    pendingCleanupBookings,
-    slotMinutes,
-    timeSlots,
-  ]);
+  return dates;
 }

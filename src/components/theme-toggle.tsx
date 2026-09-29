@@ -6,7 +6,18 @@ import { useSyncExternalStore } from "react";
 const storageKey = "koskovi-theme";
 const themeChangeEvent = "koskovi-theme-change";
 
-export function ThemeToggle() {
+const variantClass = {
+  header:
+    "inline-flex h-9 w-9 items-center justify-center rounded-md text-header-ink transition hover:bg-white/10 hover:text-white",
+  solid:
+    "inline-flex h-11 w-11 items-center justify-center rounded-md border border-[#003758] bg-[#003758] text-white shadow-sm transition hover:bg-[#0b4d76]",
+};
+
+export function ThemeToggle({
+  variant = "solid",
+}: {
+  variant?: keyof typeof variantClass;
+}) {
   const isDark = useSyncExternalStore(
     subscribeTheme,
     getThemeSnapshot,
@@ -24,7 +35,7 @@ export function ThemeToggle() {
   return (
     <button
       aria-label={isDark ? "Přepnout na světlý režim" : "Přepnout na tmavý režim"}
-      className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-[#003758] bg-[#003758] text-white shadow-sm transition hover:bg-[#0b4d76]"
+      className={variantClass[variant]}
       onClick={toggleTheme}
       title={isDark ? "Světlý režim" : "Tmavý režim"}
       type="button"

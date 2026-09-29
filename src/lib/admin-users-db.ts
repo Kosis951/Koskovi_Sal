@@ -3,9 +3,7 @@ import {
   hashPassword,
   listAdminUsernames,
   normalizeUsername,
-  sanitizeLessonFilter,
   type AdminRole,
-  type LessonFilter,
   type StoredAdminUser,
 } from "@/lib/auth";
 import {
@@ -34,7 +32,6 @@ export async function getAdminUsers() {
 
       return {
         isStored: Boolean(storedUser?.passwordHash),
-        lessonFilter: sanitizeLessonFilter(storedUser?.lessonFilter),
         role: getAdminRole(username, storedUsers),
         username: storedUser?.username ?? username,
       };
@@ -76,47 +73,6 @@ export async function upsertAdminUserPassword(input: {
 
     return {
       isStored: true,
-      username: nextUser.username,
-    };
-  });
-}
-
-export async function upsertAdminUserLessonFilter(input: {
-  actor: string;
-  lessonFilter?: Partial<LessonFilter> | null;
-  username: string;
-}) {
-  return withUsersLock(async () => {
-    const now = new Date().toISOString();
-    const normalizedUsername = normalizeUsername(input.username);
-    const users = await readStoredUsers();
-    const existingIndex = users.findIndex(
-      (user) => normalizeUsername(user.username) === normalizedUsername,
-    );
-    const previousUser = existingIndex >= 0 ? users[existingIndex] : null;
-
-    const nextUser: StoredAdminUser = {
-      createdAt: previousUser?.createdAt ?? now,
-      createdBy: previousUser?.createdBy ?? input.actor,
-      lessonFilter: sanitizeLessonFilter(input.lessonFilter),
-      passwordHash: previousUser?.passwordHash,
-      role: previousUser?.role,
-      updatedAt: now,
-      updatedBy: input.actor,
-      username: previousUser?.username ?? input.username.trim(),
-    };
-
-    if (existingIndex >= 0) {
-      users[existingIndex] = nextUser;
-    } else {
-      users.push(nextUser);
-    }
-
-    await writeStoredUsers(users);
-
-    return {
-      isStored: true,
-      lessonFilter: sanitizeLessonFilter(nextUser.lessonFilter),
       username: nextUser.username,
     };
   });

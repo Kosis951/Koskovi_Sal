@@ -3,6 +3,41 @@
 :root {
   --background: #f7f3ec;
   --foreground: #1d2428;
+
+  /* Design tokens used by the redesigned screens. Each has a dark variant
+     below, so components never need per-colour dark-mode overrides. */
+  --k-page: #f7f3ec;
+  --k-surface: #ffffff;
+  --k-subtle: #f6f1e8;
+  --k-line: #e4dccf;
+  --k-line-strong: #cfc4b4;
+  --k-ink: #132935;
+  --k-ink-muted: #5f6b6a;
+  --k-ink-soft: #8a918f;
+  --k-brand: #003758;
+  --k-brand-hover: #0b4d76;
+  --k-brand-soft: #e7f1f6;
+  --k-on-brand: #ffffff;
+  --k-header: #003758;
+  --k-header-ink: #d7e6ed;
+
+  --k-training: #e3effa;
+  --k-training-ink: #0b4d76;
+  --k-training-line: #9cc3e4;
+  --k-event: #eeecfb;
+  --k-event-ink: #3c3489;
+  --k-event-line: #b8b2ec;
+  --k-busy: #fdebe5;
+  --k-busy-ink: #8c2f20;
+  --k-busy-line: #efb3a3;
+  --k-cleanup: #fff3d1;
+  --k-cleanup-ink: #6a4b00;
+  --k-cleanup-line: #e1b554;
+  --k-free: #eaf6ee;
+  --k-free-ink: #1f6040;
+  --k-free-line: #a9d8b9;
+  --k-closed: #efeae1;
+  --k-now: #d64534;
 }
 
 html.dark,
@@ -10,6 +45,39 @@ html[data-theme="dark"] {
   --background: #111315;
   --foreground: #f0f2f3;
   color-scheme: dark;
+
+  --k-page: #111315;
+  --k-surface: #1b1f22;
+  --k-subtle: #22272b;
+  --k-line: #31373c;
+  --k-line-strong: #454c52;
+  --k-ink: #f0f2f3;
+  --k-ink-muted: #b7bdc2;
+  --k-ink-soft: #8a9197;
+  --k-brand: #3c8cc4;
+  --k-brand-hover: #5aa3d6;
+  --k-brand-soft: #17304a;
+  --k-on-brand: #ffffff;
+  --k-header: #0a2436;
+  --k-header-ink: #b9d0dc;
+
+  --k-training: #17304a;
+  --k-training-ink: #cfe6fa;
+  --k-training-line: #2f5c85;
+  --k-event: #2a2650;
+  --k-event-ink: #dcd8ff;
+  --k-event-line: #4f47a0;
+  --k-busy: #3d2420;
+  --k-busy-ink: #ffcfc2;
+  --k-busy-line: #8a4535;
+  --k-cleanup: #3a2f12;
+  --k-cleanup-ink: #f7dc97;
+  --k-cleanup-line: #8a6a1f;
+  --k-free: #1a2e22;
+  --k-free-ink: #9fdcb6;
+  --k-free-line: #2f6b47;
+  --k-closed: #202428;
+  --k-now: #ff7a66;
 }
 
 @theme inline {
@@ -17,6 +85,85 @@ html[data-theme="dark"] {
   --color-foreground: var(--foreground);
   --font-sans: var(--font-firma);
   --font-mono: var(--font-firma);
+
+  --color-page: var(--k-page);
+  --color-surface: var(--k-surface);
+  --color-subtle: var(--k-subtle);
+  --color-line: var(--k-line);
+  --color-line-strong: var(--k-line-strong);
+  --color-ink: var(--k-ink);
+  --color-ink-muted: var(--k-ink-muted);
+  --color-ink-soft: var(--k-ink-soft);
+  --color-brand: var(--k-brand);
+  --color-brand-hover: var(--k-brand-hover);
+  --color-brand-soft: var(--k-brand-soft);
+  --color-on-brand: var(--k-on-brand);
+  --color-header: var(--k-header);
+  --color-header-ink: var(--k-header-ink);
+  --color-training: var(--k-training);
+  --color-training-ink: var(--k-training-ink);
+  --color-training-line: var(--k-training-line);
+  --color-event: var(--k-event);
+  --color-event-ink: var(--k-event-ink);
+  --color-event-line: var(--k-event-line);
+  --color-busy: var(--k-busy);
+  --color-busy-ink: var(--k-busy-ink);
+  --color-busy-line: var(--k-busy-line);
+  --color-cleanup: var(--k-cleanup);
+  --color-cleanup-ink: var(--k-cleanup-ink);
+  --color-cleanup-line: var(--k-cleanup-line);
+  --color-free: var(--k-free);
+  --color-free-ink: var(--k-free-ink);
+  --color-free-line: var(--k-free-line);
+  --color-closed: var(--k-closed);
+  --color-now: var(--k-now);
+}
+
+/* Diagonal stripes for "closed" and "waiting for cleanup" areas. */
+.pattern-closed {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--k-closed) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.pattern-cleanup {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--k-cleanup) 0 6px,
+    color-mix(in srgb, var(--k-cleanup-line) 45%, var(--k-cleanup)) 6px 9px
+  );
+}
+
+.sheet-enter {
+  animation: sheet-up 220ms cubic-bezier(0.2, 0.82, 0.22, 1);
+}
+
+.fade-enter {
+  animation: fade-in 180ms ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0.4;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 body {
@@ -122,6 +269,11 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sheet-enter,
+  .fade-enter {
+    animation: none;
+  }
+
   .calendar-view-transition {
     animation: calendar-view-enter-reduced 180ms ease-out;
   }

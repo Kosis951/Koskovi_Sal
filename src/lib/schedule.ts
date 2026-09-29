@@ -254,7 +254,9 @@ export function getEffectiveBookingEnd(
   return openingHours?.end ?? booking.end;
 }
 
-function getCleanupEndDateTime(booking: Booking, bookingList: Booking[]) {
+// A pending cleanup blocks the hall from the booking's end until the next
+// booking starts (null = no following booking yet).
+export function getCleanupEndDateTime(booking: Booking, bookingList: Booking[]) {
   const cleanupStart = getDateTimeValue(booking.date, booking.end).getTime();
   let nextBookingStart: number | null = null;
 

@@ -30,7 +30,6 @@ export default async function Home() {
       initialRecurringOverrides={initialRecurringOverrides}
       initialSession={{
         authenticated: Boolean(access),
-        lessonFilter: access?.lessonFilter,
         role: access?.role ?? null,
         username: access?.username ?? null,
       }}

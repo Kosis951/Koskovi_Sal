@@ -8,7 +8,6 @@ export async function GET() {
   return NextResponse.json(
     {
       authenticated: Boolean(access),
-      lessonFilter: access?.lessonFilter ?? { type: "all", value: "" },
       role: access?.role ?? null,
       username: access?.username ?? null,
     },

@@ -28,7 +28,7 @@ const scryptAsync = promisify(scrypt) as (
 const dummyPasswordHash = `scrypt$${"0".repeat(32)}$${"0".repeat(128)}`;
 
 // admin: everything incl. user management; manager: hall bookings;
-// viewer: read-only access to the camp schedule.
+// viewer: read-only.
 export type AdminRole = "admin" | "manager" | "viewer";
 
 type AdminCredential = {
@@ -54,7 +54,6 @@ export type StoredAdminUser = {
 };
 
 export type AdminAccess = {
-  lessonFilter: LessonFilter;
   role: AdminRole;
   username: string;
 };
@@ -231,7 +230,6 @@ export function getAdminAccessFromSession(value?: string): AdminAccess | null {
   }
 
   return {
-    lessonFilter: getStoredLessonFilter(username, storedUsers),
     role: getAdminRole(username, storedUsers),
     username,
   };
@@ -271,8 +269,8 @@ export function getAdminRole(
     return "viewer";
   }
 
-  // Accounts limited to part of the camp schedule are dancers or trainers
-  // looking at their lessons, not hall managers.
+  // Accounts that were limited to part of the (now removed) camp schedule
+  // belong to dancers or trainers, not hall managers.
   if (sanitizeLessonFilter(storedUser?.lessonFilter).type !== "all") {
     return "viewer";
   }
@@ -290,15 +288,6 @@ export function hashPassword(password: string) {
   return scryptAsync(password, salt, 64).then(
     (key) => `scrypt$${salt}$${key.toString("hex")}`,
   );
-}
-
-function getStoredLessonFilter(username: string, storedUsers: StoredAdminUser[]) {
-  const normalizedUsername = normalizeUsername(username);
-  const storedUser = storedUsers.find(
-    (user) => normalizeUsername(user.username) === normalizedUsername,
-  );
-
-  return sanitizeLessonFilter(storedUser?.lessonFilter);
 }
 
 function getCredentialFingerprint(credential: AdminCredential) {
