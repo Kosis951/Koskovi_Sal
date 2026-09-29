@@ -43,7 +43,8 @@ git pull
 npm ci                      # na serveru, nikdy nekopirovat node_modules z Windows
 cp .env.example .env.local  # jen poprve, pak vyplnit (viz nize)
 npm run build
-pm2 start ecosystem.config.cjs   # poprve; pri dalsich nasazenich: pm2 restart koskovi-sal
+pm2 delete koskovi-sal          # jen pokud uz existuje stary zaznam (spusteny pres npm start)
+pm2 start ecosystem.config.cjs   # pri dalsich nasazenich staci: pm2 restart koskovi-sal
 pm2 save && pm2 startup     # automaticky start po restartu serveru
 ```
 
@@ -55,14 +56,14 @@ V `.env.local` musi byt vyplneno:
 - `DATABASE_PATH` – soubor databaze mimo slozku aplikace, napr. `/var/lib/koskovi-sal/koskovi.sqlite`
   (slozku vytvor: `sudo mkdir -p /var/lib/koskovi-sal && sudo chown $USER /var/lib/koskovi-sal`)
 
-Aplikace bezi na portu 3000. Prihlaseni v produkci vyzaduje HTTPS (nginx + certbot
-pred aplikaci). Pro docasny test pres `http://IP:3000` lze do `.env.local` pridat
+Aplikace bezi na portu 3001 (zmena: `PORT=... pm2 start ecosystem.config.cjs`). Prihlaseni v produkci vyzaduje HTTPS (nginx + certbot
+pred aplikaci). Pro docasny test pres `http://IP:3001` lze do `.env.local` pridat
 `SESSION_COOKIE_SECURE=false`, po zprovozneni HTTPS ho odstran.
 
 Denni uklid probehlych rezervaci (volitelne, crontab):
 
 ```bash
-0 3 * * * curl -fsS -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/refresh-trainings
+0 3 * * * curl -fsS -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3001/api/cron/refresh-trainings
 ```
 
 Logy: `pm2 logs koskovi-sal`. Zalohuj soubor z `DATABASE_PATH`.
