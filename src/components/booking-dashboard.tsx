@@ -1,64 +1,43 @@
-﻿"use client";
+"use client";
 
+import { MapPin, Sparkles, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertCircle,
-  CalendarDays,
-  CalendarPlus,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  Clock3,
-  LockKeyhole,
-  LogIn,
-  LogOut,
-  MapPin,
-  Save,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  User,
-  X,
-} from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  cleanupCellStyle,
-  dayFormatter,
-  formatEventCount,
-  getBookingCellStyle,
-  getCurrentTimeOffset,
   getDayAvailabilitySegments,
   getMonthDays,
   getOccupancyNotice,
-  getSegmentStyle,
-  getSelectedBookingPeriodClass,
-  getSlotFill,
   getSlotStateKey,
   getWeekStartDate,
   isCountableEvent,
-  isRecurringBookingId,
-  longDateFormatter,
-  monthLabelFormatter,
   scrollCurrentTimeIntoView,
-  statusLabels,
-  statusStyles,
+  formatEventCount,
   type SlotState,
 } from "@/components/booking-dashboard-utils";
 import {
-  Field,
   MobileCalendarSummary,
   RecurringCancellationPanel,
 } from "@/components/booking-dashboard-panels";
+import { AccountBar } from "@/components/dashboard/account-bar";
+import { BookingFormPanel } from "@/components/dashboard/booking-form-panel";
+import {
+  DayCalendar,
+  MonthCalendar,
+  WeekCalendar,
+} from "@/components/dashboard/calendar-grids";
+import { CalendarToolbar } from "@/components/dashboard/calendar-toolbar";
+import { CampLessonsSection } from "@/components/dashboard/camp-lessons-section";
+import { DayDetailPanel } from "@/components/dashboard/day-detail-panel";
+import { LoginForm } from "@/components/dashboard/login-form";
+import {
+  allLessonsFilter,
+  type AppMode,
+  type LessonFilter,
+  type ViewMode,
+} from "@/components/dashboard/types";
+import { useBookingActions } from "@/components/dashboard/use-booking-actions";
+import { useCalendarData } from "@/components/dashboard/use-calendar-data";
+import { useNow } from "@/components/dashboard/use-now";
 import { SiteShell } from "@/components/site-shell";
-import { ThemeToggle } from "@/components/theme-toggle";
-import type {
-  RecurringCancellationNotice,
-  RecurringOverrideNotice,
-} from "@/lib/bookings-db";
 import {
   canRoleManageBookings,
   getAdminSession,
@@ -66,12 +45,16 @@ import {
   logoutAdmin,
   type AdminRole,
 } from "@/lib/admin-auth-client";
+import type {
+  RecurringCancellationNotice,
+  RecurringOverrideNotice,
+} from "@/lib/bookings-db";
 import {
   createTimeSlots,
+  formatDateKey,
+  formatOpeningHoursForDate,
   getOpeningHoursForDate,
   getOpeningHoursGroups,
-  formatOpeningHoursForDate,
-  formatDateKey,
   getWeekDays,
   hallSettings,
   isCleanupSlot,
@@ -95,17 +78,12 @@ const initialRequest: BookingRequest = {
   cleanupRequired: false,
 };
 
-const hallTitlePresets = ["Seminář", "Soustředění"];
-const customHallTitle = "custom";
-
-const monthControlFormatter = new Intl.DateTimeFormat("cs-CZ", {
-  month: "long",
-  year: "numeric",
-});
-const weekControlFormatter = new Intl.DateTimeFormat("cs-CZ", {
-  day: "numeric",
-  month: "numeric",
-});
+const closedSlotState: SlotState = {
+  booking: undefined,
+  cleanupBooking: undefined,
+  isDeparture: false,
+  isOpen: false,
+};
 
 type BookingDashboardProps = {
   initialBookings: Booking[];
@@ -121,19 +99,6 @@ type BookingDashboardProps = {
   };
 };
 
-type AppMode = "hall" | "lessons";
-type LessonFilter = {
-  type: "all" | "dancer" | "trainer";
-  value: string;
-};
-type ImportedLesson = {
-  dateOrDay: string;
-  end: string;
-  name: string;
-  start: string;
-  trainer: string;
-};
-
 export function BookingDashboard({
   initialBookings,
   initialDate,
@@ -143,129 +108,63 @@ export function BookingDashboard({
   initialSession,
 }: BookingDashboardProps) {
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [viewMode, setViewMode] = useState<"today" | "week" | "month">(
-    "week",
-  );
-  const [request, setRequest] = useState({
-    ...initialRequest,
-    date: initialDate,
-  });
-  const [hallTitleChoice, setHallTitleChoice] = useState(hallTitlePresets[0]);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [sessionLessonFilter, setSessionLessonFilter] = useState<LessonFilter>(
-    initialSession.lessonFilter ?? { type: "all", value: "" },
-  );
-  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [accountMessage, setAccountMessage] = useState("");
-  const [isSavingAccount, setIsSavingAccount] = useState(false);
-  const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    initialSession.authenticated,
-  );
-  const [sessionUsername, setSessionUsername] = useState(initialSession.username);
-  const [sessionRole, setSessionRole] = useState(initialSession.role);
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [appMode, setAppMode] = useState<AppMode>(initialAppMode);
-  const [selectedLessonTrainer, setSelectedLessonTrainer] = useState("");
-  const isCheckingSession = false;
-  const [authError, setAuthError] = useState("");
+  const [request, setRequest] = useState({ ...initialRequest, date: initialDate });
   const [submitMessage, setSubmitMessage] = useState("");
-  const [cleanupMessage, setCleanupMessage] = useState("");
-  const [cleaningBookingId, setCleaningBookingId] = useState("");
-  const [deleteMessage, setDeleteMessage] = useState("");
-  const [deletingBookingId, setDeletingBookingId] = useState("");
-  const [expandedDayBookingId, setExpandedDayBookingId] = useState("");
-  const [reinstatingBookingId, setReinstatingBookingId] = useState("");
-  const [savingTrainerBookingId, setSavingTrainerBookingId] = useState("");
-  const [savingTitleBookingId, setSavingTitleBookingId] = useState("");
-  const [savingTimeBookingId, setSavingTimeBookingId] = useState("");
-  const [bookingTitleDrafts, setBookingTitleDrafts] = useState<
-    Record<string, string>
-  >({});
-  const [bookingTimeDrafts, setBookingTimeDrafts] = useState<
-    Record<string, { end: string; start: string }>
-  >({});
-  const [trainerMessage, setTrainerMessage] = useState("");
-  const [timeMessage, setTimeMessage] = useState("");
-  const [titleMessage, setTitleMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [campDayFilter, setCampDayFilter] = useState("");
-  const [campDancerFilter, setCampDancerFilter] = useState("");
-  const [campTrainerFilter, setCampTrainerFilter] = useState("");
-  // Empty means the server's configured default sheet.
-  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
-  const [pastedLessonTable, setPastedLessonTable] = useState("");
-  const [storedImportedLessons, setStoredImportedLessons] = useState<
-    ImportedLesson[]
-  >([]);
-  const [importMessage, setImportMessage] = useState("");
-  const [isSavingImport, setIsSavingImport] = useState(false);
-  const [calendarBookings, setCalendarBookings] =
-    useState<Booking[]>(initialBookings);
-  const [recurringCancellations, setRecurringCancellations] = useState(
-    initialRecurringCancellations,
-  );
-  const [recurringOverrides, setRecurringOverrides] = useState(
-    initialRecurringOverrides,
-  );
-  const [now, setNow] = useState<Date | null>(null);
+  const [isBookingFormOpen, setIsBookingFormOpen] = useState(false);
+  const [selectedLessonTrainer, setSelectedLessonTrainer] = useState("");
+  const [session, setSession] = useState({
+    isAuthenticated: initialSession.authenticated,
+    lessonFilter: initialSession.lessonFilter ?? allLessonsFilter,
+    role: initialSession.role,
+    username: initialSession.username,
+  });
   const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
   const bookingFormPanelRef = useRef<HTMLDivElement | null>(null);
   const bookingNameInputRef = useRef<HTMLInputElement | null>(null);
   const bookingTitleSelectRef = useRef<HTMLSelectElement | null>(null);
   const loginUsernameInputRef = useRef<HTMLInputElement | null>(null);
-  const lastSyncResponseRef = useRef<string | null>(null);
 
-  const isDedicatedLessonPage = initialAppMode === "lessons";
-  const canUseLessonMode = isAuthenticated || isDedicatedLessonPage;
+  const now = useNow();
+  const calendar = useCalendarData({
+    initialBookings,
+    initialRecurringCancellations,
+    initialRecurringOverrides,
+  });
+  const { syncCalendar } = calendar;
+  const actions = useBookingActions(syncCalendar);
+
+  const { isAuthenticated } = session;
+  const canUseLessonMode = isAuthenticated || initialAppMode === "lessons";
   const activeAppMode: AppMode = canUseLessonMode ? appMode : "hall";
-  const canManageBookings = isAuthenticated && canRoleManageBookings(sessionRole);
-  const isMainAdmin = isAuthenticated && sessionRole === "admin";
-  const canSaveImportedLessons = isMainAdmin;
+  const canManageBookings = isAuthenticated && canRoleManageBookings(session.role);
+  const isMainAdmin = isAuthenticated && session.role === "admin";
   const shouldShowBookingPanel =
-    (!isAuthenticated || canManageBookings) &&
-    isBookingFormOpen;
-  const isExpandedBookingLayout =
-    canManageBookings &&
-    isBookingFormOpen;
+    (!isAuthenticated || canManageBookings) && isBookingFormOpen;
+  const isExpandedBookingLayout = canManageBookings && isBookingFormOpen;
   const activeSlotMinutes =
     activeAppMode === "lessons" ? 45 : hallSettings.slotMinutes;
   const currentDateKey = now ? formatDateKey(now) : "";
-  const currentTimeMinutes = now
-    ? now.getHours() * 60 + now.getMinutes()
-    : null;
+  const currentTimeMinutes = now ? now.getHours() * 60 + now.getMinutes() : null;
   const todayDateKey = currentDateKey || initialDate;
-  const selectedDateObject = useMemo(
-    () => new Date(`${selectedDate}T12:00:00`),
-    [selectedDate],
-  );
+
   const days = useMemo(
     () => getWeekDays(getWeekStartDate(selectedDate)),
     [selectedDate],
   );
   const selectedMonthKey = `${selectedDate.slice(0, 7)}-01`;
-  const monthDays = useMemo(
-    () => getMonthDays(selectedMonthKey),
-    [selectedMonthKey],
-  );
-  const hallBookings = useMemo(
+  const monthDays = useMemo(() => getMonthDays(selectedMonthKey), [selectedMonthKey]);
+  const activeModeBookings = useMemo(
     () =>
-      calendarBookings.filter(
-        (booking) => booking.bookingKind !== "individual-lesson",
+      calendar.bookings.filter((booking) =>
+        activeAppMode === "lessons"
+          ? booking.bookingKind === "individual-lesson"
+          : booking.bookingKind !== "individual-lesson",
       ),
-    [calendarBookings],
+    [activeAppMode, calendar.bookings],
   );
-  const lessonBookings = useMemo(
-    () =>
-      calendarBookings.filter(
-        (booking) => booking.bookingKind === "individual-lesson",
-      ),
-    [calendarBookings],
-  );
-  const activeModeBookings =
-    activeAppMode === "lessons" ? lessonBookings : hallBookings;
   const selectedBookings = useMemo(
     () => activeModeBookings.filter((booking) => booking.date === selectedDate),
     [activeModeBookings, selectedDate],
@@ -273,149 +172,513 @@ export function BookingDashboard({
   const availableTrainers = useMemo(() => {
     const trainers = new Set(trainerOptions);
 
-    for (const booking of calendarBookings) {
+    for (const booking of calendar.bookings) {
       if (booking.trainer) {
         trainers.add(booking.trainer);
       }
     }
 
     return [...trainers];
-  }, [calendarBookings]);
-  const activeLessonTrainer =
-    availableTrainers.includes(selectedLessonTrainer)
-      ? selectedLessonTrainer
-      : availableTrainers[0] ?? "";
-  const selectedTrainerWeekLessons = useMemo(() => {
-    const weekDateKeys = new Set(days.map((day) => formatDateKey(day)));
+  }, [calendar.bookings]);
+  const activeLessonTrainer = availableTrainers.includes(selectedLessonTrainer)
+    ? selectedLessonTrainer
+    : availableTrainers[0] ?? "";
 
-    return lessonBookings
-      .filter(
-        (booking) =>
-          booking.trainer === activeLessonTrainer &&
-          weekDateKeys.has(booking.date),
-      )
-      .sort((left, right) =>
-        `${left.date}${left.start}`.localeCompare(`${right.date}${right.start}`),
-      );
-  }, [activeLessonTrainer, days, lessonBookings]);
-  const importedLessons = useMemo(
-    () => parsePastedLessonTable(pastedLessonTable, availableTrainers),
-    [availableTrainers, pastedLessonTable],
-  );
-  const displayedImportedLessons =
-    pastedLessonTable && importedLessons.length > 0
-      ? importedLessons
-      : storedImportedLessons;
-  const campDays = useMemo(
-    () => [...new Set(displayedImportedLessons.map((lesson) => lesson.dateOrDay))],
-    [displayedImportedLessons],
-  );
-  const campTrainers = useMemo(
-    () =>
-      [...new Set(displayedImportedLessons.map((lesson) => lesson.trainer))].sort(
-        (left, right) => left.localeCompare(right, "cs-CZ"),
-      ),
-    [displayedImportedLessons],
-  );
-  const filteredImportedLessons = useMemo(() => {
-    const dancerQuery = normalizeSearch(campDancerFilter);
-    const enforcedQuery =
-      sessionLessonFilter.type === "all"
-        ? ""
-        : normalizeSearch(sessionLessonFilter.value);
-
-    return displayedImportedLessons.filter((lesson) => {
-      if (sessionLessonFilter.type === "trainer") {
-        if (!normalizeSearch(lesson.trainer).includes(enforcedQuery)) {
-          return false;
-        }
-      }
-
-      if (sessionLessonFilter.type === "dancer") {
-        if (!normalizeSearch(lesson.name).includes(enforcedQuery)) {
-          return false;
-        }
-      }
-
-      if (campDayFilter && lesson.dateOrDay !== campDayFilter) {
-        return false;
-      }
-
-      if (campTrainerFilter && lesson.trainer !== campTrainerFilter) {
-        return false;
-      }
-
-      if (dancerQuery && !normalizeSearch(lesson.name).includes(dancerQuery)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [
-    campDancerFilter,
-    campDayFilter,
-    campTrainerFilter,
-    displayedImportedLessons,
-    sessionLessonFilter,
-  ]);
-  const groupedImportedLessons = useMemo(() => {
-    const groups = new Map<string, ImportedLesson[]>();
-
-    for (const lesson of filteredImportedLessons) {
-      const currentLessons = groups.get(lesson.dateOrDay) ?? [];
-      currentLessons.push(lesson);
-      groups.set(lesson.dateOrDay, currentLessons);
-    }
-
-    return [...groups.entries()].map(([dateOrDay, lessons]) => ({
-      dateOrDay,
-      lessons,
-    }));
-  }, [filteredImportedLessons]);
-  const visibleDateKeys = useMemo(() => {
-    const keys = new Set<string>([todayDateKey]);
-
-    for (const day of days) {
-      keys.add(formatDateKey(day));
-    }
-
-    for (const day of monthDays) {
-      keys.add(formatDateKey(day));
-    }
-
-    return [...keys];
-  }, [days, monthDays, todayDateKey]);
+  // Rows cover the opening hours of every day the week and month views can
+  // show, extended for bookings that start earlier or end later.
   const timeSlots = useMemo(() => {
-    const visibleDateKeySet = new Set(visibleDateKeys);
-    const visibleBookingRanges = activeModeBookings
-      .filter((booking) => visibleDateKeySet.has(booking.date))
-      .map((booking) => ({
-        end: booking.end,
-        start: booking.start,
-      }));
+    const visibleDateKeys = new Set([
+      todayDateKey,
+      ...days.map(formatDateKey),
+      ...monthDays.map(formatDateKey),
+    ]);
 
-    return createTimeSlots(activeSlotMinutes, visibleBookingRanges);
-  }, [activeModeBookings, activeSlotMinutes, visibleDateKeys]);
+    return createTimeSlots(
+      activeSlotMinutes,
+      activeModeBookings
+        .filter((booking) => visibleDateKeys.has(booking.date))
+        .map((booking) => ({ end: booking.end, start: booking.start })),
+    );
+  }, [activeModeBookings, activeSlotMinutes, days, monthDays, todayDateKey]);
   const bookingDayCounts = useMemo(() => {
     const counts = new Map<string, number>();
 
     for (const booking of activeModeBookings) {
-      if (!isCountableEvent(booking)) {
-        continue;
+      if (isCountableEvent(booking)) {
+        counts.set(booking.date, (counts.get(booking.date) ?? 0) + 1);
       }
-
-      counts.set(booking.date, (counts.get(booking.date) ?? 0) + 1);
     }
 
     return counts;
   }, [activeModeBookings]);
   const weeklyEventCount = useMemo(() => {
-    const weekDateKeys = new Set(days.map((day) => formatDateKey(day)));
+    const weekDateKeys = new Set(days.map(formatDateKey));
 
     return activeModeBookings.filter(
       (booking) => weekDateKeys.has(booking.date) && isCountableEvent(booking),
     ).length;
   }, [activeModeBookings, days]);
+  // Only the days the current view renders; the selected day is always among
+  // them. The selected date is a dependency only in the day view, so clicking
+  // around a week does not recompute every slot.
+  const dayViewDateKey = viewMode === "today" ? selectedDate : "";
+  const slotDateKeys = useMemo(
+    () =>
+      dayViewDateKey
+        ? [dayViewDateKey]
+        : (viewMode === "week" ? days : monthDays).map(formatDateKey),
+    [dayViewDateKey, days, monthDays, viewMode],
+  );
+  const slotStateMap = useSlotStateMap({
+    activeModeBookings,
+    dateKeys: slotDateKeys,
+    slotMinutes: activeSlotMinutes,
+    timeSlots,
+  });
+  const getSlotState = (dateKey: string, time: string) =>
+    slotStateMap.get(getSlotStateKey(dateKey, time)) ?? closedSlotState;
+  const selectedDaySegments = useMemo(
+    () =>
+      getDayAvailabilitySegments(selectedDate, activeModeBookings, activeSlotMinutes),
+    [activeModeBookings, activeSlotMinutes, selectedDate],
+  );
+  const freeHours =
+    timeSlots.filter((time) => {
+      const slot = getSlotState(selectedDate, time);
+
+      return slot.isOpen && !slot.isDeparture && !slot.booking && !slot.cleanupBooking;
+    }).length *
+    (activeSlotMinutes / 60);
+  const todaysOpeningHours = useMemo(() => formatOpeningHoursForDate(new Date()), []);
+  const openingHoursGroups = useMemo(() => getOpeningHoursGroups(), []);
+  const occupancyNotice = useMemo(
+    () => getOccupancyNotice(selectedBookings, selectedDate, now),
+    [selectedBookings, selectedDate, now],
+  );
+
+  // Jump to today once the client knows its own date (and again at midnight).
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSelectedDate(todayDateKey);
+      setRequest((current) => ({ ...current, date: todayDateKey }));
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [todayDateKey]);
+
+  useEffect(() => {
+    if (!currentDateKey) {
+      return undefined;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      scrollCurrentTimeIntoView(calendarScrollerRef.current);
+    });
+    const timeout = window.setTimeout(() => {
+      scrollCurrentTimeIntoView(calendarScrollerRef.current);
+    }, 360);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [currentDateKey, selectedDate, viewMode]);
+
+  function patchRequest(patch: Partial<BookingRequest>) {
+    setSubmitMessage("");
+    setRequest((current) => ({ ...current, ...patch }));
+  }
+
+  function selectDate(dateKey: string) {
+    setSelectedDate(dateKey);
+    patchRequest({ date: dateKey });
+  }
+
+  function selectSlot(dateKey: string, time: string, isFree: boolean) {
+    setSelectedDate(dateKey);
+
+    if (isFree) {
+      patchRequest({ date: dateKey, start: time });
+    }
+  }
+
+  function changeViewMode(nextViewMode: ViewMode) {
+    setViewMode(nextViewMode);
+
+    if (nextViewMode === "today" || nextViewMode === "month") {
+      selectDate(todayDateKey);
+    }
+  }
+
+  function changeDisplayedPeriod(offset: number) {
+    const date = new Date(`${selectedDate}T12:00:00`);
+
+    if (viewMode === "month") {
+      date.setDate(1);
+      date.setMonth(date.getMonth() + offset);
+    } else {
+      date.setDate(date.getDate() + (viewMode === "week" ? offset * 7 : offset));
+    }
+
+    const nextDateKey = formatDateKey(date);
+    setSelectedDate(nextDateKey);
+    setRequest((current) => ({ ...current, date: nextDateKey }));
+  }
+
+  function showCurrentPeriod() {
+    setSelectedDate(todayDateKey);
+    setRequest((current) => ({ ...current, date: todayDateKey }));
+    window.setTimeout(() => {
+      scrollCurrentTimeIntoView(calendarScrollerRef.current);
+    }, 120);
+  }
+
+  function setWholeDayBooking() {
+    const openingHours = getOpeningHoursForDate(new Date(`${request.date}T12:00:00`));
+
+    if (!openingHours) {
+      setSubmitMessage("V tento den není nastavena otevírací doba.");
+      return;
+    }
+
+    patchRequest({ end: openingHours.end, start: openingHours.start });
+  }
+
+  function openBookingForm() {
+    setSubmitMessage("");
+    setIsBookingFormOpen(true);
+    setRequest((current) => ({ ...current, bookingKind: "hall", date: selectedDate }));
+
+    window.setTimeout(() => {
+      if (window.matchMedia("(max-width: 1023px)").matches) {
+        bookingFormPanelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 0);
+
+    window.setTimeout(() => {
+      const target = canManageBookings
+        ? bookingTitleSelectRef.current ?? bookingNameInputRef.current
+        : loginUsernameInputRef.current;
+
+      target?.focus({ preventScroll: true });
+    }, 450);
+  }
+
+  function switchAppMode(nextMode: AppMode) {
+    setAppMode(nextMode);
+    setIsBookingFormOpen(false);
+
+    if (nextMode === "lessons") {
+      setViewMode("week");
+    }
+
+    setRequest((current) =>
+      nextMode === "lessons"
+        ? {
+            ...current,
+            bookingKind: "individual-lesson",
+            cleanupRequired: false,
+            eventType: "tanecni-lekce",
+            trainer: activeLessonTrainer,
+          }
+        : {
+            ...current,
+            bookingKind: "hall",
+            eventType: "soustredeni",
+            trainer: "",
+          },
+    );
+  }
+
+  async function login(username: string, password: string) {
+    try {
+      await loginAdmin(username, password);
+      const nextSession = await getAdminSession();
+
+      setSession({
+        isAuthenticated: true,
+        lessonFilter: nextSession.lessonFilter ?? allLessonsFilter,
+        role: nextSession.role ?? null,
+        username: nextSession.username ?? username.trim(),
+      });
+    } catch (error) {
+      return error instanceof Error ? error.message : "Přihlášení se nepodařilo.";
+    }
+
+    // Signed-in users also receive individual lessons, which anonymous
+    // visitors do not.
+    void syncCalendar();
+
+    return null;
+  }
+
+  async function logout() {
+    await logoutAdmin();
+    setSession({
+      isAuthenticated: false,
+      lessonFilter: allLessonsFilter,
+      role: null,
+      username: null,
+    });
+    setSubmitMessage("");
+    void syncCalendar();
+  }
+
+  async function submitBooking(bookingName: string) {
+    setIsSubmitting(true);
+    setSubmitMessage("");
+
+    try {
+      const response = await fetch("/api/booking-request", {
+        body: JSON.stringify({
+          ...request,
+          bookingKind: activeAppMode === "lessons" ? "individual-lesson" : "hall",
+          name: bookingName,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+
+      if (response.status === 409) {
+        setSubmitMessage("V tomto čase už existuje jiná akce.");
+        return;
+      }
+
+      const data = (await response.json()) as { booking?: Booking; message?: string };
+
+      if (!response.ok) {
+        setSubmitMessage(data.message ?? "Rezervaci se nepodařilo uložit.");
+        return;
+      }
+
+      if (data.booking) {
+        calendar.addBooking(data.booking);
+      }
+
+      setSubmitMessage("Rezervace je uložena v databázi.");
+      await syncCalendar();
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const modeButtonClass = (mode: AppMode) =>
+    `inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition ${
+      activeAppMode === mode
+        ? "border-white/35 bg-white/20 text-white"
+        : "border-white/20 bg-white/10 hover:bg-white/15"
+    }`;
+  const calendarProps = {
+    bookingDayCounts,
+    currentDateKey,
+    currentTimeMinutes,
+    getSlotState,
+    onSelectDate: selectDate,
+    onSelectSlot: selectSlot,
+    scrollerRef: calendarScrollerRef,
+    selectedDate,
+    slotMinutes: activeSlotMinutes,
+    timeSlots,
+  };
+
+  return (
+    <SiteShell
+      maxWidthClassName="max-w-[1840px]"
+      contentClassName={`grid gap-5 px-4 py-5 transition-[grid-template-columns] duration-300 lg:grid-cols-[minmax(0,1fr)_320px] lg:pl-6 lg:pr-4 xl:pl-8 xl:pr-5 ${
+        isExpandedBookingLayout
+          ? "xl:grid-cols-[minmax(0,1fr)_minmax(560px,620px)] 2xl:grid-cols-[minmax(900px,1fr)_minmax(640px,760px)] 2xl:pl-12"
+          : "xl:grid-cols-[minmax(0,1fr)_340px]"
+      }`}
+      description={<>Přehled dostupnosti sálu TK Koškovi pro volný trénink.</>}
+      eyebrow={
+        <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-[#d7e6ed]">
+          <button
+            className={modeButtonClass("hall")}
+            onClick={() => switchAppMode("hall")}
+            type="button"
+          >
+            <Sparkles size={15} />
+            Rezervace sálu
+          </button>
+          {canUseLessonMode ? (
+            <button
+              className={modeButtonClass("lessons")}
+              onClick={() => switchAppMode("lessons")}
+              type="button"
+            >
+              <User size={15} />
+              Soustředění
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              <MapPin size={15} />
+              {hallSettings.location}
+            </span>
+          )}
+        </div>
+      }
+      infoPanel={{
+        items: openingHoursGroups.map((group) => ({
+          label: group.days,
+          value: group.hours,
+        })),
+        sideContent: (
+          <RecurringCancellationPanel
+            cancellations={calendar.recurringCancellations}
+            changes={calendar.recurringOverrides}
+            isAuthenticated={isAuthenticated}
+            onReinstate={actions.reinstate}
+            reinstatingId={actions.pendingId.reinstating}
+          />
+        ),
+        subtitle: "Pravidelný provoz sálu",
+        title: "Otevírací doba",
+      }}
+      metrics={[
+        { label: "Dnes volno", value: `${freeHours.toLocaleString("cs-CZ")} h` },
+        { label: "Dnes otevřeno", value: todaysOpeningHours },
+        ...(isAuthenticated
+          ? [{ label: "Tento týden", value: formatEventCount(weeklyEventCount) }]
+          : []),
+      ]}
+      title={activeAppMode === "lessons" ? "Soustředění" : "Dostupnost tanečního sálu"}
+    >
+      <div className="min-w-0 space-y-6">
+        <CalendarToolbar
+          activeAppMode={activeAppMode}
+          onChangePeriod={changeDisplayedPeriod}
+          onShowCurrentPeriod={showCurrentPeriod}
+          onViewModeChange={changeViewMode}
+          selectedDate={selectedDate}
+          viewMode={viewMode}
+        />
+
+        {isAuthenticated ? (
+          <AccountBar
+            canManageBookings={canManageBookings}
+            isBookingFormOpen={isBookingFormOpen}
+            isMainAdmin={isMainAdmin}
+            onLogout={logout}
+            onOpenBookingForm={openBookingForm}
+            showAddBooking={activeAppMode === "hall"}
+            username={session.username}
+          />
+        ) : null}
+
+        {activeAppMode === "lessons" ? (
+          <CampLessonsSection
+            accountFilter={session.lessonFilter}
+            availableTrainers={availableTrainers}
+            canImport={isMainAdmin}
+            isAuthenticated={isAuthenticated}
+            loginForm={<LoginForm onLogin={login} variant="lessons" />}
+          />
+        ) : (
+          <>
+            <div className="calendar-view-transition lg:hidden" key={`mobile-${viewMode}`}>
+              <MobileCalendarSummary
+                bookingDayCounts={bookingDayCounts}
+                days={viewMode === "month" ? monthDays : days}
+                onSelectDate={selectDate}
+                selectedDate={selectedDate}
+                viewMode={viewMode}
+              />
+            </div>
+            <div
+              className="calendar-view-transition hidden lg:block"
+              key={`desktop-${viewMode}`}
+            >
+              {viewMode === "today" ? (
+                <DayCalendar {...calendarProps} />
+              ) : viewMode === "week" ? (
+                <WeekCalendar {...calendarProps} days={days} />
+              ) : (
+                <MonthCalendar {...calendarProps} monthDays={monthDays} />
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      <aside
+        className={`flex flex-col gap-5 lg:max-h-[min(760px,calc(100svh-112px))] lg:overflow-y-auto lg:pr-1 ${
+          isExpandedBookingLayout
+            ? "xl:grid xl:max-h-none xl:grid-cols-[minmax(360px,1fr)_minmax(220px,260px)] xl:items-start xl:overflow-visible xl:pr-0 2xl:grid-cols-[minmax(420px,1fr)_minmax(260px,320px)]"
+            : ""
+        }`}
+      >
+        <DayDetailPanel
+          actions={actions}
+          availableTrainers={availableTrainers}
+          bookings={calendar.bookings}
+          canManageBookings={canManageBookings}
+          className={isExpandedBookingLayout ? "lg:order-2" : "lg:order-1"}
+          currentDateKey={currentDateKey}
+          currentTimeMinutes={currentTimeMinutes}
+          occupancyNotice={occupancyNotice}
+          onLoginClick={
+            activeAppMode === "hall" && !isAuthenticated && !isBookingFormOpen
+              ? openBookingForm
+              : undefined
+          }
+          segments={selectedDaySegments}
+          selectedDate={selectedDate}
+        />
+
+        {shouldShowBookingPanel ? (
+          <BookingFormPanel
+            activeAppMode={activeAppMode}
+            availableTrainers={availableTrainers}
+            canManageBookings={canManageBookings}
+            className={isExpandedBookingLayout ? "lg:order-1" : "lg:order-2"}
+            isSubmitting={isSubmitting}
+            loginForm={
+              <LoginForm
+                onLogin={login}
+                usernameInputRef={loginUsernameInputRef}
+                variant="panel"
+              />
+            }
+            nameInputRef={bookingNameInputRef}
+            onClearMessage={() => setSubmitMessage("")}
+            onClose={() => setIsBookingFormOpen(false)}
+            onLogout={logout}
+            onRequestPatch={patchRequest}
+            onSetWholeDay={setWholeDayBooking}
+            onSubmit={submitBooking}
+            onTrainerSelected={(trainer) => {
+              if (activeAppMode === "lessons") {
+                setSelectedLessonTrainer(trainer);
+              }
+            }}
+            panelRef={bookingFormPanelRef}
+            request={request}
+            submitMessage={submitMessage}
+            titleSelectRef={bookingTitleSelectRef}
+            username={session.username}
+          />
+        ) : null}
+      </aside>
+    </SiteShell>
+  );
+}
+
+// State of every rendered slot, computed once per data change instead of per
+// cell render.
+function useSlotStateMap({
+  activeModeBookings,
+  dateKeys,
+  slotMinutes,
+  timeSlots,
+}: {
+  activeModeBookings: Booking[];
+  dateKeys: string[];
+  slotMinutes: number;
+  timeSlots: string[];
+}) {
   const bookingsByDate = useMemo(() => {
     const groups = new Map<string, Booking[]>();
 
@@ -438,31 +701,17 @@ export function BookingDashboard({
       ),
     [activeModeBookings],
   );
-  // Only the days the current view renders; the selected day is always among them.
-  const todayViewDateKey = viewMode === "today" ? selectedDate : "";
-  const slotStateDateKeys = useMemo(() => {
-    if (todayViewDateKey) {
-      return [todayViewDateKey];
-    }
 
-    return (viewMode === "week" ? days : monthDays).map(formatDateKey);
-  }, [days, monthDays, todayViewDateKey, viewMode]);
-  const slotStateMap = useMemo(() => {
+  return useMemo(() => {
     const states = new Map<string, SlotState>();
 
-    for (const dateKey of slotStateDateKeys) {
+    for (const dateKey of dateKeys) {
       const date = new Date(`${dateKey}T12:00:00`);
       const dateBookings = bookingsByDate.get(dateKey) ?? [];
 
       for (const time of timeSlots) {
         const isOpen = isSlotOpen(date, time);
-        const isDeparture = isDepartureSlot(date, time, activeSlotMinutes);
-        const booking = isSlotBooked(
-          dateBookings,
-          dateKey,
-          time,
-          activeSlotMinutes,
-        );
+        const booking = isSlotBooked(dateBookings, dateKey, time, slotMinutes);
         const cleanupBooking =
           isOpen && !booking
             ? pendingCleanupBookings.find((candidate) =>
@@ -473,7 +722,7 @@ export function BookingDashboard({
         states.set(getSlotStateKey(dateKey, time), {
           booking,
           cleanupBooking,
-          isDeparture,
+          isDeparture: isDepartureSlot(date, time, slotMinutes),
           isOpen,
         });
       }
@@ -482,2979 +731,10 @@ export function BookingDashboard({
     return states;
   }, [
     activeModeBookings,
-    activeSlotMinutes,
     bookingsByDate,
+    dateKeys,
     pendingCleanupBookings,
-    slotStateDateKeys,
+    slotMinutes,
     timeSlots,
   ]);
-  const selectedDaySegments = useMemo(
-    () =>
-      getDayAvailabilitySegments(
-        selectedDate,
-        activeModeBookings,
-        activeSlotMinutes,
-      ),
-    [activeModeBookings, activeSlotMinutes, selectedDate],
-  );
-  const freeSlots = useMemo(
-    () => timeSlots.filter((time) => {
-      const slotState = slotStateMap.get(getSlotStateKey(selectedDate, time));
-
-      return Boolean(
-        slotState?.isOpen &&
-          !slotState.isDeparture &&
-          !slotState.booking &&
-          !slotState.cleanupBooking,
-      );
-    }),
-    [selectedDate, slotStateMap, timeSlots],
-  );
-  const freeHours = freeSlots.length * (activeSlotMinutes / 60);
-  const todaysOpeningHours = useMemo(
-    () => formatOpeningHoursForDate(new Date()),
-    [],
-  );
-  const openingHoursGroups = useMemo(() => getOpeningHoursGroups(), []);
-  const occupancyNotice = useMemo(
-    () => getOccupancyNotice(selectedBookings, selectedDate, now),
-    [selectedBookings, selectedDate, now],
-  );
-  const getSlotState = (dateKey: string, time: string) =>
-    slotStateMap.get(getSlotStateKey(dateKey, time)) ?? {
-      booking: undefined,
-      cleanupBooking: undefined,
-      isDeparture: false,
-      isOpen: false,
-    };
-  const getLessonSlotState = (trainer: string, dateKey: string, time: string) => {
-    const date = new Date(`${dateKey}T12:00:00`);
-    const isOpen = isSlotOpen(date, time);
-    const hallBlocker = findOverlappingBooking(
-      hallBookings,
-      dateKey,
-      time,
-      activeSlotMinutes,
-    );
-    const trainerBooking = findOverlappingBooking(
-      lessonBookings.filter((booking) => booking.trainer === trainer),
-      dateKey,
-      time,
-      activeSlotMinutes,
-    );
-
-    return { hallBlocker, isOpen, trainerBooking };
-  };
-
-  const syncCalendar = useCallback(async () => {
-    const response = await fetch("/api/availability", { cache: "no-store" });
-
-    if (!response.ok) {
-      return;
-    }
-
-    const responseText = await response.text();
-
-    // Unchanged data would only produce new array identities and recompute
-    // every slot, so skip the state update entirely.
-    if (responseText === lastSyncResponseRef.current) {
-      return;
-    }
-
-    lastSyncResponseRef.current = responseText;
-
-    const data = JSON.parse(responseText) as {
-      source: string;
-      bookings: Booking[];
-      recurringCancellations?: RecurringCancellationNotice[];
-      recurringOverrides?: RecurringOverrideNotice[];
-    };
-
-    setCalendarBookings(data.bookings);
-    setRecurringCancellations(data.recurringCancellations ?? []);
-    setRecurringOverrides(data.recurringOverrides ?? []);
-  }, []);
-
-  const loadImportedLessons = useCallback(async () => {
-    const response = await fetch("/api/individual-lessons", {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      setStoredImportedLessons([]);
-      return;
-    }
-
-    const data = (await response.json()) as { lessons: ImportedLesson[] };
-    setStoredImportedLessons(data.lessons ?? []);
-  }, []);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setSelectedDate(todayDateKey);
-      setRequest((current) => ({ ...current, date: todayDateKey }));
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, [todayDateKey]);
-
-  useEffect(() => {
-    // Everything that reads `now` works at minute precision, so re-render the
-    // dashboard only when the minute actually changes.
-    function tick() {
-      setNow((current) => {
-        const next = new Date();
-
-        return current &&
-          Math.floor(current.getTime() / 60000) ===
-            Math.floor(next.getTime() / 60000)
-          ? current
-          : next;
-      });
-    }
-
-    const timeout = window.setTimeout(tick, 0);
-    const interval = window.setInterval(tick, 30000);
-
-    return () => {
-      window.clearTimeout(timeout);
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!currentDateKey) {
-      return;
-    }
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      scrollCurrentTimeIntoView(calendarScrollerRef.current);
-    });
-    const timeout = window.setTimeout(() => {
-      scrollCurrentTimeIntoView(calendarScrollerRef.current);
-    }, 360);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      window.clearTimeout(timeout);
-    };
-  }, [currentDateKey, selectedDate, viewMode]);
-
-  useEffect(() => {
-    function syncWhenVisible() {
-      if (document.visibilityState === "visible") {
-        void syncCalendar();
-      }
-    }
-
-    const interval = window.setInterval(() => {
-      void syncCalendar();
-    }, 60000);
-
-    window.addEventListener("focus", syncWhenVisible);
-    document.addEventListener("visibilitychange", syncWhenVisible);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", syncWhenVisible);
-      document.removeEventListener("visibilitychange", syncWhenVisible);
-    };
-  }, [syncCalendar]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      const timeout = window.setTimeout(() => {
-        void loadImportedLessons();
-      }, 0);
-
-      return () => window.clearTimeout(timeout);
-    }
-
-    return undefined;
-  }, [isAuthenticated, loadImportedLessons]);
-
-  function updateRequest(field: keyof BookingRequest, value: string) {
-    setSubmitMessage("");
-    setRequest((current) => ({ ...current, [field]: value }));
-  }
-
-  function updateCleanupRequired(value: boolean) {
-    setSubmitMessage("");
-    setRequest((current) => ({ ...current, cleanupRequired: value }));
-  }
-
-  function selectLessonSlot(trainer: string, dateKey: string, time: string) {
-    setSubmitMessage("");
-    setSelectedDate(dateKey);
-    setRequest((current) => ({
-      ...current,
-      bookingKind: "individual-lesson",
-      cleanupRequired: false,
-      date: dateKey,
-      end: addMinutesToTime(time, activeSlotMinutes),
-      eventType: "tanecni-lekce",
-      start: time,
-      trainer,
-    }));
-  }
-
-  function changeViewMode(nextViewMode: "today" | "week" | "month") {
-    setViewMode(nextViewMode);
-
-    if (nextViewMode === "today" || nextViewMode === "month") {
-      setSelectedDate(todayDateKey);
-      updateRequest("date", todayDateKey);
-    }
-  }
-
-  function setCalendarDate(nextDateKey: string, shouldScrollToCurrentTime = false) {
-    setSelectedDate(nextDateKey);
-    setRequest((current) => ({ ...current, date: nextDateKey }));
-
-    if (shouldScrollToCurrentTime) {
-      window.setTimeout(() => {
-        scrollCurrentTimeIntoView(calendarScrollerRef.current);
-      }, 120);
-    }
-  }
-
-  function setWholeDayBooking() {
-    const date = new Date(`${request.date}T12:00:00`);
-    const openingHours = getOpeningHoursForDate(date);
-
-    if (!openingHours) {
-      setSubmitMessage("V tento den není nastavena otevírací doba.");
-      return;
-    }
-
-    setSubmitMessage("");
-    setRequest((current) => ({
-      ...current,
-      end: openingHours.end,
-      start: openingHours.start,
-    }));
-  }
-
-  function scrollToBookingForm() {
-    setSubmitMessage("");
-    setIsBookingFormOpen(true);
-    setRequest((current) => ({
-      ...current,
-      bookingKind: "hall",
-      date: selectedDate,
-    }));
-    window.setTimeout(() => {
-      if (window.matchMedia("(max-width: 1023px)").matches) {
-        bookingFormPanelRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-    }, 0);
-
-    window.setTimeout(() => {
-      if (canManageBookings) {
-        (bookingTitleSelectRef.current ?? bookingNameInputRef.current)?.focus({
-          preventScroll: true,
-        });
-        return;
-      }
-
-      loginUsernameInputRef.current?.focus({ preventScroll: true });
-    }, 450);
-  }
-
-  function closeBookingForm() {
-    setIsBookingFormOpen(false);
-  }
-
-  function changeDisplayedPeriod(offset: number) {
-    setSelectedDate((currentDateKey) => {
-      const currentDate = new Date(`${currentDateKey}T12:00:00`);
-
-      if (viewMode === "month") {
-        currentDate.setDate(1);
-        currentDate.setMonth(currentDate.getMonth() + offset);
-      } else if (viewMode === "week") {
-        currentDate.setDate(currentDate.getDate() + offset * 7);
-      } else {
-        currentDate.setDate(currentDate.getDate() + offset);
-      }
-
-      const nextDateKey = formatDateKey(currentDate);
-      setRequest((current) => ({ ...current, date: nextDateKey }));
-
-      return nextDateKey;
-    });
-  }
-
-  function showCurrentPeriod() {
-    setCalendarDate(todayDateKey, true);
-  }
-
-  function getPeriodControlLabel() {
-    if (viewMode === "month") {
-      return monthControlFormatter.format(
-        new Date(`${selectedMonthKey}T12:00:00`),
-      );
-    }
-
-    if (viewMode === "week") {
-      const weekStart = getWeekStartDate(selectedDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-
-      return `${weekControlFormatter.format(weekStart)}-${weekControlFormatter.format(
-        weekEnd,
-      )}`;
-    }
-
-    return dayFormatter.format(selectedDateObject);
-  }
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAuthError("");
-    const submittedUsername = username.trim();
-
-    try {
-      await loginAdmin(username, password);
-      const session = await getAdminSession();
-      setSessionLessonFilter(session.lessonFilter ?? { type: "all", value: "" });
-      setSessionUsername(session.username ?? submittedUsername);
-      setSessionRole(session.role ?? null);
-    } catch (error) {
-      setAuthError(
-        error instanceof Error ? error.message : "Přihlášení se nepodařilo.",
-      );
-      return;
-    }
-
-    setUsername("");
-    setPassword("");
-    setIsAuthenticated(true);
-    // Signed-in users also receive individual lessons, which anonymous
-    // visitors do not.
-    void syncCalendar();
-  }
-
-  async function handleLogout() {
-    await logoutAdmin();
-    setIsAuthenticated(false);
-    setSessionUsername(null);
-    setSessionRole(null);
-    setSessionLessonFilter({ type: "all", value: "" });
-    setSubmitMessage("");
-    void syncCalendar();
-  }
-
-  async function handleChangeOwnPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingAccount(true);
-    setAccountMessage("");
-
-    try {
-      const response = await fetch("/api/account/password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const data = (await response.json()) as { message?: string };
-
-      if (!response.ok) {
-        setAccountMessage(data.message ?? "Heslo se nepodařilo změnit.");
-        return;
-      }
-
-      setCurrentPassword("");
-      setNewPassword("");
-      setAccountMessage(
-        `${data.message ?? "Heslo je změněné."} Ostatní přihlášená zařízení byla odhlášena.`,
-      );
-    } finally {
-      setIsSavingAccount(false);
-    }
-  }
-
-  async function handleBookingSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setSubmitMessage("");
-
-    try {
-      const response = await fetch("/api/booking-request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...request,
-          bookingKind:
-            activeAppMode === "lessons" ? "individual-lesson" : "hall",
-          name:
-            activeAppMode === "hall" && hallTitleChoice !== customHallTitle
-              ? hallTitleChoice
-              : request.name.trim(),
-        }),
-      });
-
-      if (response.status === 409) {
-        setSubmitMessage("V tomto čase už existuje jiná akce.");
-        return;
-      }
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setSubmitMessage(data.message ?? "Rezervaci se nepodařilo uložit.");
-        return;
-      }
-
-      const data = (await response.json()) as { booking?: Booking };
-
-      if (data.booking) {
-        setCalendarBookings((current) =>
-          [...current.filter((booking) => booking.id !== data.booking?.id), data.booking]
-            .filter((booking): booking is Booking => Boolean(booking))
-            .sort((left, right) =>
-              `${left.date}${left.start}`.localeCompare(`${right.date}${right.start}`),
-            ),
-        );
-      }
-
-      setSubmitMessage("Rezervace je uložena v databázi.");
-      await syncCalendar();
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleMarkCleaned(bookingId: string) {
-    setCleanupMessage("");
-    setCleaningBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}/clean`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setCleanupMessage(data.message ?? "Úklid se nepodařilo potvrdit.");
-        return;
-      }
-
-      setCleanupMessage("Děkujeme, sál je označen jako uklizený.");
-      await syncCalendar();
-    } finally {
-      setCleaningBookingId("");
-    }
-  }
-
-  async function handleDeleteBooking(bookingId: string, title: string) {
-    const isRecurringBooking = isRecurringBookingId(bookingId);
-    const confirmMessage = isRecurringBooking
-      ? `Opravdu zrušit jen tento termín "${title}"? Pravidelné tréninky v dalších týdnech zůstanou.`
-      : `Opravdu smazat akci "${title}"?`;
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
-    setDeleteMessage("");
-    setDeletingBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setDeleteMessage(data.message ?? "Akci se nepodařilo smazat.");
-        return;
-      }
-
-      setDeleteMessage(
-        isRecurringBooking
-          ? "Tento termín pravidelné akce byl zrušen."
-          : "Akce byla smazána.",
-      );
-      setExpandedDayBookingId("");
-      await syncCalendar();
-    } finally {
-      setDeletingBookingId("");
-    }
-  }
-
-  async function handleReinstateRecurringBooking(bookingId: string) {
-    setDeleteMessage("");
-    setReinstatingBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}/reinstate`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setDeleteMessage(data.message ?? "Termín se nepodařilo obnovit.");
-        return;
-      }
-
-      setDeleteMessage("Pravidelný termín byl obnoven.");
-      await syncCalendar();
-    } finally {
-      setReinstatingBookingId("");
-    }
-  }
-
-  async function handleUpdateBookingTrainer(bookingId: string, trainer: string) {
-    setTrainerMessage("");
-    setSavingTrainerBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}/trainer`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ trainer }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setTrainerMessage(data.message ?? "Trenéra se nepodařilo uložit.");
-        return;
-      }
-
-      setTrainerMessage(
-        trainer ? "Trenér pro tento termín je uložený." : "Trenér byl odebraný.",
-      );
-      await syncCalendar();
-    } finally {
-      setSavingTrainerBookingId("");
-    }
-  }
-
-  async function handleUpdateBookingTitle(
-    bookingId: string,
-    currentTitle: string,
-  ) {
-    const title = (bookingTitleDrafts[bookingId] ?? currentTitle).trim();
-
-    if (!title || title === currentTitle) {
-      return;
-    }
-
-    setTitleMessage("");
-    setSavingTitleBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}/title`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setTitleMessage(data.message ?? "Název aktivity se nepodařilo uložit.");
-        return;
-      }
-
-      setTitleMessage("Změna aktivity je uložená.");
-      setBookingTitleDrafts((current) => {
-        const next = { ...current };
-        delete next[bookingId];
-        return next;
-      });
-      await syncCalendar();
-    } finally {
-      setSavingTitleBookingId("");
-    }
-  }
-
-  async function handleUpdateBookingTime(
-    bookingId: string,
-    currentStart: string,
-    currentEnd: string,
-  ) {
-    const draft = bookingTimeDrafts[bookingId] ?? {
-      end: currentEnd,
-      start: currentStart,
-    };
-    const start = draft.start.trim();
-    const end = draft.end.trim();
-
-    if (!start || !end || (start === currentStart && end === currentEnd)) {
-      return;
-    }
-
-    if (start >= end) {
-      setTimeMessage("Konec akce musí být později než začátek.");
-      return;
-    }
-
-    setTimeMessage("");
-    setSavingTimeBookingId(bookingId);
-
-    try {
-      const response = await fetch(`/api/bookings/${bookingId}/time`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ end, start }),
-      });
-
-      if (!response.ok) {
-        const data = (await response.json()) as { message?: string };
-        setTimeMessage(data.message ?? "Čas akce se nepodařilo uložit.");
-        return;
-      }
-
-      setTimeMessage("Čas akce je uložený.");
-      setBookingTimeDrafts((current) => {
-        const next = { ...current };
-        delete next[bookingId];
-        return next;
-      });
-      await syncCalendar();
-    } finally {
-      setSavingTimeBookingId("");
-    }
-  }
-
-  async function handleSaveImportedLessons() {
-    setImportMessage("");
-    setIsSavingImport(true);
-
-    try {
-      const response = await fetch("/api/individual-lessons", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessons: importedLessons }),
-      });
-      const data = (await response.json()) as {
-        lessons?: ImportedLesson[];
-        message?: string;
-      };
-
-      if (!response.ok) {
-        setImportMessage(data.message ?? "Import se nepodařilo uložit.");
-        return;
-      }
-
-      setStoredImportedLessons(data.lessons ?? importedLessons);
-      setPastedLessonTable("");
-      setImportMessage(data.message ?? "Rozpis je uložený.");
-    } finally {
-      setIsSavingImport(false);
-    }
-  }
-
-  async function handleImportGoogleLessons() {
-    setImportMessage("");
-    setIsSavingImport(true);
-
-    try {
-      const response = await fetch("/api/individual-lessons/import-google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: googleSheetUrl }),
-      });
-      const data = (await response.json()) as {
-        lessons?: ImportedLesson[];
-        message?: string;
-      };
-
-      if (!response.ok) {
-        setImportMessage(data.message ?? "Import z Google tabulky se nepodařil.");
-        return;
-      }
-
-      setStoredImportedLessons(data.lessons ?? []);
-      setPastedLessonTable("");
-      setImportMessage(data.message ?? "Rozpis soustředění je naimportovaný.");
-    } finally {
-      setIsSavingImport(false);
-    }
-  }
-
-  return (
-    <SiteShell
-      maxWidthClassName="max-w-[1840px]"
-      contentClassName={`grid gap-5 px-4 py-5 transition-[grid-template-columns] duration-300 lg:grid-cols-[minmax(0,1fr)_320px] lg:pl-6 lg:pr-4 xl:pl-8 xl:pr-5 ${
-        isExpandedBookingLayout
-          ? "xl:grid-cols-[minmax(0,1fr)_minmax(560px,620px)] 2xl:grid-cols-[minmax(900px,1fr)_minmax(640px,760px)] 2xl:pl-12"
-          : "xl:grid-cols-[minmax(0,1fr)_340px]"
-      }`}
-      description={
-        <>
-          Přehled dostupnosti sálu TK Koškovi pro volný trénink.
-        </>
-      }
-      eyebrow={
-        <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-[#d7e6ed]">
-          <button
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition ${
-              activeAppMode === "hall"
-                ? "border-white/35 bg-white/20 text-white"
-                : "border-white/20 bg-white/10 hover:bg-white/15"
-            }`}
-            onClick={() => {
-              setAppMode("hall");
-              setIsBookingFormOpen(false);
-              setRequest((current) => ({
-                ...current,
-                bookingKind: "hall",
-                eventType: "soustredeni",
-                trainer: "",
-              }));
-            }}
-            type="button"
-          >
-            <Sparkles size={15} />
-            Rezervace sálu
-          </button>
-          {canUseLessonMode ? (
-            <button
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition ${
-                activeAppMode === "lessons"
-                  ? "border-white/35 bg-white/20 text-white"
-                  : "border-white/20 bg-white/10 hover:bg-white/15"
-              }`}
-              onClick={() => {
-                setAppMode("lessons");
-                setIsBookingFormOpen(false);
-                setViewMode("week");
-                setRequest((current) => ({
-                  ...current,
-                  bookingKind: "individual-lesson",
-                  cleanupRequired: false,
-                  eventType: "tanecni-lekce",
-                  trainer: activeLessonTrainer,
-                }));
-              }}
-              type="button"
-            >
-              <User size={15} />
-              Soustředění
-            </button>
-          ) : (
-            <span className="inline-flex items-center gap-2">
-              <MapPin size={15} />
-              {hallSettings.location}
-            </span>
-          )}
-        </div>
-      }
-      infoPanel={{
-        items: openingHoursGroups.map((group) => ({
-          label: group.days,
-          value: group.hours,
-        })),
-        sideContent: (
-          <RecurringCancellationPanel
-            cancellations={recurringCancellations}
-            changes={recurringOverrides}
-            isAuthenticated={isAuthenticated}
-            onReinstate={handleReinstateRecurringBooking}
-            reinstatingId={reinstatingBookingId}
-          />
-        ),
-        subtitle: "Pravidelný provoz sálu",
-        title: "Otevírací doba",
-      }}
-      metrics={[
-        {
-          label: "Dnes volno",
-          value: `${freeHours.toLocaleString("cs-CZ")} h`,
-        },
-        {
-          label: "Dnes otevřeno",
-          value: todaysOpeningHours,
-        },
-        ...(isAuthenticated
-          ? [
-              {
-                label: "Tento týden",
-                value: formatEventCount(weeklyEventCount),
-              },
-            ]
-          : []),
-      ]}
-      title={
-        activeAppMode === "lessons"
-          ? "Soustředění"
-          : "Dostupnost tanečního sálu"
-      }
-    >
-        <div className="min-w-0 space-y-6">
-          <div className="flex flex-col gap-4 border-b border-[#ded6c9] pb-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">
-                {activeAppMode === "lessons"
-                  ? "Soustředění"
-                  : viewMode === "today"
-                  ? `Denní dostupnost - ${dayFormatter.format(selectedDateObject)}`
-                  : viewMode === "week"
-                    ? "Týdenní dostupnost"
-                    : `Měsíční dostupnost - ${monthLabelFormatter.format(
-                        new Date(`${selectedDate}T12:00:00`),
-                      )}`}
-              </h2>
-              <p className="mt-1 text-sm text-[#66706f]">
-                {activeAppMode === "lessons"
-                  ? "Rozpis pro soustředění se vytváří importem z Excelu."
-                  : viewMode === "week"
-                    ? "Kliknutím na den zobrazíš rychlý detail a volné časy."
-                    : "Dny jsou pod sebou, časy najdeš v horní hlavičce tabulky."}
-              </p>
-            </div>
-            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-              {activeAppMode === "hall" ? (
-                <label className="mobile-view-select field-label">
-                  Volba časového rozmezí:
-                  <select
-                    className="field-input mt-1"
-                    onChange={(event) => {
-                      const nextViewMode = event.target.value as
-                        | "today"
-                        | "week"
-                        | "month";
-
-                      changeViewMode(nextViewMode);
-                    }}
-                    value={viewMode}
-                  >
-                    <option value="today">Den</option>
-                    <option value="week">Týden</option>
-                    <option value="month">Měsíc</option>
-                  </select>
-                </label>
-              ) : null}
-
-              {activeAppMode === "hall" ? (
-                <div className="hidden h-10 overflow-hidden rounded-md border border-[#ded6c9] bg-white sm:inline-flex md:h-11">
-                <button
-                  className={`inline-flex items-center gap-1.5 px-2 text-xs font-semibold transition md:gap-2 md:px-3 md:text-sm ${
-                    viewMode === "today"
-                      ? "bg-[#003758] text-white"
-                      : "text-[#35505b] hover:bg-[#f6f1e8]"
-                  }`}
-                  onClick={() => {
-                    changeViewMode("today");
-                  }}
-                  type="button"
-                >
-                  <Clock3 size={16} />
-                  Den
-                </button>
-                <button
-                  className={`inline-flex items-center gap-1.5 border-l border-[#ded6c9] px-2 text-xs font-semibold transition md:gap-2 md:px-3 md:text-sm ${
-                    viewMode === "week"
-                      ? "bg-[#003758] text-white"
-                      : "text-[#35505b] hover:bg-[#f6f1e8]"
-                  }`}
-                  onClick={() => changeViewMode("week")}
-                  type="button"
-                >
-                  <CalendarDays size={16} />
-                  Týden
-                </button>
-                <button
-                  className={`inline-flex items-center gap-1.5 border-l border-[#ded6c9] px-2 text-xs font-semibold transition md:gap-2 md:px-3 md:text-sm ${
-                    viewMode === "month"
-                      ? "bg-[#003758] text-white"
-                      : "text-[#35505b] hover:bg-[#f6f1e8]"
-                  }`}
-                  onClick={() => changeViewMode("month")}
-                  type="button"
-                >
-                  <CalendarDays size={16} />
-                  Měsíc
-                </button>
-                </div>
-              ) : null}
-              <div className="flex w-full items-center gap-3 sm:w-auto">
-                <ThemeToggle />
-                {activeAppMode === "hall" ? (
-                <div className="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-[#ded6c9] bg-white sm:flex-none">
-                  <button
-                    aria-label={
-                      viewMode === "month"
-                        ? "Předchozí měsíc"
-                        : viewMode === "week"
-                          ? "Předchozí týden"
-                          : "Předchozí den"
-                    }
-                    className="inline-flex h-11 w-10 shrink-0 items-center justify-center text-[#003758] transition hover:bg-[#f6f1e8]"
-                    onClick={() => changeDisplayedPeriod(-1)}
-                    type="button"
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-                  <button
-                    className="inline-flex h-11 min-w-0 flex-1 items-center justify-center border-x border-[#ded6c9] px-3 text-sm font-semibold capitalize text-[#003758] transition hover:bg-[#f6f1e8] sm:min-w-36"
-                    onClick={showCurrentPeriod}
-                    type="button"
-                  >
-                    <span className="truncate">{getPeriodControlLabel()}</span>
-                  </button>
-                  <button
-                    aria-label={
-                      viewMode === "month"
-                        ? "Další měsíc"
-                        : viewMode === "week"
-                          ? "Další týden"
-                          : "Další den"
-                    }
-                    className="inline-flex h-11 w-10 shrink-0 items-center justify-center text-[#003758] transition hover:bg-[#f6f1e8]"
-                    onClick={() => changeDisplayedPeriod(1)}
-                    type="button"
-                  >
-                    <ChevronRight size={18} />
-                  </button>
-                </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          {isAuthenticated ? (
-            <div className="rounded-md border border-[#ded6c9] bg-white px-3 py-2 text-sm text-[#66706f]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>Jsi přihlášen jako: {sessionUsername ?? "uživatel"}</span>
-                  <button
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#ded6c9] px-3 text-xs font-semibold text-[#003758] transition hover:bg-[#f6f1e8]"
-                    onClick={() => setAccountPanelOpen((current) => !current)}
-                    type="button"
-                  >
-                    <LockKeyhole size={14} />
-                    Změna hesla
-                  </button>
-                  <button
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#ded6c9] px-3 text-xs font-semibold text-[#8c2f20] transition hover:bg-[#fff0eb]"
-                    onClick={handleLogout}
-                    type="button"
-                  >
-                    <LogOut size={14} />
-                    Odhlásit
-                  </button>
-                </div>
-                {canManageBookings ? (
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <Link
-                      className="inline-flex h-9 items-center justify-center rounded-md bg-[#003758] px-3 text-xs font-semibold text-white transition hover:bg-[#0b4d76]"
-                      href="/admin"
-                    >
-                      Otevřít správu
-                    </Link>
-                    {activeAppMode === "hall" ? (
-                      <button
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#003758] bg-[#003758] px-3 text-xs font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:border-[#c9dce7] disabled:bg-[#eef6fa] disabled:text-[#7a9aad]"
-                        disabled={isBookingFormOpen}
-                        onClick={scrollToBookingForm}
-                        type="button"
-                      >
-                        <CalendarPlus size={15} />
-                        {isBookingFormOpen ? "Formulář otevřený" : "Přidat akci"}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              {accountPanelOpen ? (
-                <div className="mt-4 grid gap-4 border-t border-[#ece3d5] pt-4">
-                  <form className="grid gap-3" onSubmit={handleChangeOwnPassword}>
-                    <h3 className="font-semibold text-[#132935]">Změna hesla</h3>
-                    <input
-                      className="field-input"
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                      placeholder="Současné heslo"
-                      required
-                      type="password"
-                      value={currentPassword}
-                    />
-                    <input
-                      className="field-input"
-                      onChange={(event) => setNewPassword(event.target.value)}
-                      placeholder="Nové heslo"
-                      required
-                      type="password"
-                      value={newPassword}
-                    />
-                    <button
-                      className="inline-flex h-10 items-center justify-center rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76] disabled:opacity-60"
-                      disabled={isSavingAccount}
-                      type="submit"
-                    >
-                      Změnit heslo
-                    </button>
-                  </form>
-
-                  {isMainAdmin ? (
-                    <Link
-                      className="inline-flex h-10 w-fit items-center justify-center rounded-md border border-[#ded6c9] px-4 text-sm font-semibold text-[#003758] transition hover:bg-[#f6f1e8]"
-                      href="/admin/users"
-                    >
-                      Správa uživatelů
-                    </Link>
-                  ) : null}
-                  {accountMessage ? (
-                    <p className="rounded-md border border-[#cde6d9] bg-[#f4fbf7] px-3 py-2 text-sm text-[#245d3f]">
-                      {accountMessage}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {false && activeAppMode === "lessons" ? (
-            <div className="calendar-view-transition grid gap-4 lg:hidden">
-              <div className="rounded-lg border border-[#ded6c9] bg-white p-3">
-                <p className="px-1 text-xs font-semibold uppercase text-[#66706f]">
-                  Trenéři
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {availableTrainers.map((trainer) => {
-                    const isActive = trainer === activeLessonTrainer;
-                    const lessonCount = lessonBookings.filter(
-                      (booking) =>
-                        booking.trainer === trainer &&
-                        days.some((day) => formatDateKey(day) === booking.date),
-                    ).length;
-
-                    return (
-                      <button
-                        className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition ${
-                          isActive
-                            ? "border-[#0b4d76] bg-[#003758] text-white shadow-[0_10px_20px_rgba(0,55,88,0.20)]"
-                            : "border-[#ded6c9] bg-[#fcfaf6] text-[#35505b] hover:bg-[#eef7fb]"
-                        }`}
-                        key={trainer}
-                        onClick={() => {
-                          setSelectedLessonTrainer(trainer);
-                          setRequest((current) => ({
-                            ...current,
-                            bookingKind: "individual-lesson",
-                            trainer,
-                          }));
-                        }}
-                        type="button"
-                      >
-                        <span className="block">{trainer}</span>
-                        <span
-                          className={`mt-1 block text-xs font-medium ${
-                            isActive ? "text-[#d7e6ed]" : "text-[#66706f]"
-                          }`}
-                        >
-                          {formatEventCount(lessonCount)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-[#ded6c9] bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase text-[#66706f]">
-                      Lekce trenéra
-                    </p>
-                    <h3 className="mt-1 text-xl font-semibold">
-                      {activeLessonTrainer}
-                    </h3>
-                  </div>
-                  <span className="rounded-full bg-[#e7f1f6] px-3 py-1 text-xs font-semibold text-[#003758]">
-                    {formatEventCount(selectedTrainerWeekLessons.length)}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid gap-3">
-                  {selectedTrainerWeekLessons.length > 0 ? (
-                    selectedTrainerWeekLessons.map((booking) => (
-                      <article
-                        className="rounded-md border border-[#ded6c9] bg-[#fcfaf6] p-3"
-                        key={booking.id}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold capitalize text-[#66706f]">
-                              {longDateFormatter.format(
-                                new Date(`${booking.date}T12:00:00`),
-                              )}
-                            </p>
-                            <h4 className="mt-1 truncate text-lg font-semibold">
-                              {booking.title}
-                            </h4>
-                            <p className="mt-0.5 text-sm text-[#66706f]">
-                              {booking.organizer}
-                            </p>
-                          </div>
-                          <span className="shrink-0 rounded-full bg-[#eef8f2] px-2 py-1 text-xs font-semibold text-[#246043]">
-                            {booking.start}-{booking.end}
-                          </span>
-                        </div>
-                        {booking.note ? (
-                          <p className="mt-3 rounded-md border border-[#ece3d5] bg-white px-3 py-2 text-xs text-[#66706f]">
-                            {booking.note}
-                          </p>
-                        ) : null}
-                      </article>
-                    ))
-                  ) : (
-                    <div className="rounded-md border border-[#d8eadf] bg-[#f3fbf5] p-4 text-sm text-[#246043]">
-                      Tento trenér nemá v zobrazeném týdnu žádné individuální lekce.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {activeAppMode === "lessons" ? (
-            <section className="rounded-lg border border-[#ded6c9] bg-white p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-[#66706f]">
-                    Soustředění
-                  </p>
-                  <h3 className="mt-1 text-xl font-semibold">
-                    Rozpis lekcí ze soustředění
-                  </h3>
-                </div>
-                <span className="rounded-full bg-[#e7f1f6] px-3 py-1 text-xs font-semibold text-[#003758]">
-                  {formatEventCount(filteredImportedLessons.length)}
-                </span>
-              </div>
-
-              {!isAuthenticated ? (
-                <div className="mt-4 rounded-md border border-[#ded6c9] bg-[#fcfaf6] p-4">
-                  <h4 className="text-lg font-semibold">Přihlášení k soustředění</h4>
-                  <p className="mt-1 text-sm leading-6 text-[#66706f]">
-                    Rozpis lekcí je dostupný po přihlášení. Po přihlášení se
-                    automaticky zobrazí jen lekce povolené pro tvůj účet.
-                  </p>
-                  <form className="mt-4 grid gap-3 sm:max-w-md" onSubmit={handleLogin}>
-                    <label className="field-label">
-                      Jméno uživatele
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) => setUsername(event.target.value)}
-                        placeholder="Jméno uživatele"
-                        ref={loginUsernameInputRef}
-                        required
-                        value={username}
-                      />
-                    </label>
-                    <label className="field-label">
-                      Heslo
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Zadej heslo"
-                        required
-                        type="password"
-                        value={password}
-                      />
-                    </label>
-                    {authError ? (
-                      <div className="flex items-start gap-2 rounded-md border border-[#edd3cc] bg-[#fff0eb] p-3 text-sm text-[#8c2f20]">
-                        <AlertCircle size={17} />
-                        {authError}
-                      </div>
-                    ) : null}
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <button
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76]"
-                        type="submit"
-                      >
-                        <LogIn size={17} />
-                        Přihlásit
-                      </button>
-                      <Link
-                        className="inline-flex h-11 items-center justify-center rounded-md border border-[#ded6c9] px-4 text-sm font-semibold text-[#003758] transition hover:bg-[#f6f1e8]"
-                        href="/"
-                      >
-                        Zpět na kalendář
-                      </Link>
-                    </div>
-                  </form>
-                </div>
-              ) : (
-                <>
-              {sessionLessonFilter.type !== "all" ? (
-                <p className="mt-3 rounded-md border border-[#d8eadf] bg-[#f3fbf5] px-3 py-2 text-sm text-[#245d3f]">
-                  Zobrazení je omezené filtrem účtu:{" "}
-                  {sessionLessonFilter.type === "trainer" ? "trenér" : "tanečník"}{" "}
-                  <strong>{sessionLessonFilter.value}</strong>.
-                </p>
-              ) : null}
-
-              {canSaveImportedLessons ? (
-                <div className="mt-4 grid gap-3 rounded-md border border-[#ded6c9] bg-[#fcfaf6] p-3">
-                  <label className="field-label">
-                    Google tabulka
-                    <input
-                      className="field-input mt-1"
-                      onChange={(event) => setGoogleSheetUrl(event.target.value)}
-                      placeholder="Prázdné = výchozí tabulka soustředění"
-                      value={googleSheetUrl}
-                    />
-                  </label>
-                  <button
-                    className="inline-flex h-10 items-center justify-center rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isSavingImport}
-                    onClick={handleImportGoogleLessons}
-                    type="button"
-                  >
-                    {isSavingImport ? "Importuji..." : "Importovat z Google tabulky"}
-                  </button>
-                  <textarea
-                    className="field-input min-h-28 w-full resize-y"
-                    onChange={(event) => setPastedLessonTable(event.target.value)}
-                    placeholder={
-                      "Zkopíruj oblast z Excelu a vlož ji sem.\nIdeálně sloupce: Datum/den, Čas, Trenér, Pár"
-                    }
-                      value={pastedLessonTable}
-                  />
-                  <button
-                    className="inline-flex h-10 items-center justify-center rounded-md border border-[#003758] px-4 text-sm font-semibold text-[#003758] transition hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={importedLessons.length === 0 || isSavingImport}
-                    onClick={handleSaveImportedLessons}
-                    type="button"
-                  >
-                    {isSavingImport ? "Ukládám..." : "Uložit rozpis z Excelu"}
-                  </button>
-                </div>
-              ) : null}
-
-              {importMessage ? (
-                <p className="mt-3 rounded-md border border-[#cde6d9] bg-[#f4fbf7] px-3 py-2 text-sm text-[#245d3f]">
-                  {importMessage}
-                </p>
-              ) : null}
-
-              {displayedImportedLessons.length > 0 ? (
-                <>
-                  <div className="mt-4 grid gap-3 rounded-md border border-[#ded6c9] bg-[#fcfaf6] p-3 md:grid-cols-3">
-                    <label className="field-label">
-                      Den soustředění
-                      <select
-                        className="field-input mt-1"
-                        onChange={(event) => setCampDayFilter(event.target.value)}
-                        value={campDayFilter}
-                      >
-                        <option value="">Všechny dny</option>
-                        {campDays.map((day) => (
-                          <option key={day} value={day}>
-                            {day}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-label">
-                      Trenér
-                      <select
-                        className="field-input mt-1"
-                        onChange={(event) => setCampTrainerFilter(event.target.value)}
-                        value={campTrainerFilter}
-                      >
-                        <option value="">Všichni trenéři</option>
-                        {campTrainers.map((trainer) => (
-                          <option key={trainer} value={trainer}>
-                            {trainer}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="field-label">
-                      Tanečník / pár
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) => setCampDancerFilter(event.target.value)}
-                        placeholder="Hledat jméno"
-                        value={campDancerFilter}
-                      />
-                    </label>
-                  </div>
-                  <div className="mt-4 grid gap-3 md:hidden">
-                    {groupedImportedLessons.map((group) => (
-                      <article
-                        className="overflow-hidden rounded-md border border-[#ded6c9] bg-[#fcfaf6]"
-                        key={group.dateOrDay}
-                      >
-                        <div className="bg-[#003758] px-4 py-3 text-white">
-                          <p className="text-xs font-semibold uppercase tracking-normal text-white/75">
-                            Den soustředění
-                          </p>
-                          <h4 className="mt-1 text-lg font-semibold">
-                            {group.dateOrDay}
-                          </h4>
-                        </div>
-                        <div className="divide-y divide-[#ece3d5]">
-                          {group.lessons.map((lesson, index) => (
-                            <div
-                              className="grid gap-2 px-4 py-3"
-                              key={`${lesson.dateOrDay}-${lesson.start}-${lesson.trainer}-${lesson.name}-${index}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-base font-semibold text-[#132935]">
-                                    {lesson.name}
-                                  </p>
-                                  <p className="mt-1 text-sm text-[#66706f]">
-                                    {lesson.trainer}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 rounded-full bg-[#e7f1f6] px-3 py-1 text-sm font-semibold text-[#003758]">
-                                  {lesson.start}-{lesson.end}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  <div className="mt-4 hidden overflow-hidden rounded-md border border-[#ded6c9] md:block">
-                    <div className="grid grid-cols-[1fr_96px_1fr_1.2fr] bg-[#003758] text-xs font-semibold uppercase text-white">
-                      <div className="px-3 py-2">Den</div>
-                      <div className="px-3 py-2">Čas</div>
-                      <div className="px-3 py-2">Trenér</div>
-                      <div className="px-3 py-2">Pár</div>
-                    </div>
-                    {filteredImportedLessons.map((lesson, index) => (
-                      <div
-                        className="grid grid-cols-[1fr_96px_1fr_1.2fr] border-t border-[#ece3d5] text-sm"
-                        key={`${lesson.dateOrDay}-${lesson.start}-${lesson.trainer}-${index}`}
-                      >
-                        <div className="min-w-0 px-3 py-2 font-semibold">
-                          {lesson.dateOrDay}
-                        </div>
-                        <div className="px-3 py-2 text-[#246043]">
-                          {lesson.start}-{lesson.end}
-                        </div>
-                        <div className="min-w-0 px-3 py-2">
-                          {lesson.trainer}
-                        </div>
-                        <div className="min-w-0 px-3 py-2 font-semibold">
-                          {lesson.name}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {filteredImportedLessons.length === 0 ? (
-                    <p className="mt-3 rounded-md border border-[#edd3cc] bg-[#fff0eb] px-3 py-2 text-sm text-[#8c2f20]">
-                      Pro zadaný filtr není žádná lekce.
-                    </p>
-                  ) : null}
-                </>
-                ) : pastedLessonTable ? (
-                  <p className="mt-3 rounded-md border border-[#edd3cc] bg-[#fff0eb] px-3 py-2 text-sm text-[#8c2f20]">
-                    Z vložené tabulky se zatím nepodařilo rozpoznat žádné lekce.
-                  </p>
-                ) : (
-                  <p className="mt-4 rounded-md border border-[#d8eadf] bg-[#f3fbf5] p-4 text-sm text-[#246043]">
-                    Zatím není uložený žádný rozpis soustředění.
-                  </p>
-                )}
-                </>
-              )}
-            </section>
-          ) : null}
-
-          {false && activeAppMode === "lessons" ? (
-            <div className="calendar-view-transition hidden gap-4 lg:grid lg:grid-cols-[176px_minmax(0,1fr)]">
-              <div className="rounded-lg border border-[#ded6c9] bg-white p-3">
-                <p className="px-1 text-xs font-semibold uppercase text-[#66706f]">
-                  Trenéři
-                </p>
-                <div className="mt-3 grid gap-2 lg:grid-cols-1">
-                  {availableTrainers.map((trainer) => {
-                    const isActive = trainer === activeLessonTrainer;
-                    const lessonCount = lessonBookings.filter(
-                      (booking) =>
-                        booking.trainer === trainer &&
-                        days.some((day) => formatDateKey(day) === booking.date),
-                    ).length;
-
-                    return (
-                      <button
-                        className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition ${
-                          isActive
-                            ? "border-[#0b4d76] bg-[#003758] text-white shadow-[0_10px_20px_rgba(0,55,88,0.20)]"
-                            : "border-[#ded6c9] bg-[#fcfaf6] text-[#35505b] hover:bg-[#eef7fb]"
-                        }`}
-                        key={trainer}
-                        onClick={() => {
-                          setSelectedLessonTrainer(trainer);
-                          setRequest((current) => ({
-                            ...current,
-                            bookingKind: "individual-lesson",
-                            trainer,
-                          }));
-                        }}
-                        type="button"
-                      >
-                        <span className="block">{trainer}</span>
-                        <span
-                          className={`mt-1 block text-xs font-medium ${
-                            isActive ? "text-[#d7e6ed]" : "text-[#66706f]"
-                          }`}
-                        >
-                          {formatEventCount(lessonCount)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-lg border border-[#ded6c9] bg-white">
-                <div
-                  className="max-h-[min(760px,calc(100svh-112px))] max-w-full overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-gutter:stable]"
-                  ref={calendarScrollerRef}
-                >
-                  <div className="min-w-full">
-                    <div className="sticky top-0 z-30 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-[#ded6c9] bg-[#f6f1e8] shadow-sm xl:grid-cols-[72px_repeat(7,minmax(0,1fr))]">
-                      <div className="sticky left-0 z-40 bg-[#f6f1e8] px-2 py-2.5 text-xs font-semibold uppercase text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.08)]">
-                        Čas
-                      </div>
-                      {days.map((day) => {
-                        const dateKey = formatDateKey(day);
-                        const isSelected = dateKey === selectedDate;
-                        const trainerDayCount = lessonBookings.filter(
-                          (booking) =>
-                            booking.trainer === activeLessonTrainer &&
-                            booking.date === dateKey,
-                        ).length;
-
-                        return (
-                          <button
-                            className={`min-w-0 border-l px-1.5 py-2.5 text-left transition xl:px-2 ${
-                              isSelected
-                                ? "selected-period-head relative z-20 border-[#0b4d76] bg-[#0b4d76] text-white ring-1 ring-white/50 shadow-[0_14px_26px_rgba(0,55,88,0.30),inset_0_-5px_0_#8fd7ac]"
-                                : "border-[#ded6c9] hover:bg-[#fbf8f1]"
-                            }`}
-                            key={dateKey}
-                            onClick={() => setCalendarDate(dateKey)}
-                            type="button"
-                          >
-                            <span className="block truncate text-xs font-semibold capitalize xl:text-sm">
-                              {dayFormatter.format(day)}
-                            </span>
-                            <span
-                              className={`mt-1 block truncate text-[11px] xl:text-xs ${
-                                isSelected ? "text-[#d7e6ed]" : "text-[#66706f]"
-                              }`}
-                            >
-                              {formatEventCount(trainerDayCount)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {timeSlots.map((time) => (
-                      <div
-                        className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-[#ece3d5] last:border-b-0 xl:grid-cols-[72px_repeat(7,minmax(0,1fr))]"
-                        key={time}
-                      >
-                        <div className="sticky left-0 z-20 bg-[#fcfaf6] px-2 py-2 text-[11px] font-medium text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.06)] xl:text-xs">
-                          {time}
-                        </div>
-                        {days.map((day) => {
-                          const dateKey = formatDateKey(day);
-                          const isSelectedDay = dateKey === selectedDate;
-                          const { hallBlocker, isOpen, trainerBooking } =
-                            getLessonSlotState(activeLessonTrainer, dateKey, time);
-                          const isSelectedSlot =
-                            request.bookingKind === "individual-lesson" &&
-                            request.date === dateKey &&
-                            request.start === time &&
-                            request.trainer === activeLessonTrainer;
-                          const isFree = isOpen && !hallBlocker && !trainerBooking;
-                          const currentTimeOffset =
-                            dateKey === currentDateKey && currentTimeMinutes !== null
-                              ? getCurrentTimeOffset(
-                                  day,
-                                  time,
-                                  currentTimeMinutes,
-                                  activeSlotMinutes,
-                                )
-                              : null;
-
-                          return (
-                            <button
-                              className={`relative min-h-12 border-l border-[#ece3d5] px-1.5 py-1.5 text-left text-[11px] transition xl:px-2 xl:text-xs ${
-                                !isOpen
-                                  ? isSelectedDay
-                                    ? "selected-period-closed relative z-10 bg-[#e3edf3] text-[#6c747b] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18)]"
-                                    : "bg-[#f3f0ea] text-[#9a9288]"
-                                  : hallBlocker
-                                    ? "bg-[#fff0eb] text-[#8c2f20]"
-                                    : trainerBooking
-                                      ? "bg-[#fce9e3] text-[#8c2f20]"
-                                      : isSelectedSlot || isSelectedDay
-                                        ? "selected-period-cell relative z-10 bg-[#eef7fb] text-[#17475f] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18)] hover:bg-[#e5f2f8]"
-                                        : "bg-white text-[#246043] hover:bg-[#eef8f2]"
-                              }`}
-                              disabled={!isFree}
-                              key={`${dateKey}-${time}`}
-                              onClick={() =>
-                                selectLessonSlot(activeLessonTrainer, dateKey, time)
-                              }
-                              title={
-                                hallBlocker
-                                  ? `Sál blokuje ${hallBlocker.title} (${hallBlocker.start}-${hallBlocker.end})`
-                                  : trainerBooking
-                                    ? `${trainerBooking.title} (${trainerBooking.start}-${trainerBooking.end})`
-                                    : undefined
-                              }
-                              type="button"
-                            >
-                              {currentTimeOffset !== null ? (
-                                <span
-                                  aria-hidden="true"
-                                  className="current-time-marker pointer-events-none absolute left-0 right-0 flex items-center"
-                                  style={{ top: `${currentTimeOffset}%` }}
-                                >
-                                  <span className="time-marker-dot h-2 w-2 -translate-x-1 rounded-full bg-[#0b4d76] shadow-[0_0_0_3px_rgba(143,215,172,0.55)]" />
-                                  <span className="time-marker-line h-[2px] flex-1 bg-[#0b4d76] shadow-[0_1px_4px_rgba(0,55,88,0.35)]" />
-                                </span>
-                              ) : null}
-                              {!isOpen ? (
-                                <span className="font-semibold">Zavřeno</span>
-                              ) : hallBlocker ? (
-                                <span className="relative z-10 block max-w-full overflow-hidden">
-                                  <span className="block truncate font-semibold">
-                                    Sál obsazený
-                                  </span>
-                                  <span className="mt-0.5 block truncate">
-                                    {hallBlocker.title}
-                                  </span>
-                                </span>
-                              ) : trainerBooking ? (
-                                <span className="relative z-10 block max-w-full overflow-hidden">
-                                  <span className="block truncate font-semibold">
-                                    {trainerBooking.title}
-                                  </span>
-                                  <span className="mt-0.5 block truncate">
-                                    {trainerBooking.start}-{trainerBooking.end}
-                                  </span>
-                                </span>
-                              ) : (
-                                <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-2 py-1 font-medium text-[#246043]">
-                                  <Check size={13} />
-                                  Volno
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {activeAppMode === "hall" ? (
-          <div className="calendar-view-transition lg:hidden" key={`mobile-${viewMode}`}>
-            <MobileCalendarSummary
-              bookingDayCounts={bookingDayCounts}
-              days={viewMode === "month" ? monthDays : days}
-              onSelectDate={(dateKey) => {
-                setSelectedDate(dateKey);
-                updateRequest("date", dateKey);
-              }}
-              selectedDate={selectedDate}
-              viewMode={viewMode}
-            />
-          </div>
-          ) : null}
-
-          {activeAppMode === "hall" ? (
-          <div className="calendar-view-transition hidden lg:block" key={`desktop-${viewMode}`}>
-          {viewMode === "today" ? (
-            <div className="overflow-hidden rounded-lg border border-[#ded6c9] bg-white">
-              <div
-                data-calendar-view="today"
-                className="max-h-[min(760px,calc(100svh-112px))] max-w-full overflow-auto overscroll-contain"
-                ref={calendarScrollerRef}
-              >
-                <div className="min-w-[420px]">
-                  <div className="sticky top-0 z-20 grid grid-cols-[88px_minmax(220px,1fr)] border-b border-[#ded6c9] bg-[#f6f1e8] shadow-sm">
-                    <div className="sticky left-0 z-30 bg-[#f6f1e8] px-3 py-3 text-xs font-semibold uppercase text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.08)]">
-                      Cas
-                    </div>
-                    <button
-                      className="selected-period-head relative z-20 border-l border-[#0b4d76] bg-[#0b4d76] px-3 py-3 text-left text-white ring-1 ring-white/50 shadow-[0_14px_26px_rgba(0,55,88,0.30),inset_0_-5px_0_#8fd7ac]"
-                      onClick={() => {
-                        updateRequest("date", selectedDate);
-                      }}
-                      type="button"
-                    >
-                      <span className="block text-sm font-semibold capitalize">
-                        {dayFormatter.format(selectedDateObject)}
-                      </span>
-                      <span className="mt-1 block text-xs text-[#d7e6ed]">
-                        {formatEventCount(bookingDayCounts.get(selectedDate) ?? 0)}
-                      </span>
-                    </button>
-                  </div>
-
-                  {timeSlots.map((time) => {
-                    const { booking, cleanupBooking, isDeparture, isOpen } = getSlotState(
-                      selectedDate,
-                      time,
-                    );
-                    const slotFill = getSlotFill(
-                      time,
-                      booking,
-                      cleanupBooking,
-                      activeSlotMinutes,
-                    );
-                    const currentTimeOffset =
-                      selectedDate === currentDateKey && currentTimeMinutes !== null
-                        ? getCurrentTimeOffset(
-                            selectedDateObject,
-                            time,
-                            currentTimeMinutes,
-                            activeSlotMinutes,
-                          )
-                        : null;
-
-                    return (
-                      <div
-                        className="grid grid-cols-[88px_minmax(220px,1fr)] border-b border-[#ece3d5] last:border-b-0"
-                        key={time}
-                      >
-                        <div className="sticky left-0 z-10 bg-[#fcfaf6] px-3 py-3 text-sm font-medium text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.06)]">
-                          {time}
-                        </div>
-                        <button
-                          className={`relative min-h-14 border-l border-[#ece3d5] px-2 py-2 text-left text-xs transition ${
-                            booking
-                                ? `${getBookingCellStyle(booking, slotFill, true)} ${
-                                    getSelectedBookingPeriodClass(booking)
-                                  } relative z-10 overflow-hidden ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(11,77,118,0.14)]`
-                                : cleanupBooking
-                                  ? `${cleanupCellStyle} selected-period-booked relative z-10 overflow-hidden ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(106,75,0,0.12)]`
-                                  : !isOpen
-                                    ? "selected-period-closed relative z-10 bg-[#e3edf3] text-[#6c747b] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.75),inset_0_-3px_0_rgba(11,77,118,0.14)]"
-                                  : isDeparture
-                                    ? "relative z-10 bg-[#fff6d8] text-[#6a4b00] ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.14),inset_0_3px_0_rgba(255,255,255,0.62)]"
-                                  : "selected-period-cell relative z-10 bg-[#eef7fb] text-[#17475f] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.78),inset_0_-3px_0_rgba(11,77,118,0.14)] hover:bg-[#e5f2f8]"
-                          }`}
-                          data-current-slot={
-                            currentTimeOffset !== null ? "true" : undefined
-                          }
-                          onClick={() => {
-                            if (isOpen && !isDeparture && !booking && !cleanupBooking) {
-                              updateRequest("date", selectedDate);
-                              updateRequest("start", time);
-                            }
-                          }}
-                          title={
-                            booking
-                              ? `${booking.title} (${booking.start}-${booking.end})`
-                              : cleanupBooking
-                                ? `Čeká na úklid po akci ${cleanupBooking.title}`
-                                : isDeparture
-                                  ? "Odchod ze sálu před zavíračkou"
-                              : undefined
-                          }
-                          type="button"
-                        >
-                          {slotFill ? (
-                            <span
-                              aria-hidden="true"
-                              className={`pointer-events-none absolute bottom-0 top-0 z-0 ${slotFill.className}`}
-                              style={{
-                                left: `${slotFill.left}%`,
-                                width: `${slotFill.width}%`,
-                              }}
-                            />
-                          ) : null}
-                          {currentTimeOffset !== null ? (
-                            <span
-                              aria-hidden="true"
-                              className="current-time-marker pointer-events-none absolute left-0 right-0 flex items-center"
-                              style={{ top: `${currentTimeOffset}%` }}
-                            >
-                              <span className="time-marker-dot h-2 w-2 -translate-x-1 rounded-full bg-[#0b4d76] shadow-[0_0_0_3px_rgba(143,215,172,0.55)]" />
-                              <span className="time-marker-line h-[2px] flex-1 bg-[#0b4d76] shadow-[0_1px_4px_rgba(0,55,88,0.35)]" />
-                            </span>
-                          ) : null}
-                          {booking ? (
-                            <span className="relative z-10 block max-w-full overflow-hidden">
-                              <span className="block truncate font-semibold">
-                                {statusLabels[booking.status]}
-                              </span>
-                              <span className="mt-1 block max-w-full truncate leading-4">
-                                {booking.title}
-                              </span>
-                            </span>
-                          ) : cleanupBooking ? (
-                            <span className="relative z-10 block max-w-full overflow-hidden">
-                              <span className="block truncate font-semibold">
-                                Čeká na úklid
-                              </span>
-                              <span className="mt-1 block max-w-full truncate leading-4">
-                                Po akci {cleanupBooking.title}
-                              </span>
-                            </span>
-                          ) : !isOpen ? (
-                            <span className="block font-medium">Zavřeno</span>
-                          ) : isDeparture ? (
-                            <span className="relative z-10 block max-w-full overflow-hidden">
-                              <span className="block truncate font-semibold">
-                                Odchod ze sálu
-                              </span>
-                              <span className="mt-1 block truncate leading-4">
-                                30 min před zavíračkou
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-2 py-1 font-medium text-[#246043]">
-                              <Check size={13} />
-                              Volno
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ) : viewMode === "week" ? (
-            <div className="overflow-hidden rounded-lg border border-[#ded6c9] bg-white">
-              <div
-                data-calendar-view="week"
-                className="max-h-[min(760px,calc(100svh-112px))] max-w-full overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-gutter:stable]"
-                ref={calendarScrollerRef}
-              >
-                <div className="min-w-full">
-                  <div className="sticky top-0 z-20 grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-[#ded6c9] bg-[#f6f1e8] shadow-sm xl:grid-cols-[64px_repeat(7,minmax(0,1fr))]">
-                    <div className="sticky left-0 z-30 bg-[#f6f1e8] px-2 py-2.5 text-xs font-semibold uppercase text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.08)]">
-                      Cas
-                    </div>
-                    {days.map((day) => {
-                      const key = formatDateKey(day);
-                      const isSelected = key === selectedDate;
-                      return (
-                        <button
-                          className={`min-w-0 border-l px-1.5 py-2.5 text-left transition xl:px-2 ${
-                            isSelected
-                              ? "selected-period-head relative z-20 border-[#0b4d76] bg-[#0b4d76] text-white ring-1 ring-white/50 shadow-[0_14px_26px_rgba(0,55,88,0.30),inset_0_-5px_0_#8fd7ac]"
-                              : "border-[#ded6c9] hover:bg-[#fbf8f1]"
-                          }`}
-                          key={key}
-                          onClick={() => {
-                            setSelectedDate(key);
-                            updateRequest("date", key);
-                          }}
-                          type="button"
-                        >
-                          <span className="block truncate text-xs font-semibold capitalize xl:text-sm">
-                            {dayFormatter.format(day)}
-                          </span>
-                          <span
-                            className={`mt-1 block truncate text-[11px] xl:text-xs ${
-                              isSelected ? "text-[#d7e6ed]" : "text-[#66706f]"
-                            }`}
-                          >
-                            {formatEventCount(bookingDayCounts.get(key) ?? 0)}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {timeSlots.map((time) => (
-                    <div
-                      className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-[#ece3d5] last:border-b-0 xl:grid-cols-[64px_repeat(7,minmax(0,1fr))]"
-                      key={time}
-                    >
-                      <div className="sticky left-0 z-10 bg-[#fcfaf6] px-1.5 py-2 text-[11px] font-medium text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.06)] xl:px-2 xl:text-xs">
-                        {time}
-                      </div>
-                      {days.map((day) => {
-                        const dateKey = formatDateKey(day);
-                        const isSelected = dateKey === selectedDate;
-                        const { booking, cleanupBooking, isDeparture, isOpen } =
-                          getSlotState(dateKey, time);
-                        const slotFill = getSlotFill(
-                          time,
-                          booking,
-                          cleanupBooking,
-                          activeSlotMinutes,
-                        );
-                        const currentTimeOffset =
-                          dateKey === currentDateKey && currentTimeMinutes !== null
-                            ? getCurrentTimeOffset(
-                                day,
-                                time,
-                                currentTimeMinutes,
-                                activeSlotMinutes,
-                              )
-                            : null;
-                        return (
-                          <button
-                            className={`relative min-h-12 border-l border-[#ece3d5] px-1.5 py-1.5 text-left text-[11px] transition xl:px-2 xl:text-xs ${
-                              booking
-                                    ? `${getBookingCellStyle(booking, slotFill, isSelected)} ${
-                                        isSelected
-                                          ? `${
-                                              getSelectedBookingPeriodClass(booking)
-                                            } relative z-10 overflow-hidden ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(11,77,118,0.14)]`
-                                          : ""
-                                      }`
-                                    : cleanupBooking
-                                      ? `${cleanupCellStyle} ${
-                                          isSelected
-                                            ? "selected-period-booked relative z-10 overflow-hidden ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(106,75,0,0.12)]"
-                                            : ""
-                                        }`
-                                      : !isOpen
-                                        ? isSelected
-                                          ? "selected-period-closed relative z-10 bg-[#e3edf3] text-[#6c747b] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.75),inset_0_-3px_0_rgba(11,77,118,0.14)]"
-                                          : "bg-[#f3f0ea] text-[#9a9288]"
-                                      : isDeparture
-                                        ? isSelected
-                                          ? "relative z-10 bg-[#fff6d8] text-[#6a4b00] ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.14),inset_0_3px_0_rgba(255,255,255,0.62)]"
-                                          : "bg-[#fff6d8] text-[#6a4b00]"
-                                  : isSelected
-                                    ? "selected-period-cell relative z-10 bg-[#eef7fb] text-[#17475f] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.78),inset_0_-3px_0_rgba(11,77,118,0.14)] hover:bg-[#e5f2f8]"
-                                    : "bg-white text-[#51615f] hover:bg-[#eef8f2]"
-                            }`}
-                            key={`${dateKey}-${time}`}
-                            onClick={() => {
-                              setSelectedDate(dateKey);
-                              if (isOpen && !isDeparture && !booking && !cleanupBooking) {
-                                updateRequest("date", dateKey);
-                                updateRequest("start", time);
-                              }
-                            }}
-                            title={
-                              booking
-                                ? `${booking.title} (${booking.start}-${booking.end})`
-                                : cleanupBooking
-                                  ? `Čeká na úklid po akci ${cleanupBooking.title}`
-                                  : isDeparture
-                                    ? "Odchod ze sálu před zavíračkou"
-                                : undefined
-                            }
-                            data-current-slot={
-                              currentTimeOffset !== null ? "true" : undefined
-                            }
-                            type="button"
-                          >
-                            {slotFill ? (
-                              <span
-                                aria-hidden="true"
-                                className={`pointer-events-none absolute bottom-0 top-0 z-0 ${slotFill.className}`}
-                                style={{
-                                  left: `${slotFill.left}%`,
-                                  width: `${slotFill.width}%`,
-                                }}
-                              />
-                            ) : null}
-                            {currentTimeOffset !== null ? (
-                              <span
-                                aria-hidden="true"
-                                className="current-time-marker pointer-events-none absolute left-0 right-0 flex items-center"
-                                style={{ top: `${currentTimeOffset}%` }}
-                              >
-                                <span className="time-marker-dot h-2 w-2 -translate-x-1 rounded-full bg-[#0b4d76] shadow-[0_0_0_3px_rgba(143,215,172,0.55)]" />
-                                <span className="time-marker-line h-[2px] flex-1 bg-[#0b4d76] shadow-[0_1px_4px_rgba(0,55,88,0.35)]" />
-                              </span>
-                            ) : null}
-                            {booking ? (
-                              <span className="relative z-10 block max-w-full overflow-hidden">
-                                <span className="block truncate font-semibold">
-                                  {statusLabels[booking.status]}
-                                </span>
-                                <span className="mt-1 block max-w-full truncate leading-4">
-                                  {booking.title}
-                                </span>
-                              </span>
-                            ) : cleanupBooking ? (
-                              <span className="relative z-10 block max-w-full overflow-hidden">
-                                <span className="block truncate font-semibold">
-                                  Čeká na úklid
-                                </span>
-                                <span className="mt-1 block max-w-full truncate leading-4">
-                                  Po akci {cleanupBooking.title}
-                                </span>
-                              </span>
-                            ) : !isOpen ? (
-                              <span className="block font-medium">Zavřeno</span>
-                            ) : isDeparture ? (
-                              <span className="relative z-10 block max-w-full overflow-hidden">
-                                <span className="block truncate font-semibold">
-                                  Odchod
-                                </span>
-                                <span className="mt-1 block max-w-full truncate leading-4">
-                                  ze sálu
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="relative z-10 inline-flex items-center gap-1.5 rounded-full bg-[#edf7ef] px-2 py-1 font-medium text-[#246043]">
-                                <Check size={13} />
-                                Volno
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-[#ded6c9] bg-white">
-              <div
-                data-calendar-view="month"
-                className="max-h-[min(760px,calc(100svh-112px))] max-w-full overflow-auto overscroll-contain"
-                ref={calendarScrollerRef}
-              >
-                <div className="min-w-[1720px]">
-                  <div
-                    className="sticky top-0 z-[80] grid border-b border-[#ded6c9] bg-[#f6f1e8] shadow-sm"
-                    style={{
-                      gridTemplateColumns: `128px repeat(${timeSlots.length}, minmax(86px, 1fr))`,
-                    }}
-                  >
-                    <div className="sticky left-0 z-[90] bg-[#f6f1e8] px-3 py-3 text-xs font-semibold uppercase text-[#66706f] shadow-[4px_0_10px_rgba(19,41,53,0.08)]">
-                      Den
-                    </div>
-                    {timeSlots.map((time) => (
-                      <div
-                        className="bg-[#f6f1e8] px-2 py-3 text-center text-xs font-semibold text-[#66706f] shadow-[inset_1px_0_0_#ded6c9]"
-                        key={time}
-                      >
-                        {time}
-                      </div>
-                    ))}
-                  </div>
-
-                  {monthDays.map((day) => {
-                    const dateKey = formatDateKey(day);
-                    const isSelected = dateKey === selectedDate;
-                    const bookingCount = bookingDayCounts.get(dateKey) ?? 0;
-
-                    return (
-                      <div
-                        className="grid min-h-16 border-b border-[#ece3d5] last:border-b-0"
-                        key={dateKey}
-                        style={{
-                          gridTemplateColumns: `128px repeat(${timeSlots.length}, minmax(86px, 1fr))`,
-                        }}
-                      >
-                        <button
-                          className={`sticky left-0 z-40 min-h-16 border-r border-[#ece3d5] px-3 py-2 text-left transition ${
-                            isSelected
-                              ? "selected-period-head z-50 border-r-[#0b4d76] bg-[#0b4d76] text-white ring-1 ring-white/50 shadow-[0_14px_26px_rgba(0,55,88,0.32),inset_-5px_0_0_#8fd7ac]"
-                              : "bg-[#fcfaf6] text-[#132935] shadow-[4px_0_10px_rgba(19,41,53,0.06)] hover:bg-[#fbf8f1]"
-                          }`}
-                          onClick={() => {
-                            setSelectedDate(dateKey);
-                            updateRequest("date", dateKey);
-                          }}
-                          type="button"
-                        >
-                          <span className="block text-sm font-semibold capitalize">
-                            {dayFormatter.format(day)}
-                          </span>
-                          <span
-                            className={`mt-1 block text-xs ${
-                              isSelected ? "text-[#d7e6ed]" : "text-[#66706f]"
-                            }`}
-                          >
-                            {formatEventCount(bookingCount)}
-                          </span>
-                        </button>
-
-                        {timeSlots.map((time) => {
-                          const { booking, cleanupBooking, isDeparture, isOpen } =
-                            getSlotState(dateKey, time);
-                          const slotFill = getSlotFill(
-                            time,
-                            booking,
-                            cleanupBooking,
-                            activeSlotMinutes,
-                          );
-                          const currentTimeOffset =
-                            dateKey === currentDateKey &&
-                            currentTimeMinutes !== null
-                              ? getCurrentTimeOffset(
-                                  day,
-                                  time,
-                                  currentTimeMinutes,
-                                  activeSlotMinutes,
-                                )
-                              : null;
-
-                          return (
-                            <button
-                              className={`relative min-h-16 border-l border-[#ece3d5] px-1.5 py-3 text-left text-[11px] transition ${
-                                booking
-                                      ? `${getBookingCellStyle(booking, slotFill, isSelected)} ${
-                                          isSelected
-                                            ? `${
-                                                getSelectedBookingPeriodClass(booking)
-                                              } relative z-10 overflow-hidden ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(11,77,118,0.14)]`
-                                            : ""
-                                        }`
-                                      : cleanupBooking
-                                        ? `${cleanupCellStyle} ${
-                                            isSelected
-                                              ? "selected-period-booked relative z-10 overflow-hidden ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.18),inset_0_3px_0_rgba(255,255,255,0.60),inset_0_-3px_0_rgba(106,75,0,0.12)]"
-                                              : ""
-                                          }`
-                                        : !isOpen
-                                          ? isSelected
-                                            ? "selected-period-closed relative z-10 bg-[#e3edf3] text-[#6c747b] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.75),inset_0_-3px_0_rgba(11,77,118,0.14)]"
-                                            : "bg-[#f3f0ea] text-[#9a9288]"
-                                        : isDeparture
-                                          ? isSelected
-                                            ? "relative z-10 bg-[#fff6d8] text-[#6a4b00] ring-1 ring-[#e1b554] shadow-[0_9px_18px_rgba(106,75,0,0.14),inset_0_3px_0_rgba(255,255,255,0.62)]"
-                                            : "bg-[#fff6d8] text-[#6a4b00]"
-                                    : isSelected
-                                      ? "selected-period-cell relative z-10 bg-[#eef7fb] text-[#17475f] ring-1 ring-[#b9d9e8] shadow-[0_9px_18px_rgba(0,55,88,0.18),inset_0_3px_0_rgba(255,255,255,0.78),inset_0_-3px_0_rgba(11,77,118,0.14)] hover:bg-[#e5f2f8]"
-                                      : "bg-white text-[#51615f] hover:bg-[#eef8f2]"
-                              }`}
-                              key={`${dateKey}-${time}`}
-                              onClick={() => {
-                                setSelectedDate(dateKey);
-                                if (isOpen && !isDeparture && !booking && !cleanupBooking) {
-                                  updateRequest("date", dateKey);
-                                  updateRequest("start", time);
-                                }
-                              }}
-                              title={
-                                booking
-                                  ? `${booking.title} (${booking.start}-${booking.end})`
-                                  : cleanupBooking
-                                    ? `Čeká na úklid po akci ${cleanupBooking.title}`
-                                    : isDeparture
-                                      ? "Odchod ze sálu před zavíračkou"
-                                  : undefined
-                              }
-                              data-current-slot={
-                                currentTimeOffset !== null ? "true" : undefined
-                              }
-                              type="button"
-                            >
-                              {slotFill ? (
-                                <span
-                                  aria-hidden="true"
-                                  className={`pointer-events-none absolute bottom-0 top-0 z-0 ${slotFill.className}`}
-                                  style={{
-                                    left: `${slotFill.left}%`,
-                                    width: `${slotFill.width}%`,
-                                  }}
-                                />
-                              ) : null}
-                              {currentTimeOffset !== null ? (
-                                <span
-                                  aria-hidden="true"
-                                  className="current-time-marker pointer-events-none absolute bottom-0 top-0 flex flex-col items-center"
-                                  style={{ left: `${currentTimeOffset}%` }}
-                                >
-                                  <span className="time-marker-dot h-2 w-2 -translate-y-1 rounded-full bg-[#0b4d76] shadow-[0_0_0_3px_rgba(143,215,172,0.55)]" />
-                                  <span className="time-marker-line w-[2px] flex-1 bg-[#0b4d76] shadow-[1px_0_4px_rgba(0,55,88,0.35)]" />
-                                </span>
-                              ) : null}
-                              {booking ? (
-                                <span className="relative z-10 block max-w-full overflow-hidden">
-                                  <span className="block truncate font-semibold">
-                                    {booking.title}
-                                  </span>
-                                  <span className="mt-0.5 block truncate">
-                                    {booking.start}-{booking.end}
-                                  </span>
-                                </span>
-                              ) : cleanupBooking ? (
-                                <span className="relative z-10 block max-w-full overflow-hidden">
-                                  <span className="block truncate font-semibold">
-                                    Čeká na úklid
-                                  </span>
-                                  <span className="mt-0.5 block truncate">
-                                    Po akci
-                                  </span>
-                                </span>
-                              ) : !isOpen ? (
-                                <span className="block truncate font-medium">
-                                  Zavřeno
-                                </span>
-                              ) : isDeparture ? (
-                                <span className="relative z-10 block max-w-full overflow-hidden">
-                                  <span className="block truncate font-semibold">
-                                    Odchod
-                                  </span>
-                                  <span className="mt-0.5 block truncate">
-                                    ze sálu
-                                  </span>
-                                </span>
-                              ) : (
-                                <span className="relative z-10 block truncate font-medium text-[#246043]">
-                                  Volno
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-          </div>
-          ) : null}
-        </div>
-
-        <aside className={`flex flex-col gap-5 lg:max-h-[min(760px,calc(100svh-112px))] lg:overflow-y-auto lg:pr-1 ${
-          isExpandedBookingLayout ? "xl:grid xl:max-h-none xl:grid-cols-[minmax(360px,1fr)_minmax(220px,260px)] xl:items-start xl:overflow-visible xl:pr-0 2xl:grid-cols-[minmax(420px,1fr)_minmax(260px,320px)]" : ""
-        }`}>
-          <div className={`rounded-lg border border-[#ded6c9] bg-white p-5 ${
-            isExpandedBookingLayout ? "lg:order-2" : "lg:order-1"
-          }`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-[#66706f]">
-                  Vybraný den
-                </p>
-                <h2 className="mt-1 text-2xl font-semibold capitalize">
-                  {longDateFormatter.format(new Date(`${selectedDate}T12:00:00`))}
-                </h2>
-              </div>
-              <Image
-                alt=""
-                className="h-auto w-12"
-                height={62}
-                src="/brand/Koskovi_logo_znak.svg"
-                width={71}
-              />
-            </div>
-
-            {occupancyNotice ? (
-              <div className="mt-5 rounded-md border border-[#c7dce7] bg-[#eef7fb] p-3 text-sm text-[#17475f] shadow-[0_8px_18px_rgba(0,55,88,0.08)]">
-                <p className="flex items-center gap-2 font-semibold">
-                  <Clock3 size={16} />
-                  {occupancyNotice.title}
-                </p>
-                <p className="mt-1 text-xs text-[#4f6a76]">
-                  {occupancyNotice.description}
-                </p>
-              </div>
-            ) : null}
-
-            <div className="mt-5 space-y-2">
-              {selectedDaySegments.map((segment) => (
-                <div
-                  className={`grid grid-cols-[84px_minmax(0,1fr)] items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                    segment.kind === "free"
-                      ? "border-[#d8eadf] bg-[#f3fbf5] text-[#246043]"
-                      : segment.kind === "closed"
-                        ? "border-[#e7dfd4] bg-[#f3f0ea] text-[#66706f]"
-                        : getSegmentStyle(segment)
-                  }`}
-                  key={`${segment.kind}-${segment.start}-${segment.end}-${segment.title}`}
-                >
-                  <span className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap font-semibold text-xs sm:text-sm">
-                    <Clock3 size={14} />
-                    {segment.start}-{segment.end}
-                  </span>
-                  <div className="min-w-0">
-                    <span className="block truncate font-semibold">
-                      {segment.title}
-                    </span>
-                    {segment.description ? (
-                      <span className="mt-0.5 block truncate text-xs opacity-80">
-                        {segment.description}
-                      </span>
-                    ) : null}
-                    {canManageBookings &&
-                    segment.kind === "booked" ? (
-                      <div className="mt-1.5">
-                        {segment.trainer ? (
-                          <p className="truncate text-xs opacity-80">
-                            Trenér: {segment.trainer}
-                          </p>
-                        ) : null}
-                        <button
-                          className="mt-1.5 inline-flex min-h-7 items-center justify-center gap-1 rounded-md border border-current/25 px-2 py-1 text-xs font-semibold transition hover:bg-white/50"
-                          onClick={() =>
-                            setExpandedDayBookingId((current) =>
-                              current === segment.bookingId
-                                ? ""
-                                : segment.bookingId,
-                            )
-                          }
-                          type="button"
-                        >
-                          {expandedDayBookingId === segment.bookingId ? (
-                            <ChevronUp size={13} />
-                          ) : (
-                            <ChevronDown size={13} />
-                          )}
-                          {expandedDayBookingId === segment.bookingId
-                            ? "Skrýt úpravy"
-                            : "Upravit"}
-                        </button>
-                      </div>
-                    ) : null}
-                    {segment.kind === "cleanup" && segment.cleanupBookingId
-                      ? (() => {
-                          const cleanupSourceBooking = calendarBookings.find(
-                            (booking) => booking.id === segment.cleanupBookingId,
-                          );
-                          const canConfirmCleanup =
-                            cleanupSourceBooking &&
-                            hasBookingEndedForClient(
-                              cleanupSourceBooking,
-                              currentDateKey,
-                              currentTimeMinutes,
-                            );
-                          const isCleaning =
-                            cleaningBookingId === segment.cleanupBookingId;
-
-                          return (
-                            <button
-                              className="mt-2 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md bg-[#003758] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:opacity-70"
-                              disabled={isCleaning || !canConfirmCleanup}
-                              onClick={() =>
-                                segment.cleanupBookingId
-                                  ? handleMarkCleaned(segment.cleanupBookingId)
-                                  : undefined
-                              }
-                              title={
-                                canConfirmCleanup
-                                  ? undefined
-                                  : "Úklid lze potvrdit až po skončení akce."
-                              }
-                              type="button"
-                            >
-                              <Check size={13} />
-                              {isCleaning
-                                ? "Potvrzuji..."
-                                : canConfirmCleanup
-                                  ? "Uklidil jsem sál"
-                                  : "Až po skončení akce"}
-                            </button>
-                          );
-                        })()
-                      : null}
-                  </div>
-                  {canManageBookings &&
-                  segment.kind === "booked" &&
-                  expandedDayBookingId === segment.bookingId ? (
-                    <div className="col-span-2 grid min-w-0 gap-2 border-t border-current/20 pt-2">
-                      <label className="block min-w-0 text-xs font-semibold">
-                        Trenér
-                        <select
-                          className="field-input mt-1 min-h-8 w-full min-w-0 py-1 text-xs"
-                          disabled={
-                            savingTrainerBookingId === segment.bookingId
-                          }
-                          onChange={(event) =>
-                            handleUpdateBookingTrainer(
-                              segment.bookingId,
-                              event.target.value,
-                            )
-                          }
-                          value={segment.trainer ?? ""}
-                        >
-                          <option value="">Bez trenéra</option>
-                          {availableTrainers.map((trainer) => (
-                            <option key={trainer} value={trainer}>
-                              {trainer}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block min-w-0 text-xs font-semibold">
-                        Název aktivity
-                        <input
-                          className="field-input mt-1 min-h-8 w-full min-w-0 py-1 text-xs"
-                          onChange={(event) =>
-                            setBookingTitleDrafts((current) => ({
-                              ...current,
-                              [segment.bookingId]: event.target.value,
-                            }))
-                          }
-                          value={
-                            bookingTitleDrafts[segment.bookingId] ??
-                            segment.title
-                          }
-                        />
-                      </label>
-                      <div className="grid min-w-0 grid-cols-2 gap-2">
-                        <label className="block min-w-0 text-xs font-semibold">
-                          Od
-                          <input
-                            className="field-input mt-1 min-h-8 w-full min-w-0 py-1 text-xs"
-                            onChange={(event) =>
-                              setBookingTimeDrafts((current) => ({
-                                ...current,
-                                [segment.bookingId]: {
-                                  end:
-                                    current[segment.bookingId]?.end ??
-                                    segment.end,
-                                  start: event.target.value,
-                                },
-                              }))
-                            }
-                            type="time"
-                            value={
-                              bookingTimeDrafts[segment.bookingId]?.start ??
-                              segment.start
-                            }
-                          />
-                        </label>
-                        <label className="block min-w-0 text-xs font-semibold">
-                          Do
-                          <input
-                            className="field-input mt-1 min-h-8 w-full min-w-0 py-1 text-xs"
-                            onChange={(event) =>
-                              setBookingTimeDrafts((current) => ({
-                                ...current,
-                                [segment.bookingId]: {
-                                  end: event.target.value,
-                                  start:
-                                    current[segment.bookingId]?.start ??
-                                    segment.start,
-                                },
-                              }))
-                            }
-                            type="time"
-                            value={
-                              bookingTimeDrafts[segment.bookingId]?.end ??
-                              segment.end
-                            }
-                          />
-                        </label>
-                      </div>
-                      <button
-                        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#c9dce7] bg-[#eef6fa] px-2.5 py-1.5 text-xs font-semibold text-[#003758] transition hover:bg-[#dceef7] disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={
-                          savingTimeBookingId === segment.bookingId ||
-                          ((bookingTimeDrafts[segment.bookingId]?.start ??
-                            segment.start) === segment.start &&
-                            (bookingTimeDrafts[segment.bookingId]?.end ??
-                              segment.end) === segment.end)
-                        }
-                        onClick={() =>
-                          handleUpdateBookingTime(
-                            segment.bookingId,
-                            segment.start,
-                            segment.end,
-                          )
-                        }
-                        type="button"
-                      >
-                        <Save size={13} />
-                        {savingTimeBookingId === segment.bookingId
-                          ? "Ukládám..."
-                          : "Uložit čas"}
-                      </button>
-                      <button
-                        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#c9dce7] bg-[#eef6fa] px-2.5 py-1.5 text-xs font-semibold text-[#003758] transition hover:bg-[#dceef7] disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={
-                          savingTitleBookingId === segment.bookingId ||
-                          (bookingTitleDrafts[segment.bookingId] ??
-                            segment.title).trim() === segment.title
-                        }
-                        onClick={() =>
-                          handleUpdateBookingTitle(
-                            segment.bookingId,
-                            segment.title,
-                          )
-                        }
-                        type="button"
-                      >
-                        <Save size={13} />
-                        {savingTitleBookingId === segment.bookingId
-                          ? "Ukládám..."
-                          : "Uložit změnu aktivity"}
-                      </button>
-                      <button
-                        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#d9a093] bg-[#fff0eb] px-2.5 py-1.5 text-center text-xs font-semibold text-[#8c2f20] transition hover:bg-[#ffe3da] disabled:cursor-not-allowed disabled:opacity-70"
-                        disabled={deletingBookingId === segment.bookingId}
-                        onClick={() =>
-                          handleDeleteBooking(segment.bookingId, segment.title)
-                        }
-                        type="button"
-                      >
-                        <Trash2 className="shrink-0" size={13} />
-                        {deletingBookingId === segment.bookingId
-                          ? "Mazu..."
-                          : isRecurringBookingId(segment.bookingId)
-                            ? "Zrušit tento termín"
-                            : "Smazat akci"}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-
-            {activeAppMode === "hall" &&
-            !isAuthenticated &&
-            !isBookingFormOpen ? (
-              <button
-                className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#003758] px-4 text-sm font-semibold text-white shadow-[0_10px_20px_rgba(0,55,88,0.16)] transition hover:bg-[#0b4d76]"
-                onClick={scrollToBookingForm}
-                type="button"
-              >
-                <CalendarPlus size={17} />
-                Přihlásit se a přidat akci
-              </button>
-            ) : null}
-
-            {cleanupMessage ? (
-              <p className="mt-3 rounded-md border border-[#dfc36b] bg-[#fff6d8] px-3 py-2 text-xs font-semibold text-[#5e4300]">
-              {cleanupMessage}
-            </p>
-          ) : null}
-
-            {deleteMessage ? (
-              <p className="mt-3 rounded-md border border-[#edd3cc] bg-[#fff0eb] px-3 py-2 text-xs font-semibold text-[#8c2f20]">
-                {deleteMessage}
-              </p>
-            ) : null}
-
-            {trainerMessage ? (
-              <p className="mt-3 rounded-md border border-[#cbe3d1] bg-[#f1faf2] px-3 py-2 text-xs font-semibold text-[#245d3f]">
-                {trainerMessage}
-              </p>
-            ) : null}
-
-            {timeMessage ? (
-              <p className="mt-3 rounded-md border border-[#dfc36b] bg-[#fff6d8] px-3 py-2 text-xs font-semibold text-[#5e4300]">
-                {timeMessage}
-              </p>
-            ) : null}
-
-            {titleMessage ? (
-              <p className="mt-3 rounded-md border border-[#dfc36b] bg-[#fff6d8] px-3 py-2 text-xs font-semibold text-[#5e4300]">
-                {titleMessage}
-              </p>
-            ) : null}
-
-            {false ? (
-              <div className="hidden">
-              {selectedBookings.length > 0 ? (
-                selectedBookings.map((booking) => (
-                  <div
-                    className="rounded-md border border-[#e7dfd4] bg-[#fcfaf6] p-3"
-                    key={booking.id}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-semibold">{booking.title}</p>
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${
-                          statusStyles[booking.status]
-                        }`}
-                      >
-                        {statusLabels[booking.status]}
-                      </span>
-                    </div>
-                    <p className="mt-2 flex items-center gap-2 text-sm text-[#66706f]">
-                      <Clock3 size={15} />
-                      {booking.start}-{booking.end}
-                    </p>
-                    <p className="mt-1 flex items-center gap-2 text-sm text-[#66706f]">
-                      <User size={15} />
-                      {booking.organizer}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-md border border-[#d8eadf] bg-[#f3fbf5] p-4 text-sm text-[#246043]">
-                  Celý den je zatím volný.
-                </div>
-              )}
-              </div>
-            ) : null}
-          </div>
-
-          {shouldShowBookingPanel ? (
-          <div ref={bookingFormPanelRef} className={`booking-panel-transition scroll-mt-4 rounded-lg border border-[#ded6c9] bg-white p-5 ${
-            isExpandedBookingLayout ? "lg:order-1" : "lg:order-2"
-          }`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold">
-                  {activeAppMode === "lessons"
-                    ? "Rezervace individuální lekce"
-                    : "Rezervace sálu"}
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-[#66706f]">
-                  Vkládání rezervací je dostupné jen po přihlášení oprávněného uživatele.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <LockKeyhole className="text-[#003758]" size={21} />
-                {activeAppMode === "hall" ? (
-                  <button
-                    aria-label="Zavřít rezervační formulář"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#ded6c9] text-[#003758] transition hover:bg-[#f6f1e8]"
-                    onClick={closeBookingForm}
-                    title="Zavřít rezervační formulář"
-                    type="button"
-                  >
-                    <X size={17} />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            {isCheckingSession ? (
-              <div className="mt-5 rounded-md border border-[#e7dfd4] bg-[#fcfaf6] p-3 text-sm text-[#66706f]">
-                Kontroluji přihlášení...
-              </div>
-            ) : canManageBookings ? (
-              <form className="mt-5" onSubmit={handleBookingSubmit}>
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-[#d8eadf] bg-[#f3fbf5] p-3 text-sm text-[#245d3f]">
-                  <span className="inline-flex items-center gap-2">
-                    <ShieldCheck size={17} />
-                    Jsi přihlášen jako: {sessionUsername ?? "uživatel"}
-                  </span>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-md border border-[#c9ded0] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#245d3f] transition hover:bg-[#eef8f2]"
-                    onClick={handleLogout}
-                    type="button"
-                  >
-                    <LogOut size={14} />
-                    Odhlásit
-                  </button>
-                </div>
-
-                <div className="grid gap-3">
-                  {activeAppMode === "lessons" ? (
-                    <Field icon={<User size={16} />} label="Taneční pár">
-                      <input
-                        className="field-input"
-                        onChange={(event) =>
-                          updateRequest("name", event.target.value)
-                        }
-                        placeholder="Jména tanečního páru"
-                        required
-                        ref={bookingNameInputRef}
-                        value={request.name}
-                      />
-                    </Field>
-                  ) : (
-                    <>
-                      <Field icon={<User size={16} />} label="Název akce">
-                        <select
-                          className="field-input"
-                          onChange={(event) => {
-                            const choice = event.target.value;
-
-                            setSubmitMessage("");
-                            setHallTitleChoice(choice);
-
-                            if (choice === customHallTitle) {
-                              window.setTimeout(() => {
-                                bookingNameInputRef.current?.focus();
-                              }, 0);
-                            }
-                          }}
-                          ref={bookingTitleSelectRef}
-                          value={hallTitleChoice}
-                        >
-                          {hallTitlePresets.map((title) => (
-                            <option key={title} value={title}>
-                              {title}
-                            </option>
-                          ))}
-                          <option value={customHallTitle}>Vlastní</option>
-                        </select>
-                      </Field>
-                      {hallTitleChoice === customHallTitle ? (
-                        <label className="field-label">
-                          Vlastní název akce
-                          <input
-                            className="field-input mt-1"
-                            onChange={(event) =>
-                              updateRequest("name", event.target.value)
-                            }
-                            placeholder="Např. workshop, kurz nebo jméno pořadatele"
-                            required
-                            ref={bookingNameInputRef}
-                            value={request.name}
-                          />
-                        </label>
-                      ) : null}
-                    </>
-                  )}
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="field-label col-span-2">
-                      Datum
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) =>
-                          updateRequest("date", event.target.value)
-                        }
-                        required
-                        type="date"
-                        value={request.date}
-                      />
-                    </label>
-                    <label className="field-label">
-                      Od
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) =>
-                          updateRequest("start", event.target.value)
-                        }
-                        required
-                        type="time"
-                        value={request.start}
-                      />
-                    </label>
-                    <label className="field-label">
-                      Do
-                      <input
-                        className="field-input mt-1"
-                        onChange={(event) =>
-                          updateRequest("end", event.target.value)
-                        }
-                        required
-                        type="time"
-                        value={request.end}
-                      />
-                    </label>
-                    {activeAppMode === "hall" ? (
-                      <button
-                        className="col-span-2 inline-flex min-h-10 items-center justify-center rounded-md border border-[#ded6c9] bg-[#fcfaf6] px-3 py-2 text-center text-sm font-semibold leading-5 text-[#003758] transition hover:bg-[#f6f1e8]"
-                        onClick={setWholeDayBooking}
-                        type="button"
-                      >
-                        Zabookovat celý den podle otevírací doby
-                      </button>
-                    ) : null}
-                    {activeAppMode === "hall" ? (
-                      <label className="field-label col-span-2">
-                        Typ
-                        <select
-                          className="field-input mt-1"
-                          onChange={(event) => {
-                            const eventType = event.target
-                              .value as BookingRequest["eventType"];
-                            setSubmitMessage("");
-                            setRequest((current) => ({
-                              ...current,
-                              eventType,
-                              trainer:
-                                eventType === "seminar" ? current.trainer : "",
-                            }));
-                          }}
-                          value={request.eventType}
-                        >
-                          <option value="soustredeni">Soustředění</option>
-                          <option value="seminar">Seminář</option>
-                          <option value="obsazeno">Obsazeno</option>
-                        </select>
-                      </label>
-                    ) : (
-                      <div className="col-span-2 rounded-md border border-[#ded6c9] bg-[#fcfaf6] px-3 py-2 text-sm font-semibold text-[#43504f]">
-                        Individuální lekce · sloty po 45 minutách
-                      </div>
-                    )}
-                    {request.eventType === "seminar" ||
-                    activeAppMode === "lessons" ? (
-                      <label className="field-label col-span-2">
-                        Trenér
-                        <select
-                          className="field-input mt-1"
-                          onChange={(event) => {
-                            updateRequest("trainer", event.target.value);
-                            if (activeAppMode === "lessons") {
-                              setSelectedLessonTrainer(event.target.value);
-                            }
-                          }}
-                          required={activeAppMode === "lessons"}
-                          value={request.trainer}
-                        >
-                          <option value="">Bez vybraného trenéra</option>
-                          {availableTrainers.map((trainer) => (
-                            <option key={trainer} value={trainer}>
-                              {trainer}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                  </div>
-
-                  <label className="field-label">
-                    Poznámka
-                    <textarea
-                      className="field-input mt-1 min-h-24 resize-none"
-                      onChange={(event) =>
-                        updateRequest("note", event.target.value)
-                      }
-                      placeholder="Počet lidí, příprava sálu, technika..."
-                      value={request.note}
-                    />
-                  </label>
-
-                  {activeAppMode === "hall" ? (
-                  <label className="flex items-start gap-3 rounded-md border border-[#ded6c9] bg-[#fcfaf6] p-3 text-sm font-semibold text-[#43504f]">
-                    <input
-                      checked={Boolean(request.cleanupRequired)}
-                      className="mt-1 h-4 w-4 accent-[#003758]"
-                      onChange={(event) =>
-                        updateCleanupRequired(event.target.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span>
-                      Sál po akci bude potřeba uklidit
-                      <span className="mt-1 block text-xs font-medium text-[#66706f]">
-                        Po konci akce se místo volna ukáže čekání na úklid,
-                        dokud ho někdo nepotvrdí.
-                      </span>
-                    </span>
-                  </label>
-                  ) : null}
-                </div>
-
-                {submitMessage ? (
-                  <div className="mt-4 flex items-start gap-3 rounded-md border border-[#cbe3d1] bg-[#f1faf2] p-3 text-sm text-[#245d3f]">
-                    <ShieldCheck size={18} />
-                    {submitMessage}
-                  </div>
-                ) : null}
-
-                <button
-                  className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:opacity-70"
-                  disabled={isSubmitting}
-                  type="submit"
-                >
-                  <Send size={17} />
-                  {isSubmitting ? "Ukládám..." : "Uložit rezervaci"}
-                </button>
-              </form>
-            ) : (
-              <form className="mt-5 space-y-3" onSubmit={handleLogin}>
-                <label className="field-label">
-                  Jméno uživatele
-                  <input
-                    className="field-input mt-1"
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder="Jméno uživatele"
-                    ref={loginUsernameInputRef}
-                    required
-                    value={username}
-                  />
-                </label>
-                <label className="field-label">
-                  Heslo
-                  <input
-                    className="field-input mt-1"
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Zadej heslo"
-                    required
-                    type="password"
-                    value={password}
-                  />
-                </label>
-
-                {authError ? (
-                  <div className="flex items-start gap-2 rounded-md border border-[#edd3cc] bg-[#fff0eb] p-3 text-sm text-[#8c2f20]">
-                    <AlertCircle size={17} />
-                    {authError}
-                  </div>
-                ) : null}
-
-                <button
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76]"
-                  type="submit"
-                >
-                  <LogIn size={17} />
-                  Přihlásit
-                </button>
-              </form>
-            )}
-          </div>
-          ) : null}
-        </aside>
-    </SiteShell>
-  );
-}
-
-function findOverlappingBooking(
-  bookingList: Booking[],
-  date: string,
-  time: string,
-  slotMinutes: number,
-) {
-  const slotStart = timeToMinutes(time);
-  const slotEnd = slotStart + slotMinutes;
-
-  return bookingList.find((booking) => {
-    if (booking.date !== date) {
-      return false;
-    }
-
-    return timeToMinutes(booking.start) < slotEnd && timeToMinutes(booking.end) > slotStart;
-  });
-}
-
-function parsePastedLessonTable(
-  pastedValue: string,
-  trainers: string[],
-): ImportedLesson[] {
-  const rows = pastedValue
-    .split(/\r?\n/)
-    .map((row) => row.trim())
-    .filter(Boolean)
-    .map((row) => row.split(/\t|;|,/).map((cell) => cell.trim()));
-
-  if (rows.length === 0) {
-    return [];
-  }
-
-  const firstRow = rows[0].map(normalizeTableHeader);
-  const hasHeader = firstRow.some((cell) =>
-    ["datum", "den", "cas", "od", "trener", "par", "jmeno"].includes(cell),
-  );
-  const header = hasHeader ? firstRow : [];
-  const bodyRows = hasHeader ? rows.slice(1) : rows;
-
-  return bodyRows
-    .map((cells) => {
-      const timeCell =
-        getCellByHeader(cells, header, ["cas", "od"]) ??
-        cells.find((cell) => parseTimeRange(cell));
-      const parsedTime = timeCell ? parseTimeRange(timeCell) : null;
-
-      if (!parsedTime) {
-        return null;
-      }
-
-      const trainer =
-        getCellByHeader(cells, header, ["trener"]) ??
-        cells.find((cell) =>
-          trainers.some(
-            (trainerName) =>
-              normalizeTableHeader(trainerName) === normalizeTableHeader(cell),
-          ),
-        ) ??
-        "";
-      const dateOrDay =
-        getCellByHeader(cells, header, ["datum", "den"]) ??
-        cells.find((cell) => cell !== timeCell && cell !== trainer) ??
-        "";
-      const name =
-        getCellByHeader(cells, header, ["par", "jmeno"]) ??
-        cells
-          .filter((cell) => cell !== timeCell && cell !== trainer && cell !== dateOrDay)
-          .join(" ")
-          .trim();
-
-      if (!trainer || !name) {
-        return null;
-      }
-
-      return {
-        dateOrDay,
-        end: parsedTime.end,
-        name,
-        start: parsedTime.start,
-        trainer,
-      };
-    })
-    .filter((lesson): lesson is ImportedLesson => Boolean(lesson));
-}
-
-function getCellByHeader(
-  cells: string[],
-  header: string[],
-  aliases: string[],
-) {
-  const index = header.findIndex((cell) => aliases.includes(cell));
-
-  return index >= 0 ? cells[index] : undefined;
-}
-
-function parseTimeRange(value: string) {
-  const match = value.match(/(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})/);
-
-  if (!match) {
-    return null;
-  }
-
-  return {
-    end: `${match[3].padStart(2, "0")}:${match[4]}`,
-    start: `${match[1].padStart(2, "0")}:${match[2]}`,
-  };
-}
-
-function hasBookingEndedForClient(
-  booking: Booking,
-  currentDateKey: string,
-  currentTimeMinutes: number | null,
-) {
-  if (!currentDateKey || currentTimeMinutes === null) {
-    return false;
-  }
-
-  if (booking.date < currentDateKey) {
-    return true;
-  }
-
-  if (booking.date > currentDateKey) {
-    return false;
-  }
-
-  return timeToMinutes(booking.end) <= currentTimeMinutes;
-}
-
-function normalizeTableHeader(value: string) {
-  return value
-    .trim()
-    .toLocaleLowerCase("cs-CZ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function normalizeSearch(value: string) {
-  return normalizeTableHeader(value);
-}
-
-function addMinutesToTime(time: string, minutesToAdd: number) {
-  return minutesToTime(timeToMinutes(time) + minutesToAdd);
-}
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function minutesToTime(totalMinutes: number) {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
