@@ -8,7 +8,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import type { ReadonlyRequestCookies } from "next/dist/server/web/spec-extension/adapters/request-cookies";
-import { readDataTextSync } from "@/lib/runtime-storage";
+import { getDb } from "@/lib/db";
 
 export const adminSessionCookie = "koskovi_admin_session";
 export const adminSessionMaxAgeSeconds = 60 * 60 * 8;
@@ -58,7 +58,6 @@ export type AdminAccess = {
   username: string;
 };
 
-const adminUsersFile = "admin-users.json";
 
 function getAdminCredentials(
   storedUsers: StoredAdminUser[] = readStoredAdminUsersSync(),
@@ -363,19 +362,30 @@ export function sanitizeLessonFilter(filter?: Partial<LessonFilter> | null) {
   return { type, value } satisfies LessonFilter;
 }
 
-function readStoredAdminUsersSync() {
-  try {
-    const content = readDataTextSync(adminUsersFile);
-    const parsed = JSON.parse(content) as StoredAdminUser[];
+type AdminUserRow = {
+  created_at: string | null;
+  created_by: string | null;
+  lesson_filter: string | null;
+  password_hash: string | null;
+  role: AdminRole | null;
+  updated_at: string | null;
+  updated_by: string | null;
+  username: string;
+};
 
-    return Array.isArray(parsed)
-      ? parsed.filter((user) => user.username)
-      : [];
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
-    }
+// Synchronous on purpose: session checks run on every request and
+// better-sqlite3 reads are fast and blocking-free for this data size.
+export function readStoredAdminUsersSync(): StoredAdminUser[] {
+  const rows = getDb().prepare("SELECT * FROM admin_users").all() as AdminUserRow[];
 
-    throw error;
-  }
+  return rows.map((row) => ({
+    createdAt: row.created_at ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    lessonFilter: row.lesson_filter ? (JSON.parse(row.lesson_filter) as LessonFilter) : undefined,
+    passwordHash: row.password_hash ?? undefined,
+    role: row.role ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+    updatedBy: row.updated_by ?? undefined,
+    username: row.username,
+  }));
 }

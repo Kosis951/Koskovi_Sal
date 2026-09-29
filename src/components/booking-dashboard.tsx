@@ -33,6 +33,7 @@ import { useNow } from "@/components/dashboard/use-now";
 import { AppHeader } from "@/components/ui/app-header";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
+import { pageContainer } from "@/components/ui/styles";
 import {
   canRoleManageBookings,
   getAdminSession,
@@ -374,7 +375,7 @@ export function BookingDashboard({
         session={isAuthenticated ? session : null}
       />
 
-      <main className="mx-auto grid max-w-[1600px] grid-cols-1 gap-4 px-4 py-4 lg:px-6 lg:py-5">
+      <main className={`${pageContainer} grid grid-cols-1 gap-4 py-4 lg:py-5`}>
             <HallStatusBanner
               freeHours={freeHours}
               status={hallStatus}

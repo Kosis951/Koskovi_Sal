@@ -3,16 +3,11 @@ import {
   hashPassword,
   listAdminUsernames,
   normalizeUsername,
+  readStoredAdminUsersSync,
   type AdminRole,
   type StoredAdminUser,
 } from "@/lib/auth";
-import {
-  ensureDataStorage,
-  readDataText,
-  writeDataText,
-} from "@/lib/runtime-storage";
-
-const usersFile = "admin-users.json";
+import { getDb } from "@/lib/db";
 
 let usersQueue = Promise.resolve();
 
@@ -114,27 +109,37 @@ export async function upsertAdminUserRole(input: {
 }
 
 async function readStoredUsers() {
-  await ensureDataStorage();
-
-  try {
-    const content = await readDataText(usersFile);
-    const parsed = JSON.parse(content) as StoredAdminUser[];
-
-    return Array.isArray(parsed)
-      ? parsed.filter((user) => user.username)
-      : [];
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
-    }
-
-    throw error;
-  }
+  return readStoredAdminUsersSync();
 }
 
 async function writeStoredUsers(users: StoredAdminUser[]) {
-  await ensureDataStorage();
-  await writeDataText(usersFile, JSON.stringify(users, null, 2));
+  const db = getDb();
+  const upsert = db.prepare(`
+    INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
+      created_at, created_by, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(username_key) DO UPDATE SET
+      username = excluded.username, password_hash = excluded.password_hash,
+      role = excluded.role, lesson_filter = excluded.lesson_filter,
+      created_at = excluded.created_at, created_by = excluded.created_by,
+      updated_at = excluded.updated_at, updated_by = excluded.updated_by
+  `);
+
+  db.transaction(() => {
+    for (const user of users) {
+      upsert.run(
+        normalizeUsername(user.username),
+        user.username,
+        user.passwordHash ?? null,
+        user.role ?? null,
+        user.lessonFilter ? JSON.stringify(user.lessonFilter) : null,
+        user.createdAt ?? null,
+        user.createdBy ?? null,
+        user.updatedAt ?? null,
+        user.updatedBy ?? null,
+      );
+    }
+  })();
 }
 
 function withUsersLock<T>(operation: () => Promise<T>) {

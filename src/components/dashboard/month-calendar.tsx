@@ -7,7 +7,7 @@ import {
 } from "@/components/dashboard/calendar-events";
 
 const weekdayLabels = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
-const maxChips = 3;
+const maxChips = 4;
 
 export const itemDotClass: Record<CalendarItem["kind"], string> = {
   busy: "bg-busy-line",
@@ -57,7 +57,7 @@ export function MonthCalendar({
 
           return (
             <button
-              className={`relative flex min-h-16 flex-col items-stretch gap-1 border-b border-r border-line p-1 text-left transition sm:min-h-28 sm:p-1.5 [&:nth-child(7n+1)]:border-l ${
+              className={`relative flex min-h-16 flex-col items-stretch gap-1 border-b border-r border-line p-1 text-left transition sm:min-h-28 sm:p-1.5 xl:min-h-32 min-[1900px]:min-h-36 [&:nth-child(7n+1)]:border-l ${
                 isSelected
                   ? "bg-brand-soft ring-2 ring-inset ring-brand"
                   : "hover:bg-subtle"
@@ -86,7 +86,7 @@ export function MonthCalendar({
               <span className="hidden flex-col gap-0.5 sm:flex">
                 {items.slice(0, maxChips).map((item) => (
                   <span
-                    className={`truncate rounded px-1 py-0.5 text-[11px] leading-tight ${chipClass[item.kind]}`}
+                    className={`truncate rounded px-1 py-0.5 text-[11px] leading-tight xl:px-1.5 xl:text-xs ${chipClass[item.kind]}`}
                     key={item.id}
                     title={`${item.title} ${minutesToTime(item.start)}–${minutesToTime(item.end)}`}
                   >

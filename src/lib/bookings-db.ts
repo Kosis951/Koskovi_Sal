@@ -1,17 +1,6 @@
-import {
-  bookings as seedBookings,
-  type Booking,
-} from "@/lib/schedule";
-import {
-  readDataText,
-  writeDataText,
-} from "@/lib/runtime-storage";
+import { bookingToRow, getDb } from "@/lib/db";
+import type { Booking } from "@/lib/schedule";
 
-const bookingsFile = "bookings.json";
-const recurringCancellationsFile = "recurring-cancellations.json";
-const recurringOverridesFile = "recurring-overrides.json";
-const recurringTrainersFile = "recurring-trainers.json";
-const recurringHolidaysFile = "recurring-holidays.json";
 const recurringHorizonDays = 28;
 const latBaseWeekMonday = "2026-05-18";
 let databaseQueue = Promise.resolve();
@@ -482,15 +471,7 @@ async function readBookings() {
 }
 
 async function readStoredBookings() {
-  let content: string;
-
-  try {
-    content = await readDataText(bookingsFile);
-  } catch {
-    return seedBookings;
-  }
-
-  return JSON.parse(content) as Booking[];
+  return (getDb().prepare("SELECT * FROM bookings").all() as BookingRow[]).map(rowToBooking);
 }
 
 async function readRecurringConfig(): Promise<RecurringConfig> {
@@ -509,8 +490,97 @@ async function readRecurringConfig(): Promise<RecurringConfig> {
   };
 }
 
+// Stores the given list as the full set of one-off bookings: changed rows are
+// upserted, rows no longer in the list (deleted or past) are removed.
+// Generated recurring trainings are never stored.
 async function writeBookings(bookings: Booking[]) {
-  await writeDataText(bookingsFile, serializeBookings(bookings));
+  const db = getDb();
+  const nextBookings = normalizeStoredBookings(bookings);
+  const nextIds = new Set(nextBookings.map((booking) => booking.id));
+  const upsert = db.prepare(`
+    INSERT INTO bookings (id, date, start, "end", title, organizer, status, booking_kind,
+      event_type, trainer, note, cleanup_required, cleaned_at, cleaned_by, created_at,
+      created_by, updated_at, updated_by)
+    VALUES (@id, @date, @start, @end, @title, @organizer, @status, @bookingKind,
+      @eventType, @trainer, @note, @cleanupRequired, @cleanedAt, @cleanedBy, @createdAt,
+      @createdBy, @updatedAt, @updatedBy)
+    ON CONFLICT(id) DO UPDATE SET
+      date = excluded.date, start = excluded.start, "end" = excluded."end",
+      title = excluded.title, organizer = excluded.organizer, status = excluded.status,
+      booking_kind = excluded.booking_kind, event_type = excluded.event_type,
+      trainer = excluded.trainer, note = excluded.note,
+      cleanup_required = excluded.cleanup_required, cleaned_at = excluded.cleaned_at,
+      cleaned_by = excluded.cleaned_by, created_at = excluded.created_at,
+      created_by = excluded.created_by, updated_at = excluded.updated_at,
+      updated_by = excluded.updated_by
+  `);
+  const remove = db.prepare("DELETE FROM bookings WHERE id = ?");
+
+  db.transaction(() => {
+    for (const { id } of db.prepare("SELECT id FROM bookings").all() as Array<{ id: string }>) {
+      if (!nextIds.has(id)) {
+        remove.run(id);
+      }
+    }
+
+    for (const booking of nextBookings) {
+      upsert.run(bookingToRow(booking));
+    }
+  })();
+}
+
+type BookingRow = {
+  booking_kind: Booking["bookingKind"] | null;
+  cleaned_at: string | null;
+  cleaned_by: string | null;
+  cleanup_required: number;
+  created_at: string | null;
+  created_by: string | null;
+  date: string;
+  end: string;
+  event_type: Booking["eventType"] | null;
+  id: string;
+  note: string | null;
+  organizer: string;
+  start: string;
+  status: Booking["status"];
+  title: string;
+  trainer: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
+function rowToBooking(row: BookingRow): Booking {
+  const booking: Booking = {
+    date: row.date,
+    end: row.end,
+    id: row.id,
+    organizer: row.organizer,
+    start: row.start,
+    status: row.status,
+    title: row.title,
+  };
+  const optional: Partial<Booking> = {
+    bookingKind: row.booking_kind ?? undefined,
+    cleanedAt: row.cleaned_at ?? undefined,
+    cleanedBy: row.cleaned_by ?? undefined,
+    cleanupRequired: row.cleanup_required ? true : undefined,
+    createdAt: row.created_at ?? undefined,
+    createdBy: row.created_by ?? undefined,
+    eventType: row.event_type ?? undefined,
+    note: row.note ?? undefined,
+    trainer: row.trainer ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+    updatedBy: row.updated_by ?? undefined,
+  };
+
+  for (const [key, value] of Object.entries(optional)) {
+    if (value !== undefined) {
+      Object.assign(booking, { [key]: value });
+    }
+  }
+
+  return booking;
 }
 
 function sortBookings(bookings: Booking[]) {
@@ -749,13 +819,11 @@ function pushRecurringBooking(
 }
 
 async function readRecurringCancellations() {
-  try {
-    return JSON.parse(
-      await readDataText(recurringCancellationsFile),
-    ) as string[];
-  } catch {
-    return [];
-  }
+  return (
+    getDb().prepare("SELECT id FROM recurring_cancellations ORDER BY id").all() as Array<{
+      id: string;
+    }>
+  ).map((row) => row.id);
 }
 
 function createRecurringCancellationNotice(
@@ -832,20 +900,50 @@ async function updateRecurringOverride(
 }
 
 async function readRecurringOverrides() {
-  try {
-    return normalizeRecurringOverrides(
-      JSON.parse(await readDataText(recurringOverridesFile)) as RecurringBookingOverrides,
-    );
-  } catch {
-    return {};
+  const rows = getDb().prepare("SELECT * FROM recurring_overrides").all() as Array<
+    Record<string, string | null> & { id: string }
+  >;
+  const overrides: RecurringBookingOverrides = {};
+
+  for (const row of rows) {
+    overrides[row.id] = {
+      end: row.end ?? undefined,
+      originalEnd: row.original_end ?? undefined,
+      originalStart: row.original_start ?? undefined,
+      originalTitle: row.original_title ?? undefined,
+      start: row.start ?? undefined,
+      title: row.title ?? undefined,
+      trainer: row.trainer ?? undefined,
+    };
   }
+
+  return normalizeRecurringOverrides(overrides);
 }
 
 async function writeRecurringOverrides(overrides: RecurringBookingOverrides) {
-  await writeDataText(
-    recurringOverridesFile,
-    `${JSON.stringify(normalizeRecurringOverrides(overrides), null, 2)}\n`,
-  );
+  const db = getDb();
+  const insert = db.prepare(`
+    INSERT INTO recurring_overrides
+      (id, title, original_title, start, "end", original_start, original_end, trainer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.transaction(() => {
+    db.exec("DELETE FROM recurring_overrides");
+
+    for (const [id, override] of Object.entries(normalizeRecurringOverrides(overrides))) {
+      insert.run(
+        id,
+        override.title ?? null,
+        override.originalTitle ?? null,
+        override.start ?? null,
+        override.end ?? null,
+        override.originalStart ?? null,
+        override.originalEnd ?? null,
+        override.trainer ?? null,
+      );
+    }
+  })();
 }
 
 function normalizeRecurringOverrides(overrides: RecurringBookingOverrides) {
@@ -901,20 +999,24 @@ function normalizeRecurringOverrides(overrides: RecurringBookingOverrides) {
 }
 
 async function readRecurringHolidays() {
-  try {
-    return normalizeRecurringHolidays(
-      JSON.parse(await readDataText(recurringHolidaysFile)) as RecurringHoliday[],
-    );
-  } catch {
-    return [];
-  }
+  return normalizeRecurringHolidays(
+    getDb().prepare('SELECT id, label, start, "end" FROM recurring_holidays').all() as RecurringHoliday[],
+  );
 }
 
 async function writeRecurringHolidays(holidays: RecurringHoliday[]) {
-  await writeDataText(
-    recurringHolidaysFile,
-    `${JSON.stringify(normalizeRecurringHolidays(holidays), null, 2)}\n`,
+  const db = getDb();
+  const insert = db.prepare(
+    'INSERT INTO recurring_holidays (id, label, start, "end") VALUES (?, ?, ?, ?)',
   );
+
+  db.transaction(() => {
+    db.exec("DELETE FROM recurring_holidays");
+
+    for (const holiday of normalizeRecurringHolidays(holidays)) {
+      insert.run(holiday.id, holiday.label, holiday.start, holiday.end);
+    }
+  })();
 }
 
 function normalizeRecurringHolidays(holidays: RecurringHoliday[]) {
@@ -955,27 +1057,41 @@ function isTimeValue(value: string) {
 }
 
 async function writeRecurringCancellations(ids: string[]) {
-  await writeDataText(
-    recurringCancellationsFile,
-    `${JSON.stringify([...new Set(ids)].sort(), null, 2)}\n`,
-  );
+  const db = getDb();
+  const insert = db.prepare("INSERT INTO recurring_cancellations (id) VALUES (?)");
+
+  db.transaction(() => {
+    db.exec("DELETE FROM recurring_cancellations");
+
+    for (const id of new Set(ids)) {
+      insert.run(id);
+    }
+  })();
 }
 
 async function readRecurringTrainers() {
-  try {
-    return normalizeRecurringTrainers(
-      JSON.parse(await readDataText(recurringTrainersFile)) as RecurringTrainerConfig,
-    );
-  } catch {
-    return {};
-  }
+  const rows = getDb()
+    .prepare("SELECT training_key, trainer FROM recurring_trainers")
+    .all() as Array<{ trainer: string; training_key: string }>;
+
+  return normalizeRecurringTrainers(
+    Object.fromEntries(rows.map((row) => [row.training_key, row.trainer])),
+  );
 }
 
 async function writeRecurringTrainers(config: RecurringTrainerConfig) {
-  await writeDataText(
-    recurringTrainersFile,
-    `${JSON.stringify(normalizeRecurringTrainers(config), null, 2)}\n`,
+  const db = getDb();
+  const insert = db.prepare(
+    "INSERT INTO recurring_trainers (training_key, trainer) VALUES (?, ?)",
   );
+
+  db.transaction(() => {
+    db.exec("DELETE FROM recurring_trainers");
+
+    for (const [key, trainer] of Object.entries(normalizeRecurringTrainers(config))) {
+      insert.run(key, trainer);
+    }
+  })();
 }
 
 function normalizeRecurringTrainers(config: RecurringTrainerConfig) {
@@ -1120,10 +1236,6 @@ function removePastBookings(bookings: Booking[]) {
       booking.date >= today ||
       (Boolean(booking.cleanupRequired) && !booking.cleanedAt),
   );
-}
-
-function serializeBookings(bookings: Booking[]) {
-  return `${JSON.stringify(normalizeStoredBookings(bookings), null, 2)}\n`;
 }
 
 function normalizeStoredBookings(bookings: Booking[]) {

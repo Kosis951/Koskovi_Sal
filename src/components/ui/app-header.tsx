@@ -12,6 +12,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { pageContainer } from "@/components/ui/styles";
 import type { AdminRole } from "@/lib/admin-auth-client";
 
 export type HeaderSession = {
@@ -43,7 +44,7 @@ export function AppHeader({
 
   return (
     <header className="sticky top-0 z-40 border-b border-black/10 bg-header text-white">
-      <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-4 lg:px-6">
+      <div className={`${pageContainer} flex h-14 items-center gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
           <Image
             alt="Koškovi"

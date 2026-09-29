@@ -1,6 +1,8 @@
 // Shared class names for the redesigned screens. They use the colour tokens
 // from globals.css, so light and dark mode need no extra overrides.
 
+export const pageContainer = "mx-auto w-full max-w-[1600px] px-4 lg:px-6";
+
 export const buttonPrimary =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-brand px-4 text-sm font-semibold text-on-brand transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60";
 

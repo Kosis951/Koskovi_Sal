@@ -1,16 +1,12 @@
-import {
-  appendDataText,
-  ensureDataStorage,
-  getDataTextSize,
-  readDataText,
-  writeDataText,
-} from "@/lib/runtime-storage";
+import { getDb } from "@/lib/db";
 
-const auditLogFile = "audit-log.jsonl";
 // Once the log reaches the limit, the oldest entries are dropped down to the
 // target, so trimming does not run on every append.
 const maxAuditLogBytes = 20 * 1024 * 1024;
 const targetTrimBytes = 15 * 1024 * 1024;
+const trimCheckInterval = 100;
+
+let appendsSinceTrimCheck = trimCheckInterval;
 
 export type AuditAction =
   | "booking.clean"
@@ -28,51 +24,77 @@ export type AuditLogEntry = {
   timestamp: string;
 };
 
-export async function appendAuditLog(
-  entry: Omit<AuditLogEntry, "timestamp">,
-) {
-  const nextEntry = `${JSON.stringify({
-    ...entry,
-    timestamp: new Date().toISOString(),
-  })}\n`;
+type AuditLogRow = {
+  action: AuditAction;
+  actor: string;
+  booking_id: string | null;
+  details: string | null;
+  timestamp: string;
+};
 
-  await ensureDataStorage();
-  await trimAuditLogIfNeeded(Buffer.byteLength(nextEntry));
-  await appendDataText(auditLogFile, nextEntry);
-}
+export async function appendAuditLog(entry: Omit<AuditLogEntry, "timestamp">) {
+  getDb()
+    .prepare(
+      "INSERT INTO audit_log (timestamp, action, actor, booking_id, details) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(
+      new Date().toISOString(),
+      entry.action,
+      entry.actor,
+      entry.bookingId ?? null,
+      entry.details ? JSON.stringify(entry.details) : null,
+    );
 
-export async function readAuditLog(limit = 100) {
-  try {
-    const content = await readDataText(auditLogFile);
+  appendsSinceTrimCheck += 1;
 
-    return content
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .slice(-limit)
-      .reverse()
-      .map((line) => JSON.parse(line) as AuditLogEntry);
-  } catch {
-    return [];
+  if (appendsSinceTrimCheck >= trimCheckInterval) {
+    appendsSinceTrimCheck = 0;
+    trimAuditLog();
   }
 }
 
-async function trimAuditLogIfNeeded(nextEntryBytes: number) {
-  try {
-    const size = await getDataTextSize(auditLogFile);
+// Newest first.
+export async function readAuditLog(limit = 100) {
+  const rows = getDb()
+    .prepare(
+      "SELECT timestamp, action, actor, booking_id, details FROM audit_log ORDER BY id DESC LIMIT ?",
+    )
+    .all(limit) as AuditLogRow[];
 
-    if (size + nextEntryBytes <= maxAuditLogBytes) {
-      return;
-    }
+  return rows.map(
+    (row): AuditLogEntry => ({
+      action: row.action,
+      actor: row.actor,
+      bookingId: row.booking_id ?? undefined,
+      details: row.details ? (JSON.parse(row.details) as Record<string, unknown>) : undefined,
+      timestamp: row.timestamp,
+    }),
+  );
+}
 
-    const content = Buffer.from(await readDataText(auditLogFile));
-    const trimmed = content.subarray(Math.max(0, content.length - targetTrimBytes));
-    const firstNewline = trimmed.indexOf(10);
-    const safeTrimmed =
-      firstNewline === -1 ? trimmed : trimmed.subarray(firstNewline + 1);
+function trimAuditLog() {
+  const db = getDb();
+  const sizeOf =
+    "COALESCE(length(details), 0) + length(timestamp) + length(action) + length(actor)";
+  const { total } = db.prepare(`SELECT COALESCE(SUM(${sizeOf}), 0) AS total FROM audit_log`).get() as {
+    total: number;
+  };
 
-    await writeDataText(auditLogFile, safeTrimmed.toString("utf8"));
-  } catch {
+  if (total <= maxAuditLogBytes) {
     return;
+  }
+
+  // Find the newest entries that fit into the target size and drop the rest.
+  const cutoff = db
+    .prepare(
+      `SELECT id FROM (
+         SELECT id, SUM(${sizeOf}) OVER (ORDER BY id DESC) AS running
+         FROM audit_log
+       ) WHERE running > ? ORDER BY id DESC LIMIT 1`,
+    )
+    .get(targetTrimBytes) as { id: number } | undefined;
+
+  if (cutoff) {
+    db.prepare("DELETE FROM audit_log WHERE id <= ?").run(cutoff.id);
   }
 }
