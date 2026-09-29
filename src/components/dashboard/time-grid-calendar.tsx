@@ -287,16 +287,15 @@ function CalendarBlock({
   onClick: () => void;
   range: Range;
 }) {
-  // The pixel height depends on the window, so the layout picks the number
-  // of text lines from the duration; the column is never shorter than
-  // ~0.7 px per minute (see columnHeight).
+  // The pixel height depends on the window, so the block is a size container
+  // and the number of text lines follows its real height.
   const duration = item.end - item.start;
   const time = `${minutesToTime(item.start)}–${minutesToTime(item.end)}`;
   const label = item.kind === "cleanup" ? "Čeká na úklid" : item.title;
 
   return (
     <button
-      className={`absolute z-[5] overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs leading-tight transition hover:z-[6] hover:shadow-md ${itemKindClass[item.kind]}`}
+      className={`absolute z-[5] overflow-hidden rounded-md border px-1.5 py-px text-left text-xs leading-tight transition [container-type:size] hover:z-[6] hover:shadow-md ${itemKindClass[item.kind]}`}
       onClick={onClick}
       style={{
         height: toLength(duration, range),
@@ -310,21 +309,21 @@ function CalendarBlock({
       }${item.kind === "cleanup" ? " · klikněte po úklidu" : ""}`}
       type="button"
     >
-      {duration < 75 ? (
-        // Short blocks fit a single line only.
-        <span className="block truncate leading-4">
-          <span className="font-semibold">{label}</span>{" "}
-          <span className="opacity-80">{minutesToTime(item.start)}</span>
-        </span>
-      ) : (
-        <>
-          <span className="block truncate font-semibold leading-4">{label}</span>
-          <span className="block truncate leading-4 opacity-80">{time}</span>
-          {duration >= 110 && item.trainer ? (
-            <span className="block truncate leading-4 opacity-80">{item.trainer}</span>
-          ) : null}
-        </>
-      )}
+      {/* The time is never shortened; only the title gives way. Low blocks
+          get one line, taller ones title and time below each other. */}
+      <span className="flex min-w-0 items-baseline gap-1 leading-4 [@container(min-height:24px)]:hidden">
+        <span className="min-w-0 truncate font-semibold">{label}</span>
+        <span className="shrink-0 whitespace-nowrap text-[11px] opacity-80">{time}</span>
+      </span>
+      <span className="hidden leading-3 [@container(min-height:24px)]:block">
+        <span className="block truncate font-semibold">{label}</span>
+        <span className="block whitespace-nowrap opacity-80">{time}</span>
+        {item.trainer ? (
+          <span className="hidden truncate opacity-80 [@container(min-height:36px)]:block">
+            {item.trainer}
+          </span>
+        ) : null}
+      </span>
     </button>
   );
 }

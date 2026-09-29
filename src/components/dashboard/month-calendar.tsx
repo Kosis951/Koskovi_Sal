@@ -96,13 +96,16 @@ export function MonthCalendar({
               </span>
               <span className="hidden flex-col gap-0.5 sm:flex">
                 {items.slice(0, maxChips).map((item) => (
+                  // The time range is never shortened; only the title gives way.
                   <span
-                    className={`truncate rounded px-1 py-0.5 text-[11px] leading-tight xl:px-1.5 xl:text-xs ${chipClass[item.kind]}`}
+                    className={`flex min-w-0 items-baseline gap-1 rounded px-1 py-0.5 text-[11px] leading-tight xl:px-1.5 xl:text-xs ${chipClass[item.kind]}`}
                     key={item.id}
                     title={`${item.title} ${minutesToTime(item.start)}–${minutesToTime(item.end)}`}
                   >
-                    <span className="font-semibold">{minutesToTime(item.start)}</span>{" "}
-                    {item.title}
+                    <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums">
+                      {minutesToTime(item.start)}–{minutesToTime(item.end)}
+                    </span>
+                    <span className="min-w-0 truncate">{item.title}</span>
                   </span>
                 ))}
                 {items.length > maxChips ? (
