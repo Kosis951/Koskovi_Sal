@@ -236,7 +236,7 @@ export function getDayAvailabilitySegments(
             end: "23:59",
             kind: "closed",
             start: "00:00",
-            title: "ZavĹ™eno",
+            title: "Zavřeno",
           },
         ];
   }

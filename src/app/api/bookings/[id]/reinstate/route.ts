@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { getAdminRequestUsername, isAdminRequest } from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
 import { reinstateRecurringBooking } from "@/lib/bookings-db";
 
 type RouteContext = {
@@ -11,13 +10,13 @@ type RouteContext = {
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: Request, context: RouteContext) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
+  const actor = auth.access.username;
   const { id } = await context.params;
 
   if (!id.startsWith("recurring-")) {

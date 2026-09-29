@@ -1,11 +1,7 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import {
-  getAdminRequestUsername,
-  isAdminRequest,
-  isReadOnlyLessonUsername,
-} from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import { maxBookingTitleLength } from "@/lib/booking-validation";
 import {
   getBookings,
   updateBookingTitle,
@@ -18,27 +14,22 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    );
-  }
-
+  const actor = auth.access.username;
   const { id } = await context.params;
-  const payload = (await request.json()) as { title?: string };
-  const title = payload.title?.trim();
+  const payload = (await request.json()) as { title?: unknown };
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
 
-  if (!title) {
+  if (!title || title.length > maxBookingTitleLength) {
     return NextResponse.json(
-      { message: "Vyplň nový název aktivity." },
+      {
+        message: `Vyplň nový název aktivity (max. ${maxBookingTitleLength} znaků).`,
+      },
       { status: 400 },
     );
   }

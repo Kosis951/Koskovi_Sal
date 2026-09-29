@@ -1,18 +1,17 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import {
-  getAdminRequestUsername,
-  getAdminUserLessonFilter,
-  isAdminRequest,
-} from "@/lib/auth";
+import { getAdminAccess } from "@/lib/auth";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const username = getAdminRequestUsername(cookieStore);
+  const access = getAdminAccess(await cookies());
 
-  return NextResponse.json({
-    authenticated: isAdminRequest(cookieStore),
-    lessonFilter: getAdminUserLessonFilter(username),
-    username,
-  });
+  return NextResponse.json(
+    {
+      authenticated: Boolean(access),
+      lessonFilter: access?.lessonFilter ?? { type: "all", value: "" },
+      role: access?.role ?? null,
+      username: access?.username ?? null,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

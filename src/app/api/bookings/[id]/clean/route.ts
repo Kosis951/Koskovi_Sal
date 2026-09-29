@@ -21,7 +21,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     );
   }
 
-  if (result.booking) {
+  if (result.booking && !result.alreadyCleaned) {
     await appendAuditLog({
       action: "booking.clean",
       actor: "public",

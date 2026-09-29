@@ -1,24 +1,37 @@
 "use client";
 
-import { Check, Filter, KeyRound, LogIn, LogOut, UserPlus } from "lucide-react";
+import { Check, Filter, KeyRound, LogIn, LogOut, ShieldCheck, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { SiteShell } from "@/components/site-shell";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getAdminSession, loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
+import {
+  getAdminSession,
+  loginAdmin,
+  logoutAdmin,
+  type AdminRole,
+} from "@/lib/admin-auth-client";
 
 type LessonFilter = {
   type: "all" | "dancer" | "trainer";
   value: string;
 };
 
+type AssignableRole = Exclude<AdminRole, "admin">;
+
 type AdminUser = {
   isStored: boolean;
   lessonFilter: LessonFilter;
+  role: AdminRole;
   username: string;
 };
 
 const emptyLessonFilter: LessonFilter = { type: "all", value: "" };
+const roleLabels: Record<AdminRole, string> = {
+  admin: "Hlavní správce",
+  manager: "Správa sálu",
+  viewer: "Jen soustředění (čtení)",
+};
 
 export function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -28,9 +41,10 @@ export function AdminUsers() {
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserFilter, setNewUserFilter] =
     useState<LessonFilter>(emptyLessonFilter);
+  const [newUserRole, setNewUserRole] = useState<AssignableRole>("viewer");
   const [resetPasswords, setResetPasswords] = useState<Record<string, string>>({});
   const [userFilters, setUserFilters] = useState<Record<string, LessonFilter>>({});
-  const [sessionUsername, setSessionUsername] = useState<string | null>(null);
+  const [sessionRole, setSessionRole] = useState<AdminRole | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,9 +74,9 @@ export function AdminUsers() {
     async function loadSession() {
       const session = await getAdminSession();
       setIsAuthenticated(session.authenticated);
-      setSessionUsername(session.username ?? null);
+      setSessionRole(session.role ?? null);
 
-      if (session.username === "kosis") {
+      if (session.role === "admin") {
         await loadUsers();
       }
 
@@ -79,10 +93,10 @@ export function AdminUsers() {
     try {
       await loginAdmin(username, password);
       const session = await getAdminSession();
-      setSessionUsername(session.username ?? null);
+      setSessionRole(session.role ?? null);
       setIsAuthenticated(session.authenticated);
 
-      if (session.username === "kosis") {
+      if (session.role === "admin") {
         await loadUsers();
       }
     } catch (error) {
@@ -95,13 +109,14 @@ export function AdminUsers() {
   async function handleLogout() {
     await logoutAdmin();
     setIsAuthenticated(false);
-    setSessionUsername(null);
+    setSessionRole(null);
     setUsers([]);
   }
 
   async function saveUser(input: {
     lessonFilter?: LessonFilter;
     password?: string;
+    role?: AssignableRole;
     username: string;
   }) {
     setMessage("");
@@ -133,6 +148,7 @@ export function AdminUsers() {
     const saved = await saveUser({
       lessonFilter: newUserFilter,
       password: newUserPassword,
+      role: newUserRole,
       username: newUsername,
     });
 
@@ -140,7 +156,12 @@ export function AdminUsers() {
       setNewUsername("");
       setNewUserPassword("");
       setNewUserFilter(emptyLessonFilter);
+      setNewUserRole("viewer");
     }
+  }
+
+  async function handleRoleChange(user: AdminUser, role: AssignableRole) {
+    await saveUser({ role, username: user.username });
   }
 
   async function handleResetPassword(
@@ -239,7 +260,7 @@ export function AdminUsers() {
             Přihlásit
           </button>
         </form>
-      ) : sessionUsername !== "kosis" ? (
+      ) : sessionRole !== "admin" ? (
         <section className="rounded-lg border border-[#ded6c9] bg-white p-5 lg:col-span-2 lg:max-w-xl">
           <h2 className="text-xl font-semibold">Přístup má jen kosis</h2>
           <p className="mt-2 text-sm leading-6 text-[#66706f]">
@@ -274,6 +295,10 @@ export function AdminUsers() {
                 type="password"
                 value={newUserPassword}
               />
+              <RoleSelect
+                onChange={setNewUserRole}
+                value={newUserRole}
+              />
               <LessonFilterFields
                 filter={newUserFilter}
                 onChange={setNewUserFilter}
@@ -305,13 +330,29 @@ export function AdminUsers() {
             <div className="divide-y divide-[#ece3d5]">
               {users.map((user) => (
                 <div className="grid gap-4 px-5 py-4" key={user.username}>
-                  <div>
-                    <p className="font-semibold">{user.username}</p>
-                    <p className="text-xs text-[#66706f]">
-                      {user.isStored
-                        ? "Heslo je uložené v databázi"
-                        : "Výchozí účet z konfigurace"}
-                    </p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="font-semibold">{user.username}</p>
+                      <p className="text-xs text-[#66706f]">
+                        {user.isStored
+                          ? "Heslo je uložené v databázi"
+                          : "Výchozí účet z konfigurace"}
+                      </p>
+                    </div>
+                    {user.role === "admin" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e7f1f6] px-3 py-1 text-xs font-semibold text-[#003758]">
+                        <ShieldCheck size={14} />
+                        {roleLabels.admin}
+                      </span>
+                    ) : (
+                      <div className="sm:w-64">
+                        <RoleSelect
+                          disabled={isSaving}
+                          onChange={(role) => void handleRoleChange(user, role)}
+                          value={user.role}
+                        />
+                      </div>
+                    )}
                   </div>
                   <form
                     className="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_auto] lg:items-end"
@@ -371,6 +412,31 @@ export function AdminUsers() {
         </>
       )}
     </SiteShell>
+  );
+}
+
+function RoleSelect({
+  disabled,
+  onChange,
+  value,
+}: {
+  disabled?: boolean;
+  onChange: (role: AssignableRole) => void;
+  value: AssignableRole;
+}) {
+  return (
+    <label className="field-label">
+      Role
+      <select
+        className="field-input mt-1"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as AssignableRole)}
+        value={value}
+      >
+        <option value="viewer">{roleLabels.viewer}</option>
+        <option value="manager">{roleLabels.manager}</option>
+      </select>
+    </label>
   );
 }
 

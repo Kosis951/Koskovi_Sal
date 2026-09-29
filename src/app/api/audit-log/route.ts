@@ -1,19 +1,18 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { readAuditLog } from "@/lib/audit-log";
-import { getAdminRequestUsername, isAdminRequest } from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  const username = getAdminRequestUsername(cookieStore);
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore) || !username) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
+  const { role, username } = auth.access;
   const entries = await readAuditLog(100);
 
-  if (username !== "kosis") {
+  if (role !== "admin") {
     return NextResponse.json({
       entries: entries.filter(
         (entry) => entry.actor === username && entry.action === "booking.delete",

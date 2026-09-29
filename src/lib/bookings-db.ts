@@ -4,7 +4,6 @@ import {
 } from "@/lib/schedule";
 import {
   readDataText,
-  readDataTextSync,
   writeDataText,
 } from "@/lib/runtime-storage";
 
@@ -21,8 +20,10 @@ export type BookingInput = Omit<Booking, "id">;
 
 export type RecurringTrainingKey =
   | "deti"
+  | "prvni-krucky"
   | "juniori-utery"
   | "practise"
+  | "latino-ladies"
   | "pohybovka"
   | "spolecna"
   | "juniori-patek";
@@ -63,6 +64,28 @@ type RecurringBookingOverride = {
   trainer?: string;
 };
 type RecurringBookingOverrides = Record<string, RecurringBookingOverride>;
+type RecurringConfig = {
+  cancelledIds: Set<string>;
+  holidays: RecurringHoliday[];
+  overrides: RecurringBookingOverrides;
+  trainers: RecurringTrainerConfig;
+};
+
+const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Prague",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const pragueDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  hour: "2-digit",
+  hour12: false,
+  minute: "2-digit",
+  month: "2-digit",
+  timeZone: "Europe/Prague",
+  year: "numeric",
+});
 
 export const recurringTrainingLabels: Array<{
   end: string;
@@ -72,8 +95,10 @@ export const recurringTrainingLabels: Array<{
   start: string;
 }> = [
   { end: "17:00", key: "deti", label: "Děti", schedule: "Pondělí 15:15-17:00", start: "15:15" },
+  { end: "16:30", key: "prvni-krucky", label: "První krůčky", schedule: "Úterý 15:45-16:30", start: "15:45" },
   { end: "17:15", key: "juniori-utery", label: "Junioři", schedule: "Úterý 16:30-17:15", start: "16:30" },
   { end: "19:30", key: "practise", label: "Practise", schedule: "Úterý 17:30-19:30", start: "17:30" },
+  { end: "21:00", key: "latino-ladies", label: "Latino Ladies", schedule: "Úterý 20:00-21:00", start: "20:00" },
   { end: "18:00", key: "pohybovka", label: "Pohybovka", schedule: "Čtvrtek 17:15-18:00", start: "17:15" },
   { end: "19:30", key: "spolecna", label: "Společná LAT/STT", schedule: "Čtvrtek 18:00-19:30", start: "18:00" },
   { end: "17:00", key: "juniori-patek", label: "Junioři", schedule: "Pátek 16:00-17:00", start: "16:00" },
@@ -149,7 +174,6 @@ export async function addRecurringHoliday(input: {
     };
 
     await writeRecurringHolidays([...holidays, holiday]);
-    await writeBookings(await readBookings());
 
     return holiday;
   });
@@ -159,7 +183,6 @@ export async function deleteRecurringHoliday(id: string) {
   return withDatabaseLock(async () => {
     const holidays = await readRecurringHolidays();
     await writeRecurringHolidays(holidays.filter((holiday) => holiday.id !== id));
-    await writeBookings(await readBookings());
   });
 }
 
@@ -201,7 +224,6 @@ export async function updateBookingTitle(id: string, title: string) {
           ? normalizedTitle
           : undefined,
     });
-    await writeBookings(bookings);
 
     return (await readBookings()).find((candidate) => candidate.id === id) ?? null;
   });
@@ -212,9 +234,6 @@ export async function updateRecurringTrainers(input: RecurringTrainerConfig) {
     const nextConfig = normalizeRecurringTrainers(input);
 
     await writeRecurringTrainers(nextConfig);
-
-    const bookings = await readBookings();
-    await writeBookings(bookings);
 
     return nextConfig;
   });
@@ -353,7 +372,6 @@ export async function reinstateRecurringBooking(id: string) {
     await removeRecurringCancellation(id);
 
     const bookings = await readBookings();
-    await writeBookings(bookings);
 
     return {
       booking: bookings.find((booking) => booking.id === id) ?? null,
@@ -369,7 +387,6 @@ export async function updateBookingTrainer(id: string, trainer: string) {
       await updateRecurringOverride(id, { trainer: normalizedTrainer || undefined });
 
       const bookings = await readBookings();
-      await writeBookings(bookings);
 
       return {
         booking: bookings.find((booking) => booking.id === id) ?? null,
@@ -426,8 +443,10 @@ export async function markBookingCleaned(id: string) {
 
     const booking = bookings[index];
 
-    if (!booking.cleanupRequired) {
-      return { booking, notFound: false };
+    // Nothing to write for repeated clicks, which also keeps this public
+    // endpoint from being used to flood storage and the audit log.
+    if (!booking.cleanupRequired || booking.cleanedAt) {
+      return { alreadyCleaned: true, booking, notFound: false };
     }
 
     if (!hasBookingEndedInPrague(booking)) {
@@ -451,29 +470,47 @@ export async function markBookingCleaned(id: string) {
   });
 }
 
+// Reads never write: stale or duplicate entries are dropped from the returned
+// list and are pruned from storage by the next write (or the refresh cron).
 async function readBookings() {
-  await ensureDatabase();
+  const [storedBookings, recurringConfig] = await Promise.all([
+    readStoredBookings(),
+    readRecurringConfig(),
+  ]);
 
-  const content = await readDataText(bookingsFile);
-  const bookings = normalizeBookings(JSON.parse(content) as Booking[]);
+  return normalizeBookings(storedBookings, recurringConfig);
+}
 
-  if (content !== serializeBookings(bookings)) {
-    await writeBookings(bookings);
+async function readStoredBookings() {
+  let content: string;
+
+  try {
+    content = await readDataText(bookingsFile);
+  } catch {
+    return seedBookings;
   }
 
-  return bookings;
+  return JSON.parse(content) as Booking[];
+}
+
+async function readRecurringConfig(): Promise<RecurringConfig> {
+  const [cancelledIds, holidays, overrides, trainers] = await Promise.all([
+    readRecurringCancellations(),
+    readRecurringHolidays(),
+    readRecurringOverrides(),
+    readRecurringTrainers(),
+  ]);
+
+  return {
+    cancelledIds: new Set(cancelledIds),
+    holidays,
+    overrides,
+    trainers,
+  };
 }
 
 async function writeBookings(bookings: Booking[]) {
   await writeDataText(bookingsFile, serializeBookings(bookings));
-}
-
-async function ensureDatabase() {
-  try {
-    await readDataText(bookingsFile);
-  } catch {
-    await writeBookings(seedBookings);
-  }
 }
 
 function sortBookings(bookings: Booking[]) {
@@ -482,24 +519,33 @@ function sortBookings(bookings: Booking[]) {
   );
 }
 
-function normalizeBookings(bookings: Booking[]) {
+function normalizeBookings(bookings: Booking[], recurringConfig: RecurringConfig) {
   const uniqueBookings = new Map<string, Booking>();
 
-  for (const booking of addRecurringBookings(removePastBookings(bookings))) {
+  for (const booking of addRecurringBookings(
+    removePastBookings(bookings),
+    recurringConfig,
+  )) {
     uniqueBookings.set(booking.id, booking);
   }
 
   return sortBookings([...uniqueBookings.values()]);
 }
 
-function addRecurringBookings(bookings: Booking[]) {
-  const recurringBookings = createRecurringBookings();
-  const protectedBookings = bookings.filter(
-    (booking) => !isOutOfHorizonRecurringBooking(booking),
+function addRecurringBookings(
+  bookings: Booking[],
+  recurringConfig: RecurringConfig,
+) {
+  const lastHorizonDateKey = getLastRecurringHorizonDateKey();
+  const nextBookings = bookings.filter(
+    (booking) =>
+      !isRecurringBooking(booking) || booking.date <= lastHorizonDateKey,
   );
-  const nextBookings = [...protectedBookings];
+  const nonRecurringBookings = nextBookings.filter(
+    (booking) => !isRecurringBooking(booking),
+  );
 
-  for (const recurringBooking of recurringBookings) {
+  for (const recurringBooking of createRecurringBookings(recurringConfig)) {
     const existingIndex = nextBookings.findIndex(
       (booking) => booking.id === recurringBooking.id,
     );
@@ -509,10 +555,7 @@ function addRecurringBookings(bookings: Booking[]) {
       continue;
     }
 
-    const conflict = findBookingConflict(
-      nextBookings.filter((booking) => !isRecurringBooking(booking)),
-      recurringBooking,
-    );
+    const conflict = findBookingConflict(nonRecurringBookings, recurringBooking);
 
     if (!conflict) {
       nextBookings.push(recurringBooking);
@@ -548,12 +591,13 @@ export async function refreshRecurringBookings() {
   });
 }
 
-function createRecurringBookings() {
+function createRecurringBookings({
+  cancelledIds,
+  holidays: recurringHolidays,
+  overrides: recurringOverrides,
+  trainers: recurringTrainers,
+}: RecurringConfig) {
   const today = dateKeyToUtcDate(getTodayPragueDateKey());
-  const cancelledIds = getRecurringCancellationsSync();
-  const recurringOverrides = getRecurringOverridesSync();
-  const recurringTrainers = getRecurringTrainersSync();
-  const recurringHolidays = getRecurringHolidaysSync();
   const bookings: Booking[] = [];
 
   for (let offset = 0; offset <= recurringHorizonDays; offset += 1) {
@@ -580,6 +624,17 @@ function createRecurringBookings() {
     }
 
     if (day === 2) {
+      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("prvni-krucky", recurringTrainers, recurringOverrides, {
+        id: `recurring-prvni-krucky-${dateKey}`,
+        title: "První krůčky",
+        organizer: "Koškovi",
+        date: dateKey,
+        start: "15:45",
+        end: "16:30",
+        status: "confirmed",
+        note: "Pravidelny uterni trenink Prvni krucky",
+      }));
+
       pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("juniori-utery", recurringTrainers, recurringOverrides, {
         id: `recurring-juniori-utery-${dateKey}`,
         title: "Junioři",
@@ -600,6 +655,17 @@ function createRecurringBookings() {
         end: "19:30",
         status: "confirmed",
         note: "Pravidelna uterni akce",
+      }));
+
+      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("latino-ladies", recurringTrainers, recurringOverrides, {
+        id: `recurring-latino-ladies-${dateKey}`,
+        title: "Latino Ladies",
+        organizer: "Koškovi",
+        date: dateKey,
+        start: "20:00",
+        end: "21:00",
+        status: "confirmed",
+        note: "Pravidelny uterni trenink Latino Ladies",
       }));
     }
 
@@ -692,18 +758,6 @@ async function readRecurringCancellations() {
   }
 }
 
-function getRecurringCancellationsSync() {
-  try {
-    return new Set(
-      JSON.parse(
-        readDataTextSync(recurringCancellationsFile),
-      ) as string[],
-    );
-  } catch {
-    return new Set<string>();
-  }
-}
-
 function createRecurringCancellationNotice(
   id: string,
 ): RecurringCancellationNotice | null {
@@ -787,16 +841,6 @@ async function readRecurringOverrides() {
   }
 }
 
-function getRecurringOverridesSync() {
-  try {
-    return normalizeRecurringOverrides(
-      JSON.parse(readDataTextSync(recurringOverridesFile)) as RecurringBookingOverrides,
-    );
-  } catch {
-    return {};
-  }
-}
-
 async function writeRecurringOverrides(overrides: RecurringBookingOverrides) {
   await writeDataText(
     recurringOverridesFile,
@@ -866,16 +910,6 @@ async function readRecurringHolidays() {
   }
 }
 
-function getRecurringHolidaysSync() {
-  try {
-    return normalizeRecurringHolidays(
-      JSON.parse(readDataTextSync(recurringHolidaysFile)) as RecurringHoliday[],
-    );
-  } catch {
-    return [];
-  }
-}
-
 async function writeRecurringHolidays(holidays: RecurringHoliday[]) {
   await writeDataText(
     recurringHolidaysFile,
@@ -931,16 +965,6 @@ async function readRecurringTrainers() {
   try {
     return normalizeRecurringTrainers(
       JSON.parse(await readDataText(recurringTrainersFile)) as RecurringTrainerConfig,
-    );
-  } catch {
-    return {};
-  }
-}
-
-function getRecurringTrainersSync() {
-  try {
-    return normalizeRecurringTrainers(
-      JSON.parse(readDataTextSync(recurringTrainersFile)) as RecurringTrainerConfig,
     );
   } catch {
     return {};
@@ -1040,16 +1064,11 @@ function isRecurringBooking(booking: Booking) {
   return booking.id.startsWith("recurring-");
 }
 
-function isOutOfHorizonRecurringBooking(booking: Booking) {
-  if (!isRecurringBooking(booking)) {
-    return false;
-  }
+function getLastRecurringHorizonDateKey() {
+  const lastHorizonDate = dateKeyToUtcDate(getTodayPragueDateKey());
+  lastHorizonDate.setUTCDate(lastHorizonDate.getUTCDate() + recurringHorizonDays);
 
-  const today = dateKeyToUtcDate(getTodayPragueDateKey());
-  const lastHorizonDate = new Date(today);
-  lastHorizonDate.setUTCDate(today.getUTCDate() + recurringHorizonDays);
-
-  return dateKeyToUtcDate(booking.date) > lastHorizonDate;
+  return formatUtcDateKey(lastHorizonDate);
 }
 
 function timeRangesOverlap(
@@ -1076,15 +1095,7 @@ function hasBookingEndedInPrague(booking: Booking) {
 }
 
 function getCurrentPragueDateAndMinutes() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    timeZone: "Europe/Prague",
-    year: "numeric",
-  }).formatToParts(new Date());
+  const parts = pragueDateTimeFormatter.formatToParts(new Date());
   const values = Object.fromEntries(
     parts.map((part) => [part.type, part.value]),
   );
@@ -1130,12 +1141,7 @@ function normalizeStoredBookings(bookings: Booking[]) {
 }
 
 function getTodayPragueDateKey() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Prague",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return pragueDateFormatter.format(new Date());
 }
 
 function getAlternatingDanceStyle(dateKey: string) {

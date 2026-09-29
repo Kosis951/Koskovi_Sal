@@ -1,37 +1,24 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import {
-  getAdminRequestUsername,
-  isAdminRequest,
-  isReadOnlyLessonUsername,
-} from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import { parseBookingInput } from "@/lib/booking-validation";
 import { createBooking } from "@/lib/bookings-db";
 import type { BookingRequest } from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json(
-      { message: "Pro vytvoření rezervace je nutné přihlášení." },
-      { status: 401 },
-    );
+  if (auth.error) {
+    return auth.error;
   }
 
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet má soustředění pouze pro čtení." },
-      { status: 403 },
-    );
-  }
-
+  const actor = auth.access.username;
   const payload = (await request.json()) as Partial<BookingRequest>;
+  const name = typeof payload.name === "string" ? payload.name.trim() : "";
 
-  if (!payload.name || !payload.date || !payload.start || !payload.end) {
+  if (!name || !payload.date || !payload.start || !payload.end) {
     return NextResponse.json(
       { message: "Chybí povinné údaje rezervace." },
       { status: 400 },
@@ -55,30 +42,34 @@ export async function POST(request: NextRequest) {
   }
 
   const trainer =
-    isIndividualLesson || payload.eventType === "seminar"
-      ? payload.trainer
-      : undefined;
-  const hallEventType =
-    !isIndividualLesson && isHallEventType(payload.eventType)
-      ? payload.eventType
-      : undefined;
-
-  const result = await createBooking({
-    title: payload.name,
-    organizer: payload.name,
+    (isIndividualLesson || payload.eventType === "seminar") &&
+    typeof payload.trainer === "string"
+      ? payload.trainer.trim()
+      : "";
+  const note = typeof payload.note === "string" ? payload.note.trim() : "";
+  const parsed = parseBookingInput({
+    bookingKind: isIndividualLesson ? "individual-lesson" : "hall",
+    cleanupRequired: payload.cleanupRequired === true,
     date: payload.date,
-    start: payload.start,
     end: payload.end,
-    cleanupRequired: Boolean(payload.cleanupRequired),
-    bookingKind:
-      isIndividualLesson ? "individual-lesson" : "hall",
-    createdBy: actor,
-    eventType: hallEventType,
-    status: payload.eventType === "obsazeno" ? "maintenance" : "confirmed",
-    trainer,
-    note: [trainer ? `Trenér: ${trainer}` : null, payload.note]
+    eventType: isIndividualLesson ? undefined : payload.eventType,
+    note: [trainer ? `Trenér: ${trainer}` : null, note]
       .filter(Boolean)
       .join("\n"),
+    organizer: name,
+    start: payload.start,
+    status: payload.eventType === "obsazeno" ? "maintenance" : "confirmed",
+    title: name,
+    trainer,
+  });
+
+  if (!parsed.ok) {
+    return NextResponse.json({ message: parsed.error }, { status: 400 });
+  }
+
+  const result = await createBooking({
+    ...parsed.input,
+    createdBy: actor,
   });
 
   if (result.conflict) {

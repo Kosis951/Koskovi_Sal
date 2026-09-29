@@ -1,8 +1,10 @@
 import {
+  getAdminRole,
   hashPassword,
   listAdminUsernames,
   normalizeUsername,
   sanitizeLessonFilter,
+  type AdminRole,
   type LessonFilter,
   type StoredAdminUser,
 } from "@/lib/auth";
@@ -33,6 +35,7 @@ export async function getAdminUsers() {
       return {
         isStored: Boolean(storedUser?.passwordHash),
         lessonFilter: sanitizeLessonFilter(storedUser?.lessonFilter),
+        role: getAdminRole(username, storedUsers),
         username: storedUser?.username ?? username,
       };
     })
@@ -56,7 +59,8 @@ export async function upsertAdminUserPassword(input: {
       createdAt: previousUser?.createdAt ?? now,
       createdBy: previousUser?.createdBy ?? input.actor,
       lessonFilter: previousUser?.lessonFilter,
-      passwordHash: hashPassword(input.password),
+      passwordHash: await hashPassword(input.password),
+      role: previousUser?.role,
       updatedAt: now,
       updatedBy: input.actor,
       username: previousUser?.username ?? input.username.trim(),
@@ -96,6 +100,7 @@ export async function upsertAdminUserLessonFilter(input: {
       createdBy: previousUser?.createdBy ?? input.actor,
       lessonFilter: sanitizeLessonFilter(input.lessonFilter),
       passwordHash: previousUser?.passwordHash,
+      role: previousUser?.role,
       updatedAt: now,
       updatedBy: input.actor,
       username: previousUser?.username ?? input.username.trim(),
@@ -114,6 +119,41 @@ export async function upsertAdminUserLessonFilter(input: {
       lessonFilter: sanitizeLessonFilter(nextUser.lessonFilter),
       username: nextUser.username,
     };
+  });
+}
+
+export async function upsertAdminUserRole(input: {
+  actor: string;
+  role: AdminRole;
+  username: string;
+}) {
+  return withUsersLock(async () => {
+    const now = new Date().toISOString();
+    const normalizedUsername = normalizeUsername(input.username);
+    const users = await readStoredUsers();
+    const existingIndex = users.findIndex(
+      (user) => normalizeUsername(user.username) === normalizedUsername,
+    );
+    const previousUser = existingIndex >= 0 ? users[existingIndex] : null;
+    const nextUser: StoredAdminUser = {
+      ...previousUser,
+      createdAt: previousUser?.createdAt ?? now,
+      createdBy: previousUser?.createdBy ?? input.actor,
+      role: input.role,
+      updatedAt: now,
+      updatedBy: input.actor,
+      username: previousUser?.username ?? input.username.trim(),
+    };
+
+    if (existingIndex >= 0) {
+      users[existingIndex] = nextUser;
+    } else {
+      users.push(nextUser);
+    }
+
+    await writeStoredUsers(users);
+
+    return { role: getAdminRole(nextUser.username, users), username: nextUser.username };
   });
 }
 

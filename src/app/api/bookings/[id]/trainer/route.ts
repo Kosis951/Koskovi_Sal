@@ -1,6 +1,6 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { isAdminRequest } from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import { maxTrainerLength } from "@/lib/booking-validation";
 import { updateBookingTrainer } from "@/lib/bookings-db";
 
 export const dynamic = "force-dynamic";
@@ -10,13 +10,24 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  if (!isAdminRequest(await cookies())) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  const auth = await requireManager();
+
+  if (auth.error) {
+    return auth.error;
   }
 
   const { id } = await context.params;
-  const payload = (await request.json()) as { trainer?: string };
-  const result = await updateBookingTrainer(id, payload.trainer ?? "");
+  const payload = (await request.json()) as { trainer?: unknown };
+  const trainer = typeof payload.trainer === "string" ? payload.trainer : "";
+
+  if (trainer.trim().length > maxTrainerLength) {
+    return NextResponse.json(
+      { message: "Jméno trenéra je příliš dlouhé." },
+      { status: 400 },
+    );
+  }
+
+  const result = await updateBookingTrainer(id, trainer);
 
   if (result.notFound) {
     return NextResponse.json({ message: "Akce nenalezena." }, { status: 404 });

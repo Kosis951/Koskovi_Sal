@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog, readAuditLog, type AuditLogEntry } from "@/lib/audit-log";
-import { getAdminRequestUsername, isAdminRequest } from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import type { AdminAccess } from "@/lib/auth";
 import {
   deleteBooking,
   reinstateRecurringBooking,
@@ -20,13 +20,13 @@ type UndoDetails = {
 };
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore);
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore) || !actor) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
+  const actor = auth.access.username;
   const payload = (await request.json()) as UndoPayload;
 
   if (!payload.timestamp) {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!canActorUndoEntry(actor, entry)) {
+  if (!canActorUndoEntry(auth.access, entry)) {
     return NextResponse.json(
       { message: "Tuto operaci nemůžeš vrátit." },
       { status: 403 },
@@ -153,12 +153,12 @@ async function undoAuditEntry(entry: AuditLogEntry) {
   return { message: "Tuto operaci nejde vrátit.", status: 400 };
 }
 
-function canActorUndoEntry(actor: string, entry: AuditLogEntry) {
-  if (actor === "kosis") {
+function canActorUndoEntry(access: AdminAccess, entry: AuditLogEntry) {
+  if (access.role === "admin") {
     return true;
   }
 
-  return entry.action === "booking.delete" && entry.actor === actor;
+  return entry.action === "booking.delete" && entry.actor === access.username;
 }
 
 function isPastBookingDate(booking: Booking) {

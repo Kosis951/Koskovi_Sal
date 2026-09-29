@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminRequestUsername } from "@/lib/auth";
+import { requireMainAdmin } from "@/lib/api-auth";
 import {
   replaceImportedIndividualLessons,
   type ImportedIndividualLesson,
@@ -45,19 +44,23 @@ const weekdays = new Set([
   "nedele",
 ]);
 
-export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const username = getAdminRequestUsername(cookieStore);
+// Kept on the server: anyone holding the link can open the whole camp
+// schedule, so it must never be shipped to the browser.
+const defaultGoogleSheetUrl =
+  process.env.GOOGLE_SHEET_URL?.trim() ||
+  "https://docs.google.com/spreadsheets/d/1pMIE6aTjBSNSNyUXEm7H7R54UDtDCTfcoduMONJ5HYI/htmlview#gid=1557613453";
 
-  if (username !== "kosis") {
-    return NextResponse.json(
-      { message: "Import rozpisu může ukládat jen kosis." },
-      { status: 403 },
-    );
+export async function POST(request: NextRequest) {
+  const auth = await requireMainAdmin();
+
+  if (auth.error) {
+    return auth.error;
   }
 
-  const payload = (await request.json()) as { url?: string };
-  const sourceUrl = payload.url?.trim();
+  const payload = (await request.json()) as { url?: unknown };
+  const sourceUrl =
+    (typeof payload.url === "string" ? payload.url.trim() : "") ||
+    defaultGoogleSheetUrl;
 
   if (!sourceUrl) {
     return NextResponse.json(
@@ -126,7 +129,11 @@ export async function POST(request: NextRequest) {
 
 function parseGoogleSpreadsheetUrl(sourceUrl: string) {
   const url = new URL(sourceUrl);
-  const match = url.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
+  const match = url.pathname.match(/\/spreadsheets\/d\/([\w-]+)/);
+
+  if (url.hostname !== "docs.google.com") {
+    throw new Error("Neplatný odkaz na Google tabulku.");
+  }
 
   if (!match) {
     throw new Error("Neplatný odkaz na Google tabulku.");

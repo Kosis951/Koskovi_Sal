@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { isAdminRequest } from "@/lib/auth";
+import { requireManager, requireSession } from "@/lib/api-auth";
 import {
   getRecurringTrainers,
   recurringTrainingLabels,
@@ -11,8 +10,10 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!isAdminRequest(await cookies())) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  const auth = await requireSession();
+
+  if (auth.error) {
+    return auth.error;
   }
 
   return NextResponse.json(
@@ -29,8 +30,10 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isAdminRequest(await cookies())) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  const auth = await requireManager();
+
+  if (auth.error) {
+    return auth.error;
   }
 
   const payload = (await request.json()) as {

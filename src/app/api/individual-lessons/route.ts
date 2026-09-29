@@ -1,11 +1,6 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAdminRequestUsername,
-  getAdminUserLessonFilter,
-  isAdminRequest,
-  type LessonFilter,
-} from "@/lib/auth";
+import { requireMainAdmin, requireSession } from "@/lib/api-auth";
+import type { LessonFilter } from "@/lib/auth";
 import {
   getImportedIndividualLessons,
   replaceImportedIndividualLessons,
@@ -15,37 +10,35 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
+  const auth = await requireSession();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Je nutné přihlášení." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
-  const username = getAdminRequestUsername(cookieStore);
-  const lessonFilter = getAdminUserLessonFilter(username);
   const lessons = await getImportedIndividualLessons();
 
   return NextResponse.json(
-    { lessons: filterLessons(lessons, lessonFilter) },
+    { lessons: filterLessons(lessons, auth.access.lessonFilter) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const username = getAdminRequestUsername(cookieStore);
+  const auth = await requireMainAdmin();
 
-  if (username !== "kosis") {
-    return NextResponse.json(
-      { message: "Import rozpisu soustředění může ukládat jen kosis." },
-      { status: 403 },
-    );
+  if (auth.error) {
+    return auth.error;
   }
 
   const payload = (await request.json()) as {
-    lessons?: ImportedIndividualLesson[];
+    lessons?: unknown;
   };
-  const lessons = await replaceImportedIndividualLessons(payload.lessons ?? []);
+  const lessons = await replaceImportedIndividualLessons(
+    Array.isArray(payload.lessons)
+      ? (payload.lessons.filter(isLessonLike) as ImportedIndividualLesson[])
+      : [],
+  );
 
   return NextResponse.json(
     { lessons, message: "Rozpis soustředění je uložený." },
@@ -70,6 +63,20 @@ function filterLessons(
 
     return normalize(lesson.name).includes(query);
   });
+}
+
+function isLessonLike(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const lesson = value as Record<string, unknown>;
+
+  return ["dateOrDay", "end", "name", "start", "trainer"].every(
+    (field) =>
+      typeof lesson[field] === "string" &&
+      (lesson[field] as string).length <= 200,
+  );
 }
 
 function normalize(value: string) {

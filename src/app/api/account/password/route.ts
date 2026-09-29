@@ -1,34 +1,46 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminRequestUsername, verifyAdminPassword } from "@/lib/auth";
+import { requireSession } from "@/lib/api-auth";
+import {
+  adminSessionCookie,
+  createAdminSession,
+  getAdminSessionCookieOptions,
+  verifyAdminPassword,
+} from "@/lib/auth";
 import { upsertAdminUserPassword } from "@/lib/admin-users-db";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore);
+const maxPasswordLength = 200;
 
-  if (!actor) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+
+  if (auth.error) {
+    return auth.error;
   }
 
+  const actor = auth.access.username;
   const payload = (await request.json()) as {
-    currentPassword?: string;
-    newPassword?: string;
+    currentPassword?: unknown;
+    newPassword?: unknown;
   };
 
-  if (!payload.newPassword || payload.newPassword.length < 8) {
+  if (
+    typeof payload.newPassword !== "string" ||
+    payload.newPassword.length < 8 ||
+    payload.newPassword.length > maxPasswordLength
+  ) {
     return NextResponse.json(
-      { message: "Nové heslo musí mít alespoň 8 znaků." },
+      { message: "Nové heslo musí mít 8 až 200 znaků." },
       { status: 400 },
     );
   }
 
+  // Required for every account, so a stolen session cookie alone cannot be
+  // turned into a permanent account takeover.
   if (
-    actor !== "kosis" &&
-    (!payload.currentPassword ||
-      !verifyAdminPassword(actor, payload.currentPassword))
+    typeof payload.currentPassword !== "string" ||
+    !(await verifyAdminPassword(actor, payload.currentPassword))
   ) {
     return NextResponse.json(
       { message: "Současné heslo není správné." },
@@ -42,5 +54,13 @@ export async function POST(request: NextRequest) {
     username: actor,
   });
 
-  return NextResponse.json({ message: "Heslo je změněné." });
+  // The password change invalidates all existing sessions, including this one.
+  const response = NextResponse.json({ message: "Heslo je změněné." });
+  response.cookies.set(
+    adminSessionCookie,
+    createAdminSession(actor),
+    getAdminSessionCookieOptions(),
+  );
+
+  return response;
 }

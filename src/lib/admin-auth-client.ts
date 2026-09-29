@@ -1,11 +1,19 @@
+export type AdminRole = "admin" | "manager" | "viewer";
+
 export type AdminSession = {
   authenticated: boolean;
   lessonFilter?: {
     type: "all" | "dancer" | "trainer";
     value: string;
   };
+  role?: AdminRole | null;
   username?: string | null;
 };
+
+// Mirrors the server-side check; the server still enforces it on every call.
+export function canRoleManageBookings(role: AdminRole | null | undefined) {
+  return role === "admin" || role === "manager";
+}
 
 export async function loginAdmin(username: string, password: string) {
   const response = await fetch("/api/auth/login", {
@@ -30,7 +38,7 @@ export async function logoutAdmin() {
 }
 
 export async function getAdminSession() {
-  const response = await fetch("/api/auth/session");
+  const response = await fetch("/api/auth/session", { cache: "no-store" });
 
   return (await response.json()) as AdminSession;
 }

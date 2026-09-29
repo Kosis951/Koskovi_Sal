@@ -1,11 +1,7 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import {
-  getAdminRequestUsername,
-  isAdminRequest,
-  isReadOnlyLessonUsername,
-} from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import { getTimeRangeError } from "@/lib/booking-validation";
 import { getBookings, updateBookingTime } from "@/lib/bookings-db";
 
 export const dynamic = "force-dynamic";
@@ -15,40 +11,24 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    );
-  }
-
+  const actor = auth.access.username;
   const { id } = await context.params;
   const payload = (await request.json()) as {
-    end?: string;
-    start?: string;
+    end?: unknown;
+    start?: unknown;
   };
-  const start = payload.start?.trim();
-  const end = payload.end?.trim();
+  const start = typeof payload.start === "string" ? payload.start.trim() : "";
+  const end = typeof payload.end === "string" ? payload.end.trim() : "";
+  const timeError = getTimeRangeError(start, end);
 
-  if (!start || !end || !isTimeValue(start) || !isTimeValue(end)) {
-    return NextResponse.json(
-      { message: "Vyplň platný čas začátku a konce." },
-      { status: 400 },
-    );
-  }
-
-  if (start >= end) {
-    return NextResponse.json(
-      { message: "Konec akce musí být později než začátek." },
-      { status: 400 },
-    );
+  if (timeError) {
+    return NextResponse.json({ message: timeError }, { status: 400 });
   }
 
   const previousBooking = (await getBookings()).find(
@@ -90,8 +70,4 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
 
   return NextResponse.json({ booking: result.booking });
-}
-
-function isTimeValue(value: string) {
-  return /^\d{2}:\d{2}$/.test(value);
 }

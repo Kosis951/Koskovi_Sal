@@ -5,7 +5,13 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { SiteShell } from "@/components/site-shell";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getAdminSession, loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
+import {
+  canRoleManageBookings,
+  getAdminSession,
+  loginAdmin,
+  logoutAdmin,
+  type AdminRole,
+} from "@/lib/admin-auth-client";
 import { trainerOptions, type Booking } from "@/lib/schedule";
 import type { RecurringHoliday } from "@/lib/bookings-db";
 
@@ -45,6 +51,8 @@ export function AdminBookings() {
   const [holidayEnd, setHolidayEnd] = useState("");
   const [username, setUsername] = useState("");
   const [sessionUsername, setSessionUsername] = useState<string | null>(null);
+  const [sessionRole, setSessionRole] = useState<AdminRole | null>(null);
+  const isMainAdmin = sessionRole === "admin";
   const [password, setPassword] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -139,7 +147,7 @@ export function AdminBookings() {
     return nextByKey;
   }, [bookings]);
   const visibleAuditLog = useMemo(() => {
-    if (sessionUsername === "kosis") {
+    if (isMainAdmin) {
       return auditLog;
     }
 
@@ -147,15 +155,16 @@ export function AdminBookings() {
       (entry) =>
         entry.action === "booking.delete" && entry.actor === sessionUsername,
     );
-  }, [auditLog, sessionUsername]);
+  }, [auditLog, isMainAdmin, sessionUsername]);
 
   useEffect(() => {
     async function loadSession() {
       const session = await getAdminSession();
       setIsAuthenticated(session.authenticated);
       setSessionUsername(session.username ?? null);
+      setSessionRole(session.role ?? null);
 
-      if (session.authenticated) {
+      if (session.authenticated && canRoleManageBookings(session.role)) {
         await Promise.all([
           loadBookings(),
           loadRecurringHolidays(),
@@ -196,6 +205,12 @@ export function AdminBookings() {
     setIsAuthenticated(true);
     const session = await getAdminSession();
     setSessionUsername(session.username ?? null);
+    setSessionRole(session.role ?? null);
+
+    if (!canRoleManageBookings(session.role)) {
+      return;
+    }
+
     await Promise.all([
       loadBookings(),
       loadRecurringHolidays(),
@@ -211,6 +226,7 @@ export function AdminBookings() {
     await logoutAdmin();
     setIsAuthenticated(false);
     setSessionUsername(null);
+    setSessionRole(null);
     setBookings([]);
     setAuditLog([]);
     setRecurringHolidays([]);
@@ -375,7 +391,7 @@ export function AdminBookings() {
           >
             Zpět na kalendář
           </Link>
-          {sessionUsername === "kosis" ? (
+          {isMainAdmin ? (
             <Link
               className="inline-flex h-11 items-center justify-center rounded-md border border-white/20 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
               href="/admin/users"
@@ -440,11 +456,11 @@ export function AdminBookings() {
             Přihlásit
           </button>
         </form>
-      ) : sessionUsername?.toLocaleLowerCase("cs-CZ") === "tkkoskovi" ? (
+      ) : !canRoleManageBookings(sessionRole) ? (
         <section className="rounded-lg border border-[#ded6c9] bg-white p-5 lg:col-span-2 lg:max-w-xl">
           <h2 className="text-xl font-semibold">Správa není dostupná</h2>
           <p className="mt-2 text-sm leading-6 text-[#66706f]">
-            Účet TKKoskovi slouží pouze k nahlížení do soustředění.
+            Účet {sessionUsername} slouží pouze k nahlížení do soustředění.
           </p>
           <Link
             className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76]"
@@ -1004,12 +1020,12 @@ export function AdminBookings() {
                   Zpět na výběr
                 </button>
                 <h2 className="text-xl font-semibold">
-                  {sessionUsername === "kosis"
+                  {isMainAdmin
                     ? "Log operací"
                     : "Vrácení smazané akce"}
                 </h2>
                 <p className="mt-1 text-sm text-[#66706f]">
-                  {sessionUsername === "kosis"
+                  {isMainAdmin
                     ? "Posledních 100 operací. Soubor logu se automaticky drží pod 100 MB."
                     : "Tady uvidíš jen akce, které jsi smazal. Jakmile termín proběhne, vrácení se schová."}
                 </p>
@@ -1030,7 +1046,7 @@ export function AdminBookings() {
                         {entry.details?.title ? `: ${entry.details.title}` : ""}
                         {entry.details?.date ? ` (${entry.details.date})` : ""}
                       </span>
-                      {canUndoAuditEntry(entry, sessionUsername) ? (
+                      {canUndoAuditEntry(entry, sessionUsername, isMainAdmin) ? (
                         <button
                           className="inline-flex h-9 items-center justify-center rounded-md border border-[#ded6c9] px-3 text-xs font-semibold text-[#003758] transition hover:bg-[#f6f1e8] disabled:cursor-not-allowed disabled:opacity-60"
                           disabled={undoingTimestamp === entry.timestamp}
@@ -1050,7 +1066,7 @@ export function AdminBookings() {
                   ))
                 ) : (
                   <div className="px-5 py-4 text-sm text-[#66706f]">
-                    {sessionUsername === "kosis"
+                    {isMainAdmin
                       ? "Zatím nejsou zaznamenané žádné operace."
                       : "Zatím nemáš žádnou smazanou akci k vrácení."}
                   </div>
@@ -1110,9 +1126,13 @@ function formatDateCz(dateKey: string) {
   }).format(date);
 }
 
-function canUndoAuditEntry(entry: AuditLogEntry, sessionUsername: string | null) {
+function canUndoAuditEntry(
+  entry: AuditLogEntry,
+  sessionUsername: string | null,
+  isMainAdmin: boolean,
+) {
   if (
-    sessionUsername !== "kosis" &&
+    !isMainAdmin &&
     (entry.action !== "booking.delete" || entry.actor !== sessionUsername)
   ) {
     return false;

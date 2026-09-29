@@ -1,10 +1,6 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAdminRequestUsername,
-  isAdminRequest,
-  isReadOnlyLessonUsername,
-} from "@/lib/auth";
+import { requireManager, requireSession } from "@/lib/api-auth";
+import { isDateKey } from "@/lib/booking-validation";
 import {
   addRecurringHoliday,
   deleteRecurringHoliday,
@@ -13,11 +9,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const cookieStore = await cookies();
+const maxLabelLength = 80;
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+export async function GET() {
+  const auth = await requireSession();
+
+  if (auth.error) {
+    return auth.error;
   }
 
   return NextResponse.json(
@@ -27,25 +25,18 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore);
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
-  }
-
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    );
+  if (auth.error) {
+    return auth.error;
   }
 
   const payload = (await request.json()) as {
-    end?: string;
-    label?: string;
-    start?: string;
+    end?: unknown;
+    label?: unknown;
+    start?: unknown;
   };
+  const label = typeof payload.label === "string" ? payload.label.trim() : "";
 
   if (
     !isDateKey(payload.start) ||
@@ -58,9 +49,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (label.length > maxLabelLength) {
+    return NextResponse.json(
+      { message: `Název období může mít nejvýš ${maxLabelLength} znaků.` },
+      { status: 400 },
+    );
+  }
+
   const holiday = await addRecurringHoliday({
     end: payload.end,
-    label: payload.label ?? "",
+    label,
     start: payload.start,
   });
 
@@ -68,31 +66,19 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore);
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    );
-  }
+  const payload = (await request.json()) as { id?: unknown };
 
-  const payload = (await request.json()) as { id?: string };
-
-  if (!payload.id) {
+  if (typeof payload.id !== "string" || !payload.id) {
     return NextResponse.json({ message: "Chybí období." }, { status: 400 });
   }
 
   await deleteRecurringHoliday(payload.id);
 
   return NextResponse.json({ deleted: true });
-}
-
-function isDateKey(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }

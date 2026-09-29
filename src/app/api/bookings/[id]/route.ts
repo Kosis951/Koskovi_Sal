@@ -1,12 +1,11 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { getAdminRequestUsername, isAdminRequest } from "@/lib/auth";
+import { requireManager } from "@/lib/api-auth";
+import { parseBookingInput } from "@/lib/booking-validation";
 import {
   deleteBooking,
   getBookings,
   updateBooking,
-  type BookingInput,
 } from "@/lib/bookings-db";
 
 type RouteContext = {
@@ -14,26 +13,23 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
+  const actor = auth.access.username;
   const { id } = await context.params;
-  const input = (await request.json()) as BookingInput;
-  const previousBooking = (await getBookings()).find((booking) => booking.id === id);
+  const parsed = parseBookingInput(await request.json());
 
-  if (!input.title || !input.date || !input.start || !input.end) {
-    return NextResponse.json(
-      { message: "Chybí povinné údaje akce." },
-      { status: 400 },
-    );
+  if (!parsed.ok) {
+    return NextResponse.json({ message: parsed.error }, { status: 400 });
   }
 
+  const previousBooking = (await getBookings()).find((booking) => booking.id === id);
   const result = await updateBooking(id, {
-    ...input,
+    ...parsed.input,
     updatedBy: actor,
   });
 
@@ -71,13 +67,13 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
+  const actor = auth.access.username;
   const { id } = await context.params;
   const existingBooking = (await getBookings()).find((booking) => booking.id === id);
   const deleted = await deleteBooking(id);

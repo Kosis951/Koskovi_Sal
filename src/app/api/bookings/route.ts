@@ -1,20 +1,16 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import {
-  getAdminRequestUsername,
-  isAdminRequest,
-  isReadOnlyLessonUsername,
-} from "@/lib/auth";
-import { createBooking, getBookings, type BookingInput } from "@/lib/bookings-db";
+import { requireManager, requireSession } from "@/lib/api-auth";
+import { parseBookingInput } from "@/lib/booking-validation";
+import { createBooking, getBookings } from "@/lib/bookings-db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
+  const auth = await requireSession();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
   return NextResponse.json(
@@ -28,31 +24,21 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const actor = getAdminRequestUsername(cookieStore) ?? "unknown";
+  const auth = await requireManager();
 
-  if (!isAdminRequest(cookieStore)) {
-    return NextResponse.json({ message: "Nepřihlášeno." }, { status: 401 });
+  if (auth.error) {
+    return auth.error;
   }
 
-  if (isReadOnlyLessonUsername(actor)) {
-    return NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    );
-  }
+  const actor = auth.access.username;
+  const parsed = parseBookingInput(await request.json());
 
-  const input = (await request.json()) as BookingInput;
-
-  if (!input.title || !input.date || !input.start || !input.end) {
-    return NextResponse.json(
-      { message: "Chybí povinné údaje akce." },
-      { status: 400 },
-    );
+  if (!parsed.ok) {
+    return NextResponse.json({ message: parsed.error }, { status: 400 });
   }
 
   const result = await createBooking({
-    ...input,
+    ...parsed.input,
     createdBy: actor,
   });
 

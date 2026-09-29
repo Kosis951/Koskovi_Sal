@@ -142,6 +142,25 @@ function getCurrentWeekStartDate() {
   return date;
 }
 
+const pragueDateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "Europe/Prague",
+  year: "numeric",
+});
+
+// Today's date in the hall's time zone, independent of where the server runs.
+export function getPragueDateKey(date = new Date()) {
+  return pragueDateKeyFormatter.format(date);
+}
+
+// Individual lessons carry dancers' names, so only signed-in users get them.
+export function getVisibleBookings(bookings: Booking[], isSignedIn: boolean) {
+  return isSignedIn
+    ? bookings
+    : bookings.filter((booking) => booking.bookingKind !== "individual-lesson");
+}
+
 export function formatDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -194,16 +213,20 @@ export function isCleanupSlot(
   time: string,
   bookingList: Booking[] = [],
 ) {
+  if (!booking.cleanupRequired || booking.cleanedAt) {
+    return false;
+  }
+
   const slotDateTime = getDateTimeValue(date, time);
   const cleanupStart = getDateTimeValue(booking.date, booking.end);
+
+  if (slotDateTime < cleanupStart) {
+    return false;
+  }
+
   const cleanupEnd = getCleanupEndDateTime(booking, bookingList);
 
-  return (
-    Boolean(booking.cleanupRequired) &&
-    !booking.cleanedAt &&
-    slotDateTime >= cleanupStart &&
-    (cleanupEnd === null || slotDateTime < cleanupEnd)
-  );
+  return cleanupEnd === null || slotDateTime < cleanupEnd;
 }
 
 export function getEffectiveBookingEnd(
@@ -232,24 +255,25 @@ export function getEffectiveBookingEnd(
 }
 
 function getCleanupEndDateTime(booking: Booking, bookingList: Booking[]) {
-  const cleanupStart = getDateTimeValue(booking.date, booking.end);
-  const nextBooking = bookingList
-    .filter((candidate) => {
-      if (candidate.id === booking.id) {
-        return false;
-      }
+  const cleanupStart = getDateTimeValue(booking.date, booking.end).getTime();
+  let nextBookingStart: number | null = null;
 
-      return getDateTimeValue(candidate.date, candidate.start) >= cleanupStart;
-    })
-    .sort(
-      (first, second) =>
-        getDateTimeValue(first.date, first.start).getTime() -
-        getDateTimeValue(second.date, second.start).getTime(),
-    )[0];
+  for (const candidate of bookingList) {
+    if (candidate.id === booking.id) {
+      continue;
+    }
 
-  return nextBooking
-    ? getDateTimeValue(nextBooking.date, nextBooking.start)
-    : null;
+    const candidateStart = getDateTimeValue(candidate.date, candidate.start).getTime();
+
+    if (
+      candidateStart >= cleanupStart &&
+      (nextBookingStart === null || candidateStart < nextBookingStart)
+    ) {
+      nextBookingStart = candidateStart;
+    }
+  }
+
+  return nextBookingStart === null ? null : new Date(nextBookingStart);
 }
 
 function getDateTimeValue(date: string, time: string) {

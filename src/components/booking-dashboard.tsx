@@ -60,9 +60,11 @@ import type {
   RecurringOverrideNotice,
 } from "@/lib/bookings-db";
 import {
+  canRoleManageBookings,
   getAdminSession,
   loginAdmin,
   logoutAdmin,
+  type AdminRole,
 } from "@/lib/admin-auth-client";
 import {
   createTimeSlots,
@@ -70,9 +72,9 @@ import {
   getOpeningHoursGroups,
   formatOpeningHoursForDate,
   formatDateKey,
-  getPendingCleanupBooking,
   getWeekDays,
   hallSettings,
+  isCleanupSlot,
   isDepartureSlot,
   isSlotBooked,
   isSlotOpen,
@@ -93,6 +95,9 @@ const initialRequest: BookingRequest = {
   cleanupRequired: false,
 };
 
+const hallTitlePresets = ["Seminář", "Soustředění"];
+const customHallTitle = "custom";
+
 const monthControlFormatter = new Intl.DateTimeFormat("cs-CZ", {
   month: "long",
   year: "numeric",
@@ -111,6 +116,7 @@ type BookingDashboardProps = {
   initialSession: {
     authenticated: boolean;
     lessonFilter?: LessonFilter;
+    role: AdminRole | null;
     username: string | null;
   };
 };
@@ -144,6 +150,7 @@ export function BookingDashboard({
     ...initialRequest,
     date: initialDate,
   });
+  const [hallTitleChoice, setHallTitleChoice] = useState(hallTitlePresets[0]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [sessionLessonFilter, setSessionLessonFilter] = useState<LessonFilter>(
@@ -159,6 +166,7 @@ export function BookingDashboard({
     initialSession.authenticated,
   );
   const [sessionUsername, setSessionUsername] = useState(initialSession.username);
+  const [sessionRole, setSessionRole] = useState(initialSession.role);
   const [appMode, setAppMode] = useState<AppMode>(initialAppMode);
   const [selectedLessonTrainer, setSelectedLessonTrainer] = useState("");
   const isCheckingSession = false;
@@ -186,9 +194,8 @@ export function BookingDashboard({
   const [campDayFilter, setCampDayFilter] = useState("");
   const [campDancerFilter, setCampDancerFilter] = useState("");
   const [campTrainerFilter, setCampTrainerFilter] = useState("");
-  const [googleSheetUrl, setGoogleSheetUrl] = useState(
-    "https://docs.google.com/spreadsheets/d/1pMIE6aTjBSNSNyUXEm7H7R54UDtDCTfcoduMONJ5HYI/htmlview#gid=1557613453",
-  );
+  // Empty means the server's configured default sheet.
+  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
   const [pastedLessonTable, setPastedLessonTable] = useState("");
   const [storedImportedLessons, setStoredImportedLessons] = useState<
     ImportedLesson[]
@@ -207,15 +214,16 @@ export function BookingDashboard({
   const calendarScrollerRef = useRef<HTMLDivElement | null>(null);
   const bookingFormPanelRef = useRef<HTMLDivElement | null>(null);
   const bookingNameInputRef = useRef<HTMLInputElement | null>(null);
+  const bookingTitleSelectRef = useRef<HTMLSelectElement | null>(null);
   const loginUsernameInputRef = useRef<HTMLInputElement | null>(null);
+  const lastSyncResponseRef = useRef<string | null>(null);
 
-  const normalizedSessionUsername = (sessionUsername ?? "").toLocaleLowerCase("cs-CZ");
-  const isLessonReadOnlyAccount = normalizedSessionUsername === "tkkoskovi";
   const isDedicatedLessonPage = initialAppMode === "lessons";
   const canUseLessonMode = isAuthenticated || isDedicatedLessonPage;
   const activeAppMode: AppMode = canUseLessonMode ? appMode : "hall";
-  const canManageBookings = isAuthenticated && !isLessonReadOnlyAccount;
-  const canSaveImportedLessons = normalizedSessionUsername === "kosis";
+  const canManageBookings = isAuthenticated && canRoleManageBookings(sessionRole);
+  const isMainAdmin = isAuthenticated && sessionRole === "admin";
+  const canSaveImportedLessons = isMainAdmin;
   const shouldShowBookingPanel =
     (!isAuthenticated || canManageBookings) &&
     isBookingFormOpen;
@@ -408,28 +416,57 @@ export function BookingDashboard({
       (booking) => weekDateKeys.has(booking.date) && isCountableEvent(booking),
     ).length;
   }, [activeModeBookings, days]);
+  const bookingsByDate = useMemo(() => {
+    const groups = new Map<string, Booking[]>();
+
+    for (const booking of activeModeBookings) {
+      const dateBookings = groups.get(booking.date);
+
+      if (dateBookings) {
+        dateBookings.push(booking);
+      } else {
+        groups.set(booking.date, [booking]);
+      }
+    }
+
+    return groups;
+  }, [activeModeBookings]);
+  const pendingCleanupBookings = useMemo(
+    () =>
+      activeModeBookings.filter(
+        (booking) => booking.cleanupRequired && !booking.cleanedAt,
+      ),
+    [activeModeBookings],
+  );
+  // Only the days the current view renders; the selected day is always among them.
+  const todayViewDateKey = viewMode === "today" ? selectedDate : "";
+  const slotStateDateKeys = useMemo(() => {
+    if (todayViewDateKey) {
+      return [todayViewDateKey];
+    }
+
+    return (viewMode === "week" ? days : monthDays).map(formatDateKey);
+  }, [days, monthDays, todayViewDateKey, viewMode]);
   const slotStateMap = useMemo(() => {
     const states = new Map<string, SlotState>();
 
-    for (const dateKey of visibleDateKeys) {
+    for (const dateKey of slotStateDateKeys) {
       const date = new Date(`${dateKey}T12:00:00`);
+      const dateBookings = bookingsByDate.get(dateKey) ?? [];
 
       for (const time of timeSlots) {
         const isOpen = isSlotOpen(date, time);
         const isDeparture = isDepartureSlot(date, time, activeSlotMinutes);
         const booking = isSlotBooked(
-          activeModeBookings,
+          dateBookings,
           dateKey,
           time,
           activeSlotMinutes,
         );
         const cleanupBooking =
           isOpen && !booking
-            ? getPendingCleanupBooking(
-                activeModeBookings,
-                dateKey,
-                time,
-                activeSlotMinutes,
+            ? pendingCleanupBookings.find((candidate) =>
+                isCleanupSlot(candidate, dateKey, time, activeModeBookings),
               )
             : undefined;
 
@@ -443,7 +480,14 @@ export function BookingDashboard({
     }
 
     return states;
-  }, [activeModeBookings, activeSlotMinutes, timeSlots, visibleDateKeys]);
+  }, [
+    activeModeBookings,
+    activeSlotMinutes,
+    bookingsByDate,
+    pendingCleanupBookings,
+    slotStateDateKeys,
+    timeSlots,
+  ]);
   const selectedDaySegments = useMemo(
     () =>
       getDayAvailabilitySegments(
@@ -504,7 +548,22 @@ export function BookingDashboard({
 
   const syncCalendar = useCallback(async () => {
     const response = await fetch("/api/availability", { cache: "no-store" });
-    const data = (await response.json()) as {
+
+    if (!response.ok) {
+      return;
+    }
+
+    const responseText = await response.text();
+
+    // Unchanged data would only produce new array identities and recompute
+    // every slot, so skip the state update entirely.
+    if (responseText === lastSyncResponseRef.current) {
+      return;
+    }
+
+    lastSyncResponseRef.current = responseText;
+
+    const data = JSON.parse(responseText) as {
       source: string;
       bookings: Booking[];
       recurringCancellations?: RecurringCancellationNotice[];
@@ -540,8 +599,22 @@ export function BookingDashboard({
   }, [todayDateKey]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setNow(new Date()), 0);
-    const interval = window.setInterval(() => setNow(new Date()), 30000);
+    // Everything that reads `now` works at minute precision, so re-render the
+    // dashboard only when the minute actually changes.
+    function tick() {
+      setNow((current) => {
+        const next = new Date();
+
+        return current &&
+          Math.floor(current.getTime() / 60000) ===
+            Math.floor(next.getTime() / 60000)
+          ? current
+          : next;
+      });
+    }
+
+    const timeout = window.setTimeout(tick, 0);
+    const interval = window.setInterval(tick, 30000);
 
     return () => {
       window.clearTimeout(timeout);
@@ -681,7 +754,9 @@ export function BookingDashboard({
 
     window.setTimeout(() => {
       if (canManageBookings) {
-        bookingNameInputRef.current?.focus({ preventScroll: true });
+        (bookingTitleSelectRef.current ?? bookingNameInputRef.current)?.focus({
+          preventScroll: true,
+        });
         return;
       }
 
@@ -747,6 +822,7 @@ export function BookingDashboard({
       const session = await getAdminSession();
       setSessionLessonFilter(session.lessonFilter ?? { type: "all", value: "" });
       setSessionUsername(session.username ?? submittedUsername);
+      setSessionRole(session.role ?? null);
     } catch (error) {
       setAuthError(
         error instanceof Error ? error.message : "Přihlášení se nepodařilo.",
@@ -757,14 +833,19 @@ export function BookingDashboard({
     setUsername("");
     setPassword("");
     setIsAuthenticated(true);
+    // Signed-in users also receive individual lessons, which anonymous
+    // visitors do not.
+    void syncCalendar();
   }
 
   async function handleLogout() {
     await logoutAdmin();
     setIsAuthenticated(false);
     setSessionUsername(null);
+    setSessionRole(null);
     setSessionLessonFilter({ type: "all", value: "" });
     setSubmitMessage("");
+    void syncCalendar();
   }
 
   async function handleChangeOwnPassword(event: FormEvent<HTMLFormElement>) {
@@ -787,7 +868,9 @@ export function BookingDashboard({
 
       setCurrentPassword("");
       setNewPassword("");
-      setAccountMessage(data.message ?? "Heslo je změněné.");
+      setAccountMessage(
+        `${data.message ?? "Heslo je změněné."} Ostatní přihlášená zařízení byla odhlášena.`,
+      );
     } finally {
       setIsSavingAccount(false);
     }
@@ -808,6 +891,10 @@ export function BookingDashboard({
           ...request,
           bookingKind:
             activeAppMode === "lessons" ? "individual-lesson" : "hall",
+          name:
+            activeAppMode === "hall" && hallTitleChoice !== customHallTitle
+              ? hallTitleChoice
+              : request.name.trim(),
         }),
       });
 
@@ -1385,15 +1472,14 @@ export function BookingDashboard({
                 <div className="mt-4 grid gap-4 border-t border-[#ece3d5] pt-4">
                   <form className="grid gap-3" onSubmit={handleChangeOwnPassword}>
                     <h3 className="font-semibold text-[#132935]">Změna hesla</h3>
-                    {sessionUsername !== "kosis" ? (
-                      <input
-                        className="field-input"
-                        onChange={(event) => setCurrentPassword(event.target.value)}
-                        placeholder="Současné heslo"
-                        type="password"
-                        value={currentPassword}
-                      />
-                    ) : null}
+                    <input
+                      className="field-input"
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      placeholder="Současné heslo"
+                      required
+                      type="password"
+                      value={currentPassword}
+                    />
                     <input
                       className="field-input"
                       onChange={(event) => setNewPassword(event.target.value)}
@@ -1411,7 +1497,7 @@ export function BookingDashboard({
                     </button>
                   </form>
 
-                  {sessionUsername === "kosis" ? (
+                  {isMainAdmin ? (
                     <Link
                       className="inline-flex h-10 w-fit items-center justify-center rounded-md border border-[#ded6c9] px-4 text-sm font-semibold text-[#003758] transition hover:bg-[#f6f1e8]"
                       href="/admin/users"
@@ -1619,12 +1705,13 @@ export function BookingDashboard({
                     <input
                       className="field-input mt-1"
                       onChange={(event) => setGoogleSheetUrl(event.target.value)}
+                      placeholder="Prázdné = výchozí tabulka soustředění"
                       value={googleSheetUrl}
                     />
                   </label>
                   <button
                     className="inline-flex h-10 items-center justify-center rounded-md bg-[#003758] px-4 text-sm font-semibold text-white transition hover:bg-[#0b4d76] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={!googleSheetUrl.trim() || isSavingImport}
+                    disabled={isSavingImport}
                     onClick={handleImportGoogleLessons}
                     type="button"
                   >
@@ -2961,29 +3048,64 @@ export function BookingDashboard({
                 </div>
 
                 <div className="grid gap-3">
-                  <Field
-                    icon={<User size={16} />}
-                    label={
-                      activeAppMode === "lessons"
-                        ? "Taneční pár"
-                        : "Název / pořadatel"
-                    }
-                  >
-                    <input
-                      className="field-input"
-                      onChange={(event) =>
-                        updateRequest("name", event.target.value)
-                      }
-                      placeholder={
-                        activeAppMode === "lessons"
-                          ? "Jména tanečního páru"
-                          : "Kurz, workshop nebo jmeno poradatele"
-                      }
-                      required
-                      ref={bookingNameInputRef}
-                      value={request.name}
-                    />
-                  </Field>
+                  {activeAppMode === "lessons" ? (
+                    <Field icon={<User size={16} />} label="Taneční pár">
+                      <input
+                        className="field-input"
+                        onChange={(event) =>
+                          updateRequest("name", event.target.value)
+                        }
+                        placeholder="Jména tanečního páru"
+                        required
+                        ref={bookingNameInputRef}
+                        value={request.name}
+                      />
+                    </Field>
+                  ) : (
+                    <>
+                      <Field icon={<User size={16} />} label="Název akce">
+                        <select
+                          className="field-input"
+                          onChange={(event) => {
+                            const choice = event.target.value;
+
+                            setSubmitMessage("");
+                            setHallTitleChoice(choice);
+
+                            if (choice === customHallTitle) {
+                              window.setTimeout(() => {
+                                bookingNameInputRef.current?.focus();
+                              }, 0);
+                            }
+                          }}
+                          ref={bookingTitleSelectRef}
+                          value={hallTitleChoice}
+                        >
+                          {hallTitlePresets.map((title) => (
+                            <option key={title} value={title}>
+                              {title}
+                            </option>
+                          ))}
+                          <option value={customHallTitle}>Vlastní</option>
+                        </select>
+                      </Field>
+                      {hallTitleChoice === customHallTitle ? (
+                        <label className="field-label">
+                          Vlastní název akce
+                          <input
+                            className="field-input mt-1"
+                            onChange={(event) =>
+                              updateRequest("name", event.target.value)
+                            }
+                            placeholder="Např. workshop, kurz nebo jméno pořadatele"
+                            required
+                            ref={bookingNameInputRef}
+                            value={request.name}
+                          />
+                        </label>
+                      ) : null}
+                    </>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <label className="field-label col-span-2">
                       Datum
