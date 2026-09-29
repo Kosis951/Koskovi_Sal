@@ -12,8 +12,9 @@ import {
 } from "@/components/dashboard/calendar-events";
 
 // The grid fills the window height on computers (what is left after the
-// header, status bar and toolbar), with a minimum so short windows stay usable.
-const columnHeight = "clamp(520px, calc(100svh - 21rem), 1200px)";
+// header, status bar, toolbar and legend: about 21rem), with a minimum so
+// short windows stay usable. 360px still fits a 1600×900 screen.
+const columnHeight = "clamp(360px, calc(100svh - 21.25rem), 1200px)";
 const snapMinutes = 30;
 const weekdayFormatter = new Intl.DateTimeFormat("cs-CZ", { weekday: "short" });
 const dayNumberFormatter = new Intl.DateTimeFormat("cs-CZ", {
@@ -98,22 +99,24 @@ export function TimeGridCalendar({
 
           return (
             <button
-              className={`flex flex-col items-center gap-0.5 rounded-t-lg px-1 py-2 transition ${
+              className={`flex flex-col items-center gap-0.5 rounded-t-lg px-1 py-1.5 transition ${
                 isSelected ? "bg-brand-soft" : "hover:bg-subtle"
               }`}
               key={day.dateKey}
               onClick={() => onSelectDate(day.dateKey)}
               type="button"
             >
-              <span className="text-xs font-semibold uppercase text-ink-muted">
-                {weekdayFormatter.format(day.date)}
-              </span>
-              <span
-                className={`flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-sm font-semibold ${
-                  isToday ? "bg-brand text-on-brand" : "text-ink"
-                }`}
-              >
-                {dayNumberFormatter.format(day.date)}
+              <span className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold uppercase text-ink-muted">
+                  {weekdayFormatter.format(day.date)}
+                </span>
+                <span
+                  className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-sm font-semibold ${
+                    isToday ? "bg-brand text-on-brand" : "text-ink"
+                  }`}
+                >
+                  {dayNumberFormatter.format(day.date)}
+                </span>
               </span>
               <span className="text-[11px] text-ink-soft">{formatEventCount(count)}</span>
             </button>
@@ -304,7 +307,7 @@ function CalendarBlock({
       }}
       title={`${label} · ${time}${item.trainer ? ` · ${item.trainer}` : ""}${
         item.kind === "cancelled" ? " · zrušeno" : ""
-      }`}
+      }${item.kind === "cleanup" ? " · klikněte po úklidu" : ""}`}
       type="button"
     >
       {duration < 75 ? (

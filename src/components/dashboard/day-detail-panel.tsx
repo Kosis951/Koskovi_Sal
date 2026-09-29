@@ -40,6 +40,7 @@ export function DayDetailPanel({
   expandedBookingId,
   onAddBooking,
   onExpandedBookingChange,
+  onRequestCleanup,
   segments,
   selectedDate,
 }: {
@@ -53,6 +54,7 @@ export function DayDetailPanel({
   expandedBookingId: string;
   onAddBooking: () => void;
   onExpandedBookingChange: (bookingId: string) => void;
+  onRequestCleanup: (booking: Booking) => void;
   segments: DayAvailabilitySegment[];
   selectedDate: string;
 }) {
@@ -106,12 +108,13 @@ export function DayDetailPanel({
                   ) : null}
                   {segment.kind === "cleanup" && segment.cleanupBookingId ? (
                     <CleanupButton
-                      actions={actions}
                       booking={bookings.find(
                         (booking) => booking.id === segment.cleanupBookingId,
                       )}
                       currentDateKey={currentDateKey}
                       currentTimeMinutes={currentTimeMinutes}
+                      isCleaning={actions.pendingId.cleaning === segment.cleanupBookingId}
+                      onRequestCleanup={onRequestCleanup}
                     />
                   ) : null}
                 </div>
@@ -176,7 +179,6 @@ export function DayDetailPanel({
         Přidat akci na tento den
       </button>
 
-      <StatusMessage tone="warning">{messages.cleanup}</StatusMessage>
       <StatusMessage tone="error">{messages.delete}</StatusMessage>
       <StatusMessage tone="success">{messages.trainer}</StatusMessage>
       <StatusMessage tone="warning">{messages.time}</StatusMessage>
@@ -186,25 +188,26 @@ export function DayDetailPanel({
 }
 
 function CleanupButton({
-  actions,
   booking,
   currentDateKey,
   currentTimeMinutes,
+  isCleaning,
+  onRequestCleanup,
 }: {
-  actions: BookingActions;
   booking?: Booking;
   currentDateKey: string;
   currentTimeMinutes: number | null;
+  isCleaning: boolean;
+  onRequestCleanup: (booking: Booking) => void;
 }) {
   const canConfirm =
     booking && hasBookingEnded(booking, currentDateKey, currentTimeMinutes);
-  const isCleaning = Boolean(booking) && actions.pendingId.cleaning === booking?.id;
 
   return (
     <button
       className="mt-1.5 inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-brand px-3 text-xs font-semibold text-on-brand transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
       disabled={isCleaning || !canConfirm}
-      onClick={() => (booking ? actions.markCleaned(booking.id) : undefined)}
+      onClick={() => (booking ? onRequestCleanup(booking) : undefined)}
       title={canConfirm ? undefined : "Úklid lze potvrdit až po skončení akce."}
       type="button"
     >
@@ -366,7 +369,7 @@ function StatusMessage({
   );
 }
 
-function hasBookingEnded(
+export function hasBookingEnded(
   booking: Booking,
   currentDateKey: string,
   currentTimeMinutes: number | null,

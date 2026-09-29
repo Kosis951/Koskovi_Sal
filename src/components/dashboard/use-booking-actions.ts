@@ -2,7 +2,6 @@ import { useState } from "react";
 import { isRecurringBookingId } from "@/components/booking-dashboard-utils";
 
 type Messages = {
-  cleanup: string;
   delete: string;
   time: string;
   title: string;
@@ -10,7 +9,6 @@ type Messages = {
 };
 
 const emptyMessages: Messages = {
-  cleanup: "",
   delete: "",
   time: "",
   title: "",
@@ -53,20 +51,19 @@ export function useBookingActions(syncCalendar: () => Promise<void>) {
     }
   }
 
+  // Returns an error message, or null once the hall is marked as cleaned.
   async function markCleaned(bookingId: string) {
-    setMessage("cleanup", "");
-
     const result = await run("cleaning", bookingId, () =>
       fetch(`/api/bookings/${bookingId}/clean`, { method: "POST" }),
-    );
+    ).catch(() => ({ message: undefined, ok: false }));
 
     if (!result.ok) {
-      setMessage("cleanup", result.message ?? "Úklid se nepodařilo potvrdit.");
-      return;
+      return result.message ?? "Úklid se nepodařilo potvrdit.";
     }
 
-    setMessage("cleanup", "Děkujeme, sál je označen jako uklizený.");
     await syncCalendar();
+
+    return null;
   }
 
   async function deleteBooking(bookingId: string, title: string) {

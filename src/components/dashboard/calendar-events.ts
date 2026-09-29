@@ -215,6 +215,8 @@ export function getVisibleRange(days: CalendarDay[]) {
 }
 
 export type HallStatus = {
+  // The booking whose cleanup is pending right now, if any.
+  cleanupBooking?: Booking;
   detail: string;
   title: string;
   tone: "free" | "busy" | "cleanup" | "closed";
@@ -259,6 +261,7 @@ export function getHallStatus(today: CalendarDay, nowMinutes: number): HallStatu
 
   if (current?.kind === "cleanup") {
     return {
+      cleanupBooking: current.booking,
       detail: "Po skončené akci je potřeba sál uklidit.",
       title: "Sál čeká na úklid",
       tone: "cleanup",

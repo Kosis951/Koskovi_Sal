@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getDayAvailabilitySegments,
   getMonthDays,
@@ -16,7 +16,7 @@ import {
   type CalendarItem,
 } from "@/components/dashboard/calendar-events";
 import { CalendarToolbar } from "@/components/dashboard/calendar-toolbar";
-import { DayDetailPanel } from "@/components/dashboard/day-detail-panel";
+import { DayDetailPanel, hasBookingEnded } from "@/components/dashboard/day-detail-panel";
 import { BookingForm } from "@/components/dashboard/booking-form-panel";
 import { HallStatusBanner, ScheduleInfo } from "@/components/dashboard/hall-status";
 import { LoginForm } from "@/components/dashboard/login-form";
@@ -31,6 +31,7 @@ import { useBookingActions } from "@/components/dashboard/use-booking-actions";
 import { useCalendarData } from "@/components/dashboard/use-calendar-data";
 import { useNow } from "@/components/dashboard/use-now";
 import { AppHeader } from "@/components/ui/app-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
 import { pageContainer } from "@/components/ui/styles";
@@ -99,6 +100,9 @@ export function BookingDashboard({
   const [openBookingAfterLogin, setOpenBookingAfterLogin] = useState(false);
   const [expandedBookingId, setExpandedBookingId] = useState("");
   const [toast, setToast] = useState("");
+  // Booking whose cleanup the "Uklidil jsem sál?" dialog asks about.
+  const [cleanupBooking, setCleanupBooking] = useState<Booking | null>(null);
+  const [cleanupError, setCleanupError] = useState("");
   const toastTimeoutRef = useRef<number | null>(null);
   const [session, setSession] = useState({
     isAuthenticated: initialSession.authenticated,
@@ -270,9 +274,40 @@ export function BookingDashboard({
       canManageBookings && item.booking && item.kind !== "cleanup" ? item.booking.id : "",
     );
 
+    if (item.kind === "cleanup" && item.booking) {
+      requestCleanup(item.booking);
+      return;
+    }
+
     if (window.matchMedia("(max-width: 1023px)").matches) {
       agendaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  }
+
+  function requestCleanup(booking: Booking) {
+    setCleanupError("");
+    setCleanupBooking(booking);
+  }
+
+  const closeCleanupPrompt = useCallback(() => {
+    setCleanupBooking(null);
+    setCleanupError("");
+  }, []);
+
+  async function confirmCleanup() {
+    if (!cleanupBooking) {
+      return;
+    }
+
+    const error = await actions.markCleaned(cleanupBooking.id);
+
+    if (error) {
+      setCleanupError(error);
+      return;
+    }
+
+    closeCleanupPrompt();
+    showToast("Díky! Sál je označen jako uklizený.");
   }
 
   function setWholeDayBooking() {
@@ -379,11 +414,12 @@ export function BookingDashboard({
       <main className={`${pageContainer} grid grid-cols-1 gap-4 py-4 lg:py-5`}>
             <HallStatusBanner
               freeHours={freeHours}
+              onRequestCleanup={requestCleanup}
               status={hallStatus}
               todaysOpeningHours={formatOpeningHoursForDate(new Date(`${todayKey}T12:00:00`))}
             />
 
-            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-5">
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-stretch lg:gap-5">
               <section className="grid gap-3 rounded-xl border border-line bg-surface p-3 sm:p-4">
                 <CalendarToolbar
                   isShowingToday={isShowingToday}
@@ -431,7 +467,10 @@ export function BookingDashboard({
                 <CalendarLegend />
               </section>
 
-              <aside className="grid gap-4 lg:sticky lg:top-[72px]">
+              {/* On computers the side panel is as tall as the calendar and
+                  scrolls on its own, so it never makes the page longer. */}
+              <aside className="grid content-start gap-4 lg:relative">
+                <div className="grid content-start gap-4 lg:absolute lg:inset-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl">
                 <div className="scroll-mt-20" ref={agendaRef}>
                   <DayDetailPanel
                     actions={actions}
@@ -444,6 +483,7 @@ export function BookingDashboard({
                     expandedBookingId={expandedBookingId}
                     onAddBooking={() => openBookingForm({ date: selectedDate })}
                     onExpandedBookingChange={setExpandedBookingId}
+                    onRequestCleanup={requestCleanup}
                     segments={selectedDaySegments}
                     selectedDate={selectedDate}
                   />
@@ -456,6 +496,7 @@ export function BookingDashboard({
                   openingHours={getOpeningHoursGroups()}
                   reinstatingId={actions.pendingId.reinstating}
                 />
+                </div>
               </aside>
             </div>
 
@@ -503,8 +544,45 @@ export function BookingDashboard({
       <Sheet onClose={closeSheet} open={sheet === "password"} title="Změna hesla">
         <PasswordChangeForm />
       </Sheet>
+
+      <ConfirmDialog
+        error={cleanupError}
+        isBusy={Boolean(cleanupBooking) && actions.pendingId.cleaning === cleanupBooking?.id}
+        onCancel={closeCleanupPrompt}
+        onConfirm={
+          cleanupBooking && hasBookingEnded(cleanupBooking, currentDateKey, nowMinutes)
+            ? confirmCleanup
+            : undefined
+        }
+        open={cleanupBooking !== null}
+        title={
+          cleanupBooking && !hasBookingEnded(cleanupBooking, currentDateKey, nowMinutes)
+            ? "Akce ještě neskončila"
+            : "Je sál uklizený?"
+        }
+      >
+        {cleanupBooking ? (
+          hasBookingEnded(cleanupBooking, currentDateKey, nowMinutes) ? (
+            <p>
+              Po akci <strong className="text-ink">{cleanupBooking.title}</strong> (
+              {formatCleanupDate(cleanupBooking)}) sál čeká na úklid. Je už uklizeno?
+            </p>
+          ) : (
+            <p>
+              Úklid po akci <strong className="text-ink">{cleanupBooking.title}</strong> půjde
+              potvrdit až po jejím skončení ({formatCleanupDate(cleanupBooking)}).
+            </p>
+          )
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
+}
+
+function formatCleanupDate(booking: Booking) {
+  const [, month, day] = booking.date.split("-").map(Number);
+
+  return `${day}. ${month}., ${booking.start}–${booking.end}`;
 }
 
 // Whole weeks (Monday to Sunday) covering the given month, for the month grid.

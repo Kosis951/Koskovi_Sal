@@ -1,10 +1,11 @@
-import { AlertCircle, ChevronDown, Clock3, RefreshCw } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, Clock3, RefreshCw } from "lucide-react";
 import type { HallStatus } from "@/components/dashboard/calendar-events";
 import { cancellationDateFormatter } from "@/components/booking-dashboard-utils";
 import type {
   RecurringCancellationNotice,
   RecurringOverrideNotice,
 } from "@/lib/bookings-db";
+import type { Booking } from "@/lib/schedule";
 
 const toneClass: Record<HallStatus["tone"], { box: string; dot: string }> = {
   busy: { box: "border-busy-line bg-busy text-busy-ink", dot: "bg-busy-ink" },
@@ -19,19 +20,23 @@ const toneClass: Record<HallStatus["tone"], { box: string; dot: string }> = {
 // The answer to "can I use the hall right now?", shown above the calendar.
 export function HallStatusBanner({
   freeHours,
+  onRequestCleanup,
   status,
   todaysOpeningHours,
 }: {
   freeHours: number | null;
+  onRequestCleanup: (booking: Booking) => void;
   status: HallStatus | null;
   todaysOpeningHours: string;
 }) {
+  const cleanupBooking = status?.cleanupBooking;
+
   const tone = toneClass[status?.tone ?? "closed"];
 
   return (
     <div
       aria-live="polite"
-      className={`flex min-h-16 flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:gap-4 ${
+      className={`flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:gap-4 lg:py-2.5 ${
         status ? tone.box : "border-line bg-surface"
       }`}
     >
@@ -41,13 +46,24 @@ export function HallStatusBanner({
             status ? tone.dot : "bg-line-strong"
           } ${status?.tone === "free" ? "animate-pulse" : ""}`}
         />
-        <div className="min-w-0">
+        {/* One line on computers, so the calendar below gets the height. */}
+        <div className="min-w-0 lg:flex lg:flex-wrap lg:items-baseline lg:gap-x-3">
           <p className="text-base font-semibold sm:text-lg">
             {status?.title ?? "Zjišťuji stav sálu…"}
           </p>
           {status ? <p className="text-sm opacity-85">{status.detail}</p> : null}
         </div>
       </div>
+      {cleanupBooking ? (
+        <button
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 self-start rounded-md bg-brand px-4 text-sm font-semibold text-on-brand transition hover:bg-brand-hover sm:self-center"
+          onClick={() => onRequestCleanup(cleanupBooking)}
+          type="button"
+        >
+          <Check size={16} />
+          Uklidil jsem sál
+        </button>
+      ) : null}
       <div className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 text-sm opacity-90 sm:ml-auto sm:text-right">
         <span className="inline-flex items-center gap-1.5">
           <Clock3 size={15} />
