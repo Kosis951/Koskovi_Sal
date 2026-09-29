@@ -59,3 +59,7 @@ dev-server.err.log
 dev-server.out.log
 dev-server.err.log
 *.log
+.claude/launch.json
+dev-server.err.log
+dev-server.out.log
+*.log
