@@ -135,7 +135,7 @@ export function AdminOverview() {
 
         <section className="grid content-start gap-2">
           <QuickLink
-            description="Trenéři a změny nejbližších termínů"
+            description="Přidání, úprava a trenéři tréninků"
             href="/admin/treninky"
             icon={Repeat}
             label="Pravidelné tréninky"

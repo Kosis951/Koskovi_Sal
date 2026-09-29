@@ -2,22 +2,24 @@ import { bookingToRow, getDb } from "@/lib/db";
 import type { Booking } from "@/lib/schedule";
 
 const recurringHorizonDays = 28;
-const latBaseWeekMonday = "2026-05-18";
+const alternationBaseMonday = "2026-05-18";
 let databaseQueue = Promise.resolve();
 
 export type BookingInput = Omit<Booking, "id">;
 
-export type RecurringTrainingKey =
-  | "deti"
-  | "prvni-krucky"
-  | "juniori-utery"
-  | "practise"
-  | "latino-ladies"
-  | "pohybovka"
-  | "spolecna"
-  | "juniori-patek";
-
-export type RecurringTrainerConfig = Partial<Record<RecurringTrainingKey, string>>;
+// A training that repeats every week. `weekday` is ISO (1 = Monday …
+// 7 = Sunday); when `alternateTitle` is set, weeks alternate between the two
+// titles (e.g. LAT / STT).
+export type RecurringTraining = {
+  alternateTitle?: string;
+  end: string;
+  key: string;
+  start: string;
+  title: string;
+  trainer?: string;
+  weekday: number;
+};
+export type RecurringTrainingInput = Omit<RecurringTraining, "key">;
 export type RecurringCancellationNotice = {
   date: string;
   end: string;
@@ -57,7 +59,7 @@ type RecurringConfig = {
   cancelledIds: Set<string>;
   holidays: RecurringHoliday[];
   overrides: RecurringBookingOverrides;
-  trainers: RecurringTrainerConfig;
+  trainings: RecurringTraining[];
 };
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -76,34 +78,84 @@ const pragueDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
 });
 
-export const recurringTrainingLabels: Array<{
-  end: string;
-  key: RecurringTrainingKey;
-  label: string;
-  schedule: string;
-  start: string;
-}> = [
-  { end: "17:00", key: "deti", label: "Děti", schedule: "Pondělí 15:15-17:00", start: "15:15" },
-  { end: "16:30", key: "prvni-krucky", label: "První krůčky", schedule: "Úterý 15:45-16:30", start: "15:45" },
-  { end: "17:15", key: "juniori-utery", label: "Junioři", schedule: "Úterý 16:30-17:15", start: "16:30" },
-  { end: "19:30", key: "practise", label: "Practise", schedule: "Úterý 17:30-19:30", start: "17:30" },
-  { end: "21:00", key: "latino-ladies", label: "Latino Ladies", schedule: "Úterý 20:00-21:00", start: "20:00" },
-  { end: "18:00", key: "pohybovka", label: "Pohybovka", schedule: "Čtvrtek 17:15-18:00", start: "17:15" },
-  { end: "19:30", key: "spolecna", label: "Společná LAT/STT", schedule: "Čtvrtek 18:00-19:30", start: "18:00" },
-  { end: "17:00", key: "juniori-patek", label: "Junioři", schedule: "Pátek 16:00-17:00", start: "16:00" },
-];
-
 export async function getBookings() {
   return readBookings();
 }
 
-export async function getRecurringTrainers() {
-  return readRecurringTrainers();
+export async function getRecurringTrainings() {
+  return readRecurringTrainings();
+}
+
+export async function createRecurringTraining(input: RecurringTrainingInput) {
+  return withDatabaseLock(async () => {
+    const key = await createTrainingKey(input.title);
+
+    getDb()
+      .prepare(`
+        INSERT INTO recurring_trainings
+          (key, title, alternate_title, weekday, start, "end", trainer, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        key,
+        input.title,
+        input.alternateTitle ?? null,
+        input.weekday,
+        input.start,
+        input.end,
+        input.trainer ?? null,
+        new Date().toISOString(),
+      );
+
+    return { ...input, key };
+  });
+}
+
+// Changes apply to all future occurrences. One-off changes of a single date
+// (cancellations, time or title overrides) stay attached to that date.
+export async function updateRecurringTraining(key: string, input: RecurringTrainingInput) {
+  return withDatabaseLock(async () => {
+    const result = getDb()
+      .prepare(`
+        UPDATE recurring_trainings SET title = ?, alternate_title = ?, weekday = ?,
+          start = ?, "end" = ?, trainer = ?, updated_at = ?
+        WHERE key = ?
+      `)
+      .run(
+        input.title,
+        input.alternateTitle ?? null,
+        input.weekday,
+        input.start,
+        input.end,
+        input.trainer ?? null,
+        new Date().toISOString(),
+        key,
+      );
+
+    return result.changes > 0 ? { ...input, key } : null;
+  });
+}
+
+export async function deleteRecurringTraining(key: string) {
+  return withDatabaseLock(async () => {
+    const db = getDb();
+    const idPattern = `recurring-${key}-____-__-__`;
+    let deleted = false;
+
+    db.transaction(() => {
+      deleted = db.prepare("DELETE FROM recurring_trainings WHERE key = ?").run(key).changes > 0;
+      db.prepare("DELETE FROM recurring_cancellations WHERE id LIKE ?").run(idPattern);
+      db.prepare("DELETE FROM recurring_overrides WHERE id LIKE ?").run(idPattern);
+    })();
+
+    return deleted;
+  });
 }
 
 export async function getRecurringCancellationNotices() {
+  const trainings = await readRecurringTrainings();
   const notices = (await readRecurringCancellations())
-    .map(createRecurringCancellationNotice)
+    .map((id) => createRecurringCancellationNotice(id, trainings))
     .filter((notice): notice is RecurringCancellationNotice => Boolean(notice))
     .filter((notice) => notice.date >= getTodayPragueDateKey())
     .sort((left, right) =>
@@ -118,11 +170,14 @@ export async function getRecurringHolidays() {
 }
 
 export async function getRecurringOverrideNotices() {
-  const overrides = await readRecurringOverrides();
+  const [overrides, trainings] = await Promise.all([
+    readRecurringOverrides(),
+    readRecurringTrainings(),
+  ]);
 
   return Object.entries(overrides)
     .map(([id, override]) => {
-      const recurringNotice = createRecurringCancellationNotice(id);
+      const recurringNotice = createRecurringCancellationNotice(id, trainings);
       const hasTitleChange = Boolean(override.title && override.originalTitle);
       const hasTimeChange = Boolean(override.start || override.end);
 
@@ -215,16 +270,6 @@ export async function updateBookingTitle(id: string, title: string) {
     });
 
     return (await readBookings()).find((candidate) => candidate.id === id) ?? null;
-  });
-}
-
-export async function updateRecurringTrainers(input: RecurringTrainerConfig) {
-  return withDatabaseLock(async () => {
-    const nextConfig = normalizeRecurringTrainers(input);
-
-    await writeRecurringTrainers(nextConfig);
-
-    return nextConfig;
   });
 }
 
@@ -475,18 +520,18 @@ async function readStoredBookings() {
 }
 
 async function readRecurringConfig(): Promise<RecurringConfig> {
-  const [cancelledIds, holidays, overrides, trainers] = await Promise.all([
+  const [cancelledIds, holidays, overrides, trainings] = await Promise.all([
     readRecurringCancellations(),
     readRecurringHolidays(),
     readRecurringOverrides(),
-    readRecurringTrainers(),
+    readRecurringTrainings(),
   ]);
 
   return {
     cancelledIds: new Set(cancelledIds),
     holidays,
     overrides,
-    trainers,
+    trainings,
   };
 }
 
@@ -665,7 +710,7 @@ function createRecurringBookings({
   cancelledIds,
   holidays: recurringHolidays,
   overrides: recurringOverrides,
-  trainers: recurringTrainers,
+  trainings,
 }: RecurringConfig) {
   const today = dateKeyToUtcDate(getTodayPragueDateKey());
   const bookings: Booking[] = [];
@@ -673,137 +718,52 @@ function createRecurringBookings({
   for (let offset = 0; offset <= recurringHorizonDays; offset += 1) {
     const date = new Date(today);
     date.setUTCDate(today.getUTCDate() + offset);
-    const day = date.getUTCDay();
+    const isoWeekday = date.getUTCDay() || 7;
     const dateKey = formatUtcDateKey(date);
 
     if (isRecurringHolidayDate(dateKey, recurringHolidays)) {
       continue;
     }
 
-    if (day === 1) {
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("deti", recurringTrainers, recurringOverrides, {
-        id: `recurring-deti-${dateKey}`,
-        title: "Děti",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "15:15",
-        end: "17:00",
-        status: "confirmed",
-        note: "Pravidelny pondelni trenink deti",
-      }));
-    }
-
-    if (day === 2) {
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("prvni-krucky", recurringTrainers, recurringOverrides, {
-        id: `recurring-prvni-krucky-${dateKey}`,
-        title: "První krůčky",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "15:45",
-        end: "16:30",
-        status: "confirmed",
-        note: "Pravidelny uterni trenink Prvni krucky",
-      }));
-
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("juniori-utery", recurringTrainers, recurringOverrides, {
-        id: `recurring-juniori-utery-${dateKey}`,
-        title: "Junioři",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "16:30",
-        end: "17:15",
-        status: "confirmed",
-        note: "Pravidelny uterni trenink junioru",
-      }));
-
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("practise", recurringTrainers, recurringOverrides, {
-        id: `recurring-practise-${dateKey}`,
-        title: "Practise",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "17:30",
-        end: "19:30",
-        status: "confirmed",
-        note: "Pravidelna uterni akce",
-      }));
-
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("latino-ladies", recurringTrainers, recurringOverrides, {
-        id: `recurring-latino-ladies-${dateKey}`,
-        title: "Latino Ladies",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "20:00",
-        end: "21:00",
-        status: "confirmed",
-        note: "Pravidelny uterni trenink Latino Ladies",
-      }));
-    }
-
-    if (day === 4) {
-      const danceStyle = getAlternatingDanceStyle(dateKey);
-
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("pohybovka", recurringTrainers, recurringOverrides, {
-        id: `recurring-pohybovka-${dateKey}`,
-        title: "Pohybovka",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "17:15",
-        end: "18:00",
-        status: "confirmed",
-        note: "Pravidelna ctvrtecni akce",
-      }));
-
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("spolecna", recurringTrainers, recurringOverrides, {
-        id: `recurring-spolecna-${dateKey}`,
-        title: `Společná ${danceStyle}`,
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "18:00",
-        end: "19:30",
-        status: "confirmed",
-        note: "LAT a STT se stridaji po tydnu",
-      }));
-    }
-
-    if (day === 5) {
-      pushRecurringBooking(bookings, cancelledIds, buildRecurringBooking("juniori-patek", recurringTrainers, recurringOverrides, {
-        id: `recurring-juniori-patek-${dateKey}`,
-        title: "Junioři",
-        organizer: "Koškovi",
-        date: dateKey,
-        start: "16:00",
-        end: "17:00",
-        status: "confirmed",
-        note: "Pravidelny patecni trenink junioru",
-      }));
+    for (const training of trainings) {
+      if (training.weekday === isoWeekday) {
+        pushRecurringBooking(
+          bookings,
+          cancelledIds,
+          buildRecurringBooking(training, recurringOverrides, dateKey),
+        );
+      }
     }
   }
 
   return bookings;
 }
 
+function getTrainingTitle(training: RecurringTraining, dateKey: string) {
+  return training.alternateTitle && isAlternateWeek(dateKey)
+    ? training.alternateTitle
+    : training.title;
+}
+
 function buildRecurringBooking(
-  key: RecurringTrainingKey,
-  recurringTrainers: RecurringTrainerConfig,
+  training: RecurringTraining,
   recurringOverrides: RecurringBookingOverrides,
-  booking: Booking,
-) {
-  const trainer = (
-    recurringOverrides[booking.id]?.trainer ??
-    recurringTrainers[key] ??
-    ""
-  ).trim();
-  const title = recurringOverrides[booking.id]?.title?.trim() || booking.title;
-  const start = recurringOverrides[booking.id]?.start?.trim() || booking.start;
-  const end = recurringOverrides[booking.id]?.end?.trim() || booking.end;
+  dateKey: string,
+): Booking {
+  const id = `recurring-${training.key}-${dateKey}`;
+  const override = recurringOverrides[id];
+  const trainer = (override?.trainer ?? training.trainer ?? "").trim();
 
   return {
-    ...booking,
-    end,
-    note: trainer ? `${booking.note}\nTrenér: ${trainer}` : booking.note,
-    recurringKey: key,
-    start,
-    title,
+    date: dateKey,
+    end: override?.end?.trim() || training.end,
+    id,
+    note: trainer ? `Trenér: ${trainer}` : undefined,
+    organizer: "Koškovi",
+    recurringKey: training.key,
+    start: override?.start?.trim() || training.start,
+    status: "confirmed",
+    title: override?.title?.trim() || getTrainingTitle(training, dateKey),
     trainer: trainer || undefined,
   };
 }
@@ -828,14 +788,15 @@ async function readRecurringCancellations() {
 
 function createRecurringCancellationNotice(
   id: string,
+  trainings: RecurringTraining[],
 ): RecurringCancellationNotice | null {
   if (!id.startsWith("recurring-")) {
     return null;
   }
 
   const date = id.slice(-10);
-  const key = id.slice("recurring-".length, -11) as RecurringTrainingKey;
-  const training = recurringTrainingLabels.find((item) => item.key === key);
+  const key = id.slice("recurring-".length, -11);
+  const training = trainings.find((item) => item.key === key);
 
   if (!training || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return null;
@@ -846,9 +807,7 @@ function createRecurringCancellationNotice(
     end: training.end,
     id,
     start: training.start,
-    title: key === "spolecna"
-      ? training.label.replace("LAT/STT", getAlternatingDanceStyle(date))
-      : training.label,
+    title: getTrainingTitle(training, date),
   };
 }
 
@@ -1069,48 +1028,51 @@ async function writeRecurringCancellations(ids: string[]) {
   })();
 }
 
-async function readRecurringTrainers() {
+// Ordered by weekday and start time, as shown in administration.
+async function readRecurringTrainings(): Promise<RecurringTraining[]> {
   const rows = getDb()
-    .prepare("SELECT training_key, trainer FROM recurring_trainers")
-    .all() as Array<{ trainer: string; training_key: string }>;
+    .prepare(
+      'SELECT key, title, alternate_title, weekday, start, "end", trainer FROM recurring_trainings ORDER BY weekday, start',
+    )
+    .all() as Array<{
+    alternate_title: string | null;
+    end: string;
+    key: string;
+    start: string;
+    title: string;
+    trainer: string | null;
+    weekday: number;
+  }>;
 
-  return normalizeRecurringTrainers(
-    Object.fromEntries(rows.map((row) => [row.training_key, row.trainer])),
-  );
+  return rows.map((row) => ({
+    alternateTitle: row.alternate_title ?? undefined,
+    end: row.end,
+    key: row.key,
+    start: row.start,
+    title: row.title,
+    trainer: row.trainer ?? undefined,
+    weekday: row.weekday,
+  }));
 }
 
-async function writeRecurringTrainers(config: RecurringTrainerConfig) {
-  const db = getDb();
-  const insert = db.prepare(
-    "INSERT INTO recurring_trainers (training_key, trainer) VALUES (?, ?)",
-  );
+// Readable, stable key used in generated booking ids ("recurring-<key>-<date>").
+async function createTrainingKey(title: string) {
+  const base =
+    title
+      .toLocaleLowerCase("cs-CZ")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 30) || "trenink";
+  const exists = getDb().prepare("SELECT 1 FROM recurring_trainings WHERE key = ?");
+  let key = base;
 
-  db.transaction(() => {
-    db.exec("DELETE FROM recurring_trainers");
-
-    for (const [key, trainer] of Object.entries(normalizeRecurringTrainers(config))) {
-      insert.run(key, trainer);
-    }
-  })();
-}
-
-function normalizeRecurringTrainers(config: RecurringTrainerConfig) {
-  const validKeys = new Set(recurringTrainingLabels.map((training) => training.key));
-  const normalized: RecurringTrainerConfig = {};
-
-  for (const [key, value] of Object.entries(config)) {
-    if (!validKeys.has(key as RecurringTrainingKey) || typeof value !== "string") {
-      continue;
-    }
-
-    const trainer = value.trim();
-
-    if (trainer) {
-      normalized[key as RecurringTrainingKey] = trainer;
-    }
+  for (let suffix = 2; exists.get(key); suffix += 1) {
+    key = `${base}-${suffix}`;
   }
 
-  return normalized;
+  return key;
 }
 
 function findBookingConflict(
@@ -1256,14 +1218,16 @@ function getTodayPragueDateKey() {
   return pragueDateFormatter.format(new Date());
 }
 
-function getAlternatingDanceStyle(dateKey: string) {
-  const baseDate = dateKeyToUtcDate(latBaseWeekMonday);
+// Weeks alternate from a fixed Monday: even weeks use the main title, odd
+// weeks the alternate one (this keeps the existing LAT / STT rhythm).
+function isAlternateWeek(dateKey: string) {
+  const baseDate = dateKeyToUtcDate(alternationBaseMonday);
   const targetDate = dateKeyToUtcDate(dateKey);
   const weekOffset = Math.floor(
     (targetDate.getTime() - baseDate.getTime()) / (7 * 24 * 60 * 60 * 1000),
   );
 
-  return weekOffset % 2 === 0 ? "LAT" : "STT";
+  return Math.abs(weekOffset) % 2 === 1;
 }
 
 function dateKeyToUtcDate(dateKey: string) {

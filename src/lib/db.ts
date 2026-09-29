@@ -17,7 +17,27 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 1;
+const schemaVersion = 2;
+
+// Regular trainings that existed before they became editable. `weekday` is
+// ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
+const defaultTrainings = [
+  { key: "deti", title: "Děti", weekday: 1, start: "15:15", end: "17:00" },
+  { key: "prvni-krucky", title: "První krůčky", weekday: 2, start: "15:45", end: "16:30" },
+  { key: "juniori-utery", title: "Junioři", weekday: 2, start: "16:30", end: "17:15" },
+  { key: "practise", title: "Practise", weekday: 2, start: "17:30", end: "19:30" },
+  { key: "latino-ladies", title: "Latino Ladies", weekday: 2, start: "20:00", end: "21:00" },
+  { key: "pohybovka", title: "Pohybovka", weekday: 4, start: "17:15", end: "18:00" },
+  {
+    alternateTitle: "Společná STT",
+    key: "spolecna",
+    title: "Společná LAT",
+    weekday: 4,
+    start: "18:00",
+    end: "19:30",
+  },
+  { key: "juniori-patek", title: "Junioři", weekday: 5, start: "16:00", end: "17:00" },
+];
 const legacyDataDir = path.join(process.cwd(), "data");
 
 let database: Database | null = null;
@@ -53,6 +73,70 @@ function migrate(db: Database) {
   }
 
   db.transaction(() => {
+    if (version < 1) {
+      migrateToV1(db);
+    }
+
+    if (version < 2) {
+      migrateToV2(db);
+    }
+
+    db.pragma(`user_version = ${schemaVersion}`);
+  })();
+}
+
+// Regular trainings move from code into the database so they can be added,
+// edited and removed; user accounts gain a "deleted" flag for accounts that
+// come from server configuration and cannot be removed from it.
+function migrateToV2(db: Database) {
+  db.exec(`
+    CREATE TABLE recurring_trainings (
+      key TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      alternate_title TEXT,
+      weekday INTEGER NOT NULL CHECK (weekday BETWEEN 1 AND 7),
+      start TEXT NOT NULL,
+      "end" TEXT NOT NULL,
+      trainer TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    );
+    ALTER TABLE admin_users ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0;
+  `);
+
+  const trainers = new Map(
+    (
+      db.prepare("SELECT training_key, trainer FROM recurring_trainers").all() as Array<{
+        trainer: string;
+        training_key: string;
+      }>
+    ).map((row) => [row.training_key, row.trainer]),
+  );
+  const insert = db.prepare(`
+    INSERT INTO recurring_trainings
+      (key, title, alternate_title, weekday, start, "end", trainer, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const now = new Date().toISOString();
+
+  for (const training of defaultTrainings) {
+    insert.run(
+      training.key,
+      training.title,
+      training.alternateTitle ?? null,
+      training.weekday,
+      training.start,
+      training.end,
+      trainers.get(training.key) ?? null,
+      now,
+    );
+  }
+
+  db.exec("DROP TABLE recurring_trainers");
+}
+
+function migrateToV1(db: Database) {
+  {
     db.exec(`
       CREATE TABLE IF NOT EXISTS bookings (
         id TEXT PRIMARY KEY,
@@ -124,8 +208,7 @@ function migrate(db: Database) {
     `);
 
     importLegacyData(db);
-    db.pragma(`user_version = ${schemaVersion}`);
-  })();
+  }
 }
 
 // Earlier versions stored each collection as one JSON document, either in

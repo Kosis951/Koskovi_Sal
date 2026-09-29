@@ -1,15 +1,24 @@
 "use client";
 
-import { ChevronDown, KeyRound, Pencil, UserPlus } from "lucide-react";
+import { ChevronDown, KeyRound, Pencil, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { sendJson, useAdminResource } from "@/components/admin/admin-data";
 import { Sheet } from "@/components/ui/sheet";
-import { buttonPrimary, buttonSecondary, noticeTone } from "@/components/ui/styles";
+import {
+  buttonDanger,
+  buttonPrimary,
+  buttonSecondary,
+  noticeTone,
+} from "@/components/ui/styles";
 import type { AdminRole } from "@/lib/admin-auth-client";
 
 type AssignableRole = Exclude<AdminRole, "admin">;
 type AdminUser = { isStored: boolean; role: AdminRole; username: string };
-type SaveUser = (body: Record<string, unknown>, successMessage: string) => Promise<boolean>;
+type SaveUser = (
+  body: Record<string, unknown>,
+  successMessage: string,
+  method?: "POST" | "DELETE",
+) => Promise<boolean>;
 
 const noUsers: AdminUser[] = [];
 
@@ -38,8 +47,8 @@ export function AdminUsersTable({
   const [expanded, setExpanded] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(null);
 
-  const save: SaveUser = async (body, successMessage) => {
-    const response = await sendJson("/api/admin-users", "POST", body);
+  const save: SaveUser = async (body, successMessage, method = "POST") => {
+    const response = await sendJson("/api/admin-users", method, body);
 
     setResult({
       message: response.ok ? successMessage : response.data.message ?? "Uložení se nepovedlo.",
@@ -204,6 +213,30 @@ function UserEditor({ onSave, user }: { onSave: SaveUser; user: AdminUser }) {
           Nastavit heslo
         </button>
       </form>
+      {isAdmin ? null : (
+        <div className="flex items-center justify-between gap-3 border-t border-line pt-3 md:col-span-2">
+          <p className="text-xs text-ink-soft">
+            Smazaný účet se hned odhlásí a už se nepřihlásí. Obnovit ho jde nastavením
+            nového hesla přes „Nový uživatel“ se stejným jménem.
+          </p>
+          <button
+            className={`${buttonDanger} shrink-0`}
+            onClick={() => {
+              if (window.confirm(`Opravdu smazat uživatele „${user.username}“?`)) {
+                void onSave(
+                  { username: user.username },
+                  `Uživatel ${user.username} je smazaný.`,
+                  "DELETE",
+                );
+              }
+            }}
+            type="button"
+          >
+            <Trash2 size={15} />
+            Smazat uživatele
+          </button>
+        </div>
+      )}
     </div>
   );
 }

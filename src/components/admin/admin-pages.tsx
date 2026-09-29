@@ -1,6 +1,6 @@
 "use client";
 
-import { UserPlus } from "lucide-react";
+import { Plus, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { AdminBookingsList } from "@/components/admin/admin-bookings-list";
 import { AdminHistory } from "@/components/admin/admin-history";
@@ -36,13 +36,21 @@ export function AdminBookingsPage() {
 }
 
 export function AdminTrainingsPage() {
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
   return (
     <AdminLayout
-      description="Změna trenéra nebo aktivity se týká jen nejbližšího termínu, další týdny zůstanou beze změny."
+      actions={
+        <button className={buttonPrimary} onClick={() => setIsCreateOpen(true)} type="button">
+          <Plus size={16} />
+          Nový trénink
+        </button>
+      }
+      description="Tréninky, které se opakují každý týden. Úprava tréninku platí pro všechny budoucí týdny, úprava nejbližšího termínu jen pro ten jeden den."
       section="trainings"
       title="Pravidelné tréninky"
     >
-      <AdminTrainings />
+      <AdminTrainings isCreateOpen={isCreateOpen} onCreateOpenChange={setIsCreateOpen} />
     </AdminLayout>
   );
 }

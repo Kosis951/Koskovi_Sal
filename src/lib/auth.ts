@@ -45,6 +45,8 @@ export type LessonFilter = {
 export type StoredAdminUser = {
   createdAt?: string;
   createdBy?: string;
+  // Also hides accounts defined in server configuration.
+  deleted?: boolean;
   lessonFilter?: LessonFilter;
   passwordHash?: string;
   role?: AdminRole;
@@ -96,7 +98,9 @@ function getAdminCredentials(
   }
 
   for (const user of storedUsers) {
-    if (user.passwordHash) {
+    if (user.deleted) {
+      mergedCredentials.delete(normalizeUsername(user.username));
+    } else if (user.passwordHash) {
       mergedCredentials.set(normalizeUsername(user.username), {
         username: user.username,
         passwordHash: user.passwordHash,
@@ -365,6 +369,7 @@ export function sanitizeLessonFilter(filter?: Partial<LessonFilter> | null) {
 type AdminUserRow = {
   created_at: string | null;
   created_by: string | null;
+  deleted: number;
   lesson_filter: string | null;
   password_hash: string | null;
   role: AdminRole | null;
@@ -381,6 +386,7 @@ export function readStoredAdminUsersSync(): StoredAdminUser[] {
   return rows.map((row) => ({
     createdAt: row.created_at ?? undefined,
     createdBy: row.created_by ?? undefined,
+    deleted: row.deleted === 1,
     lessonFilter: row.lesson_filter ? (JSON.parse(row.lesson_filter) as LessonFilter) : undefined,
     passwordHash: row.password_hash ?? undefined,
     role: row.role ?? undefined,

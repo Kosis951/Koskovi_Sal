@@ -18,7 +18,7 @@ export async function getAdminUsers() {
   );
   const usernames = new Set([
     ...listAdminUsernames(),
-    ...storedUsers.map((user) => user.username),
+    ...storedUsers.filter((user) => !user.deleted).map((user) => user.username),
   ]);
 
   return [...usernames]
@@ -47,12 +47,15 @@ export async function upsertAdminUserPassword(input: {
       (user) => normalizeUsername(user.username) === normalizedUsername,
     );
     const previousUser = existingIndex >= 0 ? users[existingIndex] : null;
+    const isRestored = Boolean(previousUser?.deleted);
     const nextUser: StoredAdminUser = {
-      createdAt: previousUser?.createdAt ?? now,
-      createdBy: previousUser?.createdBy ?? input.actor,
+      createdAt: isRestored ? now : previousUser?.createdAt ?? now,
+      createdBy: isRestored ? input.actor : previousUser?.createdBy ?? input.actor,
+      // Setting a password (re)activates a previously deleted account.
+      deleted: false,
       lessonFilter: previousUser?.lessonFilter,
       passwordHash: await hashPassword(input.password),
-      role: previousUser?.role,
+      role: isRestored ? undefined : previousUser?.role,
       updatedAt: now,
       updatedBy: input.actor,
       username: previousUser?.username ?? input.username.trim(),
@@ -108,6 +111,38 @@ export async function upsertAdminUserRole(input: {
   });
 }
 
+// The account can no longer log in and its sessions stop working right away.
+// Accounts from server configuration stay hidden until a new password is set.
+export async function deleteAdminUser(input: { actor: string; username: string }) {
+  return withUsersLock(async () => {
+    const normalizedUsername = normalizeUsername(input.username);
+    const users = await readStoredUsers();
+    const existing = users.find(
+      (user) => normalizeUsername(user.username) === normalizedUsername,
+    );
+    const exists =
+      (existing && !existing.deleted) ||
+      listAdminUsernames().some((username) => normalizeUsername(username) === normalizedUsername);
+
+    if (!exists) {
+      return false;
+    }
+
+    await writeStoredUsers([
+      {
+        createdAt: existing?.createdAt,
+        createdBy: existing?.createdBy,
+        deleted: true,
+        updatedAt: new Date().toISOString(),
+        updatedBy: input.actor,
+        username: existing?.username ?? input.username.trim(),
+      },
+    ]);
+
+    return true;
+  });
+}
+
 async function readStoredUsers() {
   return readStoredAdminUsersSync();
 }
@@ -116,11 +151,12 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const db = getDb();
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
-      created_at, created_by, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      deleted, created_at, created_by, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
+      deleted = excluded.deleted,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -133,6 +169,7 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.passwordHash ?? null,
         user.role ?? null,
         user.lessonFilter ? JSON.stringify(user.lessonFilter) : null,
+        user.deleted ? 1 : 0,
         user.createdAt ?? null,
         user.createdBy ?? null,
         user.updatedAt ?? null,

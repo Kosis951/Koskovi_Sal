@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireMainAdmin } from "@/lib/api-auth";
-import { normalizeUsername, sanitizeRole } from "@/lib/auth";
+import { getAdminRole, normalizeUsername, sanitizeRole } from "@/lib/auth";
 import {
+  deleteAdminUser,
   getAdminUsers,
   upsertAdminUserPassword,
   upsertAdminUserRole,
@@ -93,4 +94,33 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ message: "Není co uložit." }, { status: 400 });
+}
+
+export async function DELETE(request: NextRequest) {
+  const auth = await requireMainAdmin();
+
+  if (auth.error) {
+    return auth.error;
+  }
+
+  const actor = auth.access.username;
+  const payload = (await request.json()) as { username?: unknown };
+  const username = typeof payload.username === "string" ? payload.username.trim() : "";
+
+  if (!username) {
+    return NextResponse.json({ message: "Zadej uživatele." }, { status: 400 });
+  }
+
+  if (getAdminRole(username) === "admin" || normalizeUsername(username) === normalizeUsername(actor)) {
+    return NextResponse.json(
+      { message: "Hlavního správce ani sebe smazat nejde." },
+      { status: 400 },
+    );
+  }
+
+  if (!(await deleteAdminUser({ actor, username }))) {
+    return NextResponse.json({ message: "Uživatel nenalezen." }, { status: 404 });
+  }
+
+  return NextResponse.json({ deleted: true, message: `Uživatel ${username} je smazaný.` });
 }

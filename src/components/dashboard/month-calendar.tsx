@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import {
   minutesToTime,
   type CalendarDay,
@@ -46,7 +47,17 @@ export function MonthCalendar({
           <span key={label}>{label}</span>
         ))}
       </div>
-      <div className="grid grid-cols-7">
+      <div
+        className="grid grid-cols-7 lg:auto-rows-[var(--month-row)]"
+        // On computers the weeks share the window height (what remains after
+        // the header, status bar and toolbar), so the whole month fits
+        // without scrolling; very short windows fall back to a minimum.
+        style={
+          {
+            "--month-row": `max(4.5rem, calc((100svh - 22rem) / ${Math.ceil(days.length / 7)}))`,
+          } as CSSProperties
+        }
+      >
         {days.map((day) => {
           const isOtherMonth = !day.dateKey.startsWith(monthKey);
           const isSelected = day.dateKey === selectedDate;
@@ -57,7 +68,7 @@ export function MonthCalendar({
 
           return (
             <button
-              className={`relative flex min-h-16 flex-col items-stretch gap-1 border-b border-r border-line p-1 text-left transition sm:min-h-28 sm:p-1.5 xl:min-h-32 min-[1900px]:min-h-36 [&:nth-child(7n+1)]:border-l ${
+              className={`relative flex min-h-16 flex-col items-stretch gap-1 overflow-hidden border-b border-r border-line p-1 text-left transition sm:min-h-28 sm:p-1.5 lg:min-h-0 [&:nth-child(7n+1)]:border-l ${
                 isSelected
                   ? "bg-brand-soft ring-2 ring-inset ring-brand"
                   : "hover:bg-subtle"

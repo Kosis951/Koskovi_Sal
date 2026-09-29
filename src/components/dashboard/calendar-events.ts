@@ -247,84 +247,108 @@ export function getHallStatus(today: CalendarDay, nowMinutes: number): HallStatu
     };
   }
 
+  const windows = getFreeWindows(today);
+  const usableEnd = openEnd - departureMinutes;
+  const nextWindow = windows.find((window) => window.end > nowMinutes);
+  const freeLater = nextWindow
+    ? `Volno od ${minutesToTime(Math.max(nextWindow.start, nowMinutes))}.`
+    : "Dnes už volno nebude.";
   const current = activeItems.find(
     (item) => item.start <= nowMinutes && item.end > nowMinutes,
   );
 
-  if (current) {
-    const freeFrom = getFreeFrom(activeItems, current.end);
-
-    if (current.kind === "cleanup") {
-      return {
-        detail: "Po skončené akci je potřeba sál uklidit.",
-        title: "Sál čeká na úklid",
-        tone: "cleanup",
-      };
-    }
-
+  if (current?.kind === "cleanup") {
     return {
-      detail:
-        freeFrom < openEnd - departureMinutes
-          ? `Volno od ${minutesToTime(freeFrom)}.`
-          : "Dnes už bude obsazeno do konce.",
+      detail: "Po skončené akci je potřeba sál uklidit.",
+      title: "Sál čeká na úklid",
+      tone: "cleanup",
+    };
+  }
+
+  if (current) {
+    return {
+      detail: freeLater,
       title: `Teď obsazeno: ${current.title} do ${minutesToTime(current.end)}`,
       tone: "busy",
     };
   }
 
-  const next = activeItems.find((item) => item.start > nowMinutes);
-
-  return next
-    ? {
-        detail: `Pak ${next.kind === "cleanup" ? "úklid" : next.title} (${minutesToTime(
-          next.start,
-        )}–${minutesToTime(next.end)}).`,
-        title: `Sál je teď volný do ${minutesToTime(next.start)}`,
-        tone: "free",
-      }
-    : {
-        detail: `Otevřeno do ${minutesToTime(openEnd)}.`,
-        title: "Sál je teď volný až do konce dne",
-        tone: "free",
-      };
-}
-
-function getFreeFrom(items: CalendarItem[], from: number) {
-  let freeFrom = from;
-
-  for (const item of items) {
-    if (item.start <= freeFrom && item.end > freeFrom) {
-      freeFrom = item.end;
-    }
+  if (nowMinutes >= usableEnd) {
+    return {
+      detail: `Posledních ${departureMinutes} minut před zavíračkou (${minutesToTime(
+        openEnd,
+      )}) je na odchod ze sálu.`,
+      title: "Sál se zavírá",
+      tone: "closed",
+    };
   }
 
-  return freeFrom;
+  const next = activeItems.find((item) => item.start > nowMinutes);
+  const nextLabel = next
+    ? `${next.kind === "cleanup" ? "úklid" : next.title} (${minutesToTime(
+        next.start,
+      )}–${minutesToTime(next.end)})`
+    : "";
+
+  // A gap of 45 minutes or less is too short to count as free time.
+  if (nextWindow && nextWindow.start <= nowMinutes) {
+    return next && next.start < usableEnd
+      ? {
+          detail: `Pak ${nextLabel}.`,
+          title: `Sál je teď volný do ${minutesToTime(next.start)}`,
+          tone: "free",
+        }
+      : {
+          detail: `Otevřeno do ${minutesToTime(openEnd)}.`,
+          title: "Sál je teď volný až do konce dne",
+          tone: "free",
+        };
+  }
+
+  return {
+    detail: freeLater,
+    title: next
+      ? `Jen krátká pauza do ${minutesToTime(next.start)}, pak ${nextLabel}`
+      : "Jen krátká pauza před zavíračkou",
+    tone: "busy",
+  };
 }
 
-// Free minutes of a day: opening hours without bookings, cleanups and the
-// departure window before closing.
-export function getFreeMinutes(day: CalendarDay) {
+// Only gaps longer than this count as free time (status bar and free hours).
+export const minimumFreeMinutes = 45;
+
+// Periods within opening hours (minus the departure window) with nothing
+// booked, longer than `minimumFreeMinutes`.
+export function getFreeWindows(day: CalendarDay) {
   if (day.openStart === null || day.openEnd === null) {
-    return 0;
+    return [];
   }
 
   const usableEnd = day.openEnd - departureMinutes;
   const busy = day.items
     .filter((item) => item.kind !== "cancelled")
-    .map((item) => [Math.max(item.start, day.openStart ?? 0), Math.min(item.end, usableEnd)])
-    .filter(([start, end]) => end > start)
+    .map((item) => [item.start, item.end])
     .sort((left, right) => left[0] - right[0]);
-  let covered = 0;
+  const windows: Array<{ end: number; start: number }> = [];
   let cursor = day.openStart;
 
-  for (const [start, end] of busy) {
-    const effectiveStart = Math.max(start, cursor);
+  for (const [start, end] of [...busy, [usableEnd, usableEnd]]) {
+    const windowEnd = Math.min(start, usableEnd);
 
-    if (end > effectiveStart) {
-      covered += end - effectiveStart;
-      cursor = end;
+    if (windowEnd - cursor > minimumFreeMinutes) {
+      windows.push({ end: windowEnd, start: cursor });
+    }
+
+    cursor = Math.max(cursor, end);
+
+    if (cursor >= usableEnd) {
+      break;
     }
   }
 
-  return Math.max(0, usableEnd - day.openStart - covered);
+  return windows;
+}
+
+export function getFreeMinutes(day: CalendarDay) {
+  return getFreeWindows(day).reduce((total, window) => total + window.end - window.start, 0);
 }

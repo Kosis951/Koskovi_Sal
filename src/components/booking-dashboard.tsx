@@ -159,7 +159,8 @@ export function BookingDashboard({
     [cancellations, hallBookings, todayKey],
   );
   const hallStatus = now && nowMinutes !== null ? getHallStatus(today, nowMinutes) : null;
-  const freeHours = now ? Math.round((getFreeMinutes(today) / 60) * 2) / 2 : null;
+  // Rounded down to half hours so it never promises more than there is.
+  const freeHours = now ? Math.floor((getFreeMinutes(today) / 60) * 2) / 2 : null;
   const selectedDaySegments = useMemo(
     () => getDayAvailabilitySegments(selectedDate, hallBookings, 30),
     [hallBookings, selectedDate],

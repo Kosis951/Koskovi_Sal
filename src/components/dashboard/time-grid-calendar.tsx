@@ -11,7 +11,9 @@ import {
   type CalendarItem,
 } from "@/components/dashboard/calendar-events";
 
-const pixelsPerMinute = 1;
+// The grid fills the window height on computers (what is left after the
+// header, status bar and toolbar), with a minimum so short windows stay usable.
+const columnHeight = "clamp(520px, calc(100svh - 21rem), 1200px)";
 const snapMinutes = 30;
 const weekdayFormatter = new Intl.DateTimeFormat("cs-CZ", { weekday: "short" });
 const dayNumberFormatter = new Intl.DateTimeFormat("cs-CZ", {
@@ -51,7 +53,8 @@ export function TimeGridCalendar({
     null,
   );
   const range = getVisibleRange(days);
-  const height = (range.end - range.start) * pixelsPerMinute;
+  const height = columnHeight;
+  const at = (minutes: number) => toPercent(minutes, range);
   const hours = Array.from(
     { length: (range.end - range.start) / 60 + 1 },
     (_, index) => range.start + index * 60,
@@ -62,7 +65,10 @@ export function TimeGridCalendar({
     const rect = event.currentTarget.getBoundingClientRect();
     const minutes =
       range.start +
-      Math.floor((event.clientY - rect.top) / pixelsPerMinute / snapMinutes) * snapMinutes;
+      Math.floor(
+        (((event.clientY - rect.top) / rect.height) * (range.end - range.start)) / snapMinutes,
+      ) *
+        snapMinutes;
     const isOpen =
       day.openStart !== null &&
       day.openEnd !== null &&
@@ -123,7 +129,7 @@ export function TimeGridCalendar({
                 index === 0 ? "" : "-translate-y-1/2"
               }`}
               key={minutes}
-              style={{ top: (minutes - range.start) * pixelsPerMinute }}
+              style={{ top: at(minutes) }}
             >
               {minutes < 24 * 60 ? minutesToTime(minutes) : ""}
             </span>
@@ -180,17 +186,17 @@ export function TimeGridCalendar({
                 <span
                   className="pointer-events-none absolute inset-x-0 border-t border-line/70"
                   key={minutes}
-                  style={{ top: (minutes - range.start) * pixelsPerMinute }}
+                  style={{ top: at(minutes) }}
                 />
               ))}
-              <ClosedAreas day={day} rangeEnd={range.end} rangeStart={range.start} />
+              <ClosedAreas day={day} range={range} />
 
               {day.items.map((item) => (
                 <CalendarBlock
                   item={item}
                   key={item.id}
                   onClick={() => onSelectItem(day.dateKey, item)}
-                  rangeStart={range.start}
+                  range={range}
                 />
               ))}
 
@@ -198,8 +204,8 @@ export function TimeGridCalendar({
                 <span
                   className="pointer-events-none absolute inset-x-1 flex items-center gap-1 rounded-md border border-dashed border-brand bg-brand-soft px-2 text-xs font-semibold text-brand"
                   style={{
-                    height: snapMinutes * pixelsPerMinute,
-                    top: (hoverMinutes - range.start) * pixelsPerMinute,
+                    height: toLength(snapMinutes, range),
+                    top: at(hoverMinutes),
                   }}
                 >
                   <Plus size={13} />
@@ -215,7 +221,7 @@ export function TimeGridCalendar({
                   aria-hidden="true"
                   className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
                   data-current-slot="true"
-                  style={{ top: (nowMinutes - range.start) * pixelsPerMinute }}
+                  style={{ top: at(nowMinutes) }}
                 >
                   <span className="-ml-1 h-2.5 w-2.5 rounded-full bg-now" />
                   <span className="h-0.5 flex-1 bg-now" />
@@ -229,22 +235,25 @@ export function TimeGridCalendar({
   );
 }
 
-function ClosedAreas({
-  day,
-  rangeEnd,
-  rangeStart,
-}: {
-  day: CalendarDay;
-  rangeEnd: number;
-  rangeStart: number;
-}) {
+type Range = { end: number; start: number };
+
+// Positions are percentages of the column, so the grid can take any height.
+function toPercent(minutes: number, range: Range) {
+  return `${((minutes - range.start) / (range.end - range.start)) * 100}%`;
+}
+
+function toLength(minutes: number, range: Range) {
+  return `${(minutes / (range.end - range.start)) * 100}%`;
+}
+
+function ClosedAreas({ day, range }: { day: CalendarDay; range: Range }) {
   const areas: Array<{ end: number; kind: "closed" | "departure"; start: number }> =
     day.openStart === null || day.openEnd === null
-      ? [{ end: rangeEnd, kind: "closed", start: rangeStart }]
+      ? [{ end: range.end, kind: "closed", start: range.start }]
       : [
-          { end: day.openStart, kind: "closed", start: rangeStart },
+          { end: day.openStart, kind: "closed", start: range.start },
           { end: day.openEnd, kind: "departure", start: day.openEnd - departureMinutes },
-          { end: rangeEnd, kind: "closed", start: day.openEnd },
+          { end: range.end, kind: "closed", start: day.openEnd },
         ];
 
   return areas
@@ -258,8 +267,8 @@ function ClosedAreas({
         }`}
         key={`${area.kind}-${area.start}`}
         style={{
-          height: (area.end - area.start) * pixelsPerMinute,
-          top: (area.start - rangeStart) * pixelsPerMinute,
+          height: toLength(area.end - area.start, range),
+          top: toPercent(area.start, range),
         }}
         title={area.kind === "closed" ? "Zavřeno" : "Odchod ze sálu před zavíračkou"}
       />
@@ -269,13 +278,16 @@ function ClosedAreas({
 function CalendarBlock({
   item,
   onClick,
-  rangeStart,
+  range,
 }: {
   item: CalendarItem;
   onClick: () => void;
-  rangeStart: number;
+  range: Range;
 }) {
-  const height = Math.max((item.end - item.start) * pixelsPerMinute, 18);
+  // The pixel height depends on the window, so the layout picks the number
+  // of text lines from the duration; the column is never shorter than
+  // ~0.7 px per minute (see columnHeight).
+  const duration = item.end - item.start;
   const time = `${minutesToTime(item.start)}–${minutesToTime(item.end)}`;
   const label = item.kind === "cleanup" ? "Čeká na úklid" : item.title;
 
@@ -284,9 +296,10 @@ function CalendarBlock({
       className={`absolute z-[5] overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs leading-tight transition hover:z-[6] hover:shadow-md ${itemKindClass[item.kind]}`}
       onClick={onClick}
       style={{
-        height,
+        height: toLength(duration, range),
         left: `calc(${(item.lane / item.lanes) * 100}% + 2px)`,
-        top: (item.start - rangeStart) * pixelsPerMinute,
+        minHeight: 18,
+        top: toPercent(item.start, range),
         width: `calc(${100 / item.lanes}% - 4px)`,
       }}
       title={`${label} · ${time}${item.trainer ? ` · ${item.trainer}` : ""}${
@@ -294,7 +307,7 @@ function CalendarBlock({
       }`}
       type="button"
     >
-      {height < 56 ? (
+      {duration < 75 ? (
         // Short blocks fit a single line only.
         <span className="block truncate leading-4">
           <span className="font-semibold">{label}</span>{" "}
@@ -304,7 +317,7 @@ function CalendarBlock({
         <>
           <span className="block truncate font-semibold leading-4">{label}</span>
           <span className="block truncate leading-4 opacity-80">{time}</span>
-          {height >= 76 && item.trainer ? (
+          {duration >= 110 && item.trainer ? (
             <span className="block truncate leading-4 opacity-80">{item.trainer}</span>
           ) : null}
         </>
