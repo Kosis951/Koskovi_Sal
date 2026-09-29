@@ -170,7 +170,11 @@ export function getAdminSessionCookieOptions() {
     maxAge: adminSessionMaxAgeSeconds,
     path: "/",
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    // Production cookies need HTTPS. SESSION_COOKIE_SECURE=false allows a
+    // temporary test over plain http://; never leave it off on a public site.
+    secure:
+      process.env.NODE_ENV === "production" &&
+      process.env.SESSION_COOKIE_SECURE !== "false",
   };
 }
 

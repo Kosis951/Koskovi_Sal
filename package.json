@@ -2,6 +2,9 @@
   "name": "budeme-vytv-et-aplikaci-v-reactu",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "clean": "node scripts/clean-next.mjs",
     "dev": "node scripts/clean-next.mjs && next dev",
