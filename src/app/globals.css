@@ -223,6 +223,40 @@ textarea {
   font: inherit;
 }
 
+/* Phones zoom into any field smaller than 16px (e.g. inside text-sm), so
+   touch screens always get 16px fields. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* The installed app behaves like an app: no zooming (see the viewport
+   script in layout.tsx) and no double-tap zoom delay. */
+@media (display-mode: standalone) {
+  html {
+    touch-action: manipulation;
+  }
+
+  /* Behind the status bar and in the scroll bounce the system shows (and on
+     iOS blends a fade from) the page background; make it the header colour so
+     no light band lies over the header. Page content has its own bg-page. */
+  html,
+  body {
+    background-color: var(--k-header);
+  }
+}
+
+/* In the installed app on phones the header is plain dark blue: the gradient
+   reaches under the status bar there and only lightens it. */
+@media (display-mode: standalone) and (max-width: 767px) {
+  .app-header {
+    background-image: none;
+  }
+}
+
 .field-label {
   display: block;
   font-size: 0.8125rem;
