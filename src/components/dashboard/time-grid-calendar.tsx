@@ -11,10 +11,7 @@ import {
   type CalendarItem,
 } from "@/components/dashboard/calendar-events";
 
-// The grid fills the window height on computers (what is left after the
-// header, status bar, toolbar and legend: about 21rem), with a minimum so
-// short windows stay usable. 360px still fits a 1600×900 screen.
-const columnHeight = "clamp(360px, calc(100svh - 21.25rem), 1200px)";
+// The column height (.time-grid-column in globals.css) follows the window.
 const snapMinutes = 30;
 const weekdayFormatter = new Intl.DateTimeFormat("cs-CZ", { weekday: "short" });
 const dayNumberFormatter = new Intl.DateTimeFormat("cs-CZ", {
@@ -54,7 +51,6 @@ export function TimeGridCalendar({
     null,
   );
   const range = getVisibleRange(days);
-  const height = columnHeight;
   const at = (minutes: number) => toPercent(minutes, range);
   const hours = Array.from(
     { length: (range.end - range.start) / 60 + 1 },
@@ -106,7 +102,7 @@ export function TimeGridCalendar({
               onClick={() => onSelectDate(day.dateKey)}
               type="button"
             >
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className="text-xs font-semibold uppercase text-ink-muted">
                   {weekdayFormatter.format(day.date)}
                 </span>
@@ -125,7 +121,7 @@ export function TimeGridCalendar({
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: columns }}>
-        <div className="relative" style={{ height }}>
+        <div className="time-grid-column relative">
           {hours.map((minutes, index) => (
             <span
               className={`absolute right-2 text-[11px] text-ink-soft ${
@@ -147,7 +143,7 @@ export function TimeGridCalendar({
 
           return (
             <div
-              className={`relative border-l border-line ${
+              className={`time-grid-column relative border-l border-line ${
                 isHighlighted ? "bg-subtle/70" : ""
               } ${canAdd ? "cursor-pointer" : ""}`}
               key={day.dateKey}
@@ -183,7 +179,6 @@ export function TimeGridCalendar({
                       : { dateKey: day.dateKey, minutes },
                 );
               }}
-              style={{ height }}
             >
               {hours.slice(1).map((minutes) => (
                 <span

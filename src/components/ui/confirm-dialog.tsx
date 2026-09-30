@@ -66,7 +66,7 @@ export function ConfirmDialog({
         className="fade-enter relative w-full max-w-sm rounded-2xl border border-line bg-surface p-5 text-ink shadow-2xl"
         role="alertdialog"
       >
-        <h2 className="text-lg font-semibold" id="confirm-dialog-title">
+        <h2 className="text-lg font-black" id="confirm-dialog-title">
           {title}
         </h2>
         {children ? <div className="mt-2 text-sm text-ink-muted">{children}</div> : null}

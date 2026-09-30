@@ -179,7 +179,7 @@ export function Sheet({
             <span className="h-1.5 w-12 rounded-full bg-line-strong" />
           </div>
           <div className="flex items-center justify-between gap-3 border-b border-line px-5 pb-3 pt-1 lg:pt-3">
-            <h2 className="text-lg font-semibold">{title}</h2>
+            <h2 className="text-lg font-black">{title}</h2>
             <button
               aria-label="Zavřít"
               className="inline-flex h-9 w-9 items-center justify-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"

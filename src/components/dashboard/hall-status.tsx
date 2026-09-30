@@ -56,7 +56,7 @@ export function HallStatusBanner({
       </div>
       {cleanupBooking ? (
         <button
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 self-start rounded-md bg-brand px-4 text-sm font-semibold text-on-brand transition hover:bg-brand-hover sm:self-center"
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 self-start rounded-full bg-accent px-4 text-sm font-semibold text-white transition hover:bg-accent-hover sm:self-center"
           onClick={() => onRequestCleanup(cleanupBooking)}
           type="button"
         >

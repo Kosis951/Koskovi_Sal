@@ -145,7 +145,7 @@ export function AdminLayout({
       ) : !access ? (
         <div className="mx-auto max-w-sm px-4 py-12">
           <div className="rounded-xl border border-line bg-surface p-5">
-            <h1 className="text-xl font-semibold">Přihlášení do správy</h1>
+            <h1 className="text-xl font-black">Přihlášení do správy</h1>
             <p className="mb-4 mt-1 text-sm text-ink-muted">
               Správa je dostupná jen přihlášeným správcům sálu.
             </p>
@@ -156,7 +156,7 @@ export function AdminLayout({
         <div className="mx-auto max-w-md px-4 py-12">
           <div className="rounded-xl border border-line bg-surface p-6 text-center">
             <ShieldAlert className="mx-auto text-ink-muted" size={28} />
-            <h1 className="mt-3 text-xl font-semibold">Sem nemáš přístup</h1>
+            <h1 className="mt-3 text-xl font-black">Sem nemáš přístup</h1>
             <p className="mt-1 text-sm text-ink-muted">
               {canManage
                 ? "Tuto sekci spravuje jen hlavní správce."
@@ -197,7 +197,7 @@ export function AdminLayout({
           <main className="min-w-0">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h1 className="text-2xl font-semibold text-ink">{title}</h1>
+                <h1 className="text-2xl font-black text-ink">{title}</h1>
                 {description ? (
                   <p className="mt-1 max-w-2xl text-sm text-ink-muted">{description}</p>
                 ) : null}

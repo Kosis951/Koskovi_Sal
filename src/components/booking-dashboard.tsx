@@ -279,7 +279,8 @@ export function BookingDashboard({
       return;
     }
 
-    if (window.matchMedia("(max-width: 1023px)").matches) {
+    // Below 1280px the day detail is under the calendar.
+    if (window.matchMedia("(max-width: 1279px)").matches) {
       agendaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
@@ -419,7 +420,10 @@ export function BookingDashboard({
               todaysOpeningHours={formatOpeningHoursForDate(new Date(`${todayKey}T12:00:00`))}
             />
 
-            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-stretch lg:gap-5">
+            {/* The side panel sits next to the calendar only from 1280px;
+                on tablets (e.g. iPad in portrait) it goes below, so the
+                week keeps its full width. */}
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-stretch xl:gap-5">
               <section className="grid gap-3 rounded-xl border border-line bg-surface p-3 sm:p-4">
                 <CalendarToolbar
                   isShowingToday={isShowingToday}
@@ -441,7 +445,7 @@ export function BookingDashboard({
                   />
                 ) : (
                   <>
-                    <div className="lg:hidden">
+                    <div className="md:hidden">
                       <DayStrip
                         days={stripDays}
                         onSelectDate={selectDate}
@@ -449,7 +453,7 @@ export function BookingDashboard({
                         todayKey={todayKey}
                       />
                     </div>
-                    <div className="hidden lg:block">
+                    <div className="hidden md:block">
                       <TimeGridCalendar
                         canAdd={canManageBookings}
                         days={viewDays}
@@ -469,8 +473,8 @@ export function BookingDashboard({
 
               {/* On computers the side panel is as tall as the calendar and
                   scrolls on its own, so it never makes the page longer. */}
-              <aside className="grid content-start gap-4 lg:relative">
-                <div className="grid content-start gap-4 lg:absolute lg:inset-0 lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl">
+              <aside className="grid content-start gap-4 xl:relative">
+                <div className="grid content-start items-start gap-4 md:grid-cols-2 xl:absolute xl:inset-0 xl:grid-cols-1 xl:overflow-y-auto xl:overscroll-contain xl:rounded-xl">
                 <div className="scroll-mt-20" ref={agendaRef}>
                   <DayDetailPanel
                     actions={actions}
@@ -503,7 +507,7 @@ export function BookingDashboard({
             {canStartBooking ? (
               <button
                 aria-label="Přidat akci"
-                className="fixed bottom-5 right-5 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand text-on-brand shadow-lg transition hover:bg-brand-hover lg:hidden"
+                className="fixed bottom-5 right-5 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_10px_24px_-8px_var(--k-accent)] transition hover:bg-accent-hover lg:hidden"
                 onClick={() => openBookingForm({ date: selectedDate })}
                 type="button"
               >

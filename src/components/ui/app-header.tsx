@@ -43,7 +43,7 @@ export function AppHeader({
     }`;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-black/10 bg-header text-white">
+    <header className="bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header text-white">
       <div className={`${pageContainer} flex h-14 items-center gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
           <Image
@@ -80,7 +80,7 @@ export function AppHeader({
             />
           ) : onLogin ? (
             <button
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-white/25 px-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-accent-soft/70 px-3.5 text-sm font-medium text-accent-soft transition hover:bg-white/10 hover:text-white"
               onClick={onLogin}
               type="button"
             >

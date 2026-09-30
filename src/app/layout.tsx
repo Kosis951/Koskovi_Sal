@@ -2,25 +2,17 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
+// BR Firma, the club's typeface (as on tkkoskovi.cz): Black for headings,
+// Regular/Medium for text.
 const firma = localFont({
   variable: "--font-firma",
   display: "swap",
   src: [
-    {
-      path: "../../public/brand/BR Firma Regular.otf",
-      weight: "400",
-      style: "normal",
-    },
-    {
-      path: "../../public/brand/BR Firma SemiBold.otf",
-      weight: "650",
-      style: "normal",
-    },
-    {
-      path: "../../public/brand/BR Firma Bold.otf",
-      weight: "700",
-      style: "normal",
-    },
+    { path: "./fonts/br-firma-regular.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/br-firma-medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/br-firma-semibold.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/br-firma-bold.woff2", weight: "700", style: "normal" },
+    { path: "./fonts/br-firma-black.woff2", weight: "900", style: "normal" },
   ],
 });
 

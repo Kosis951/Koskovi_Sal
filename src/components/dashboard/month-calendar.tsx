@@ -48,10 +48,11 @@ export function MonthCalendar({
         ))}
       </div>
       <div
-        className="grid grid-cols-7 lg:auto-rows-[var(--month-row)]"
-        // On computers the weeks share the window height (what remains after
-        // the header, status bar and toolbar), so the whole month fits
-        // without scrolling; very short windows fall back to a minimum.
+        className="grid grid-cols-7 xl:auto-rows-[var(--month-row)]"
+        // On computers (side panel next to the calendar) the weeks share the
+        // window height (what remains after the header, status bar and
+        // toolbar), so the whole month fits without scrolling; very short
+        // windows fall back to a minimum.
         style={
           {
             "--month-row": `max(4.5rem, calc((100svh - 22rem) / ${Math.ceil(days.length / 7)}))`,

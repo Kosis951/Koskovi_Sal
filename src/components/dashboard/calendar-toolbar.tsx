@@ -72,12 +72,12 @@ export function CalendarToolbar({
           <ChevronRight size={18} />
         </button>
       </div>
-      <h2 className="min-w-0 text-base font-semibold capitalize text-ink sm:text-lg">
+      <h2 className="min-w-0 text-base font-black capitalize text-ink sm:text-lg">
         {getPeriodLabel(viewMode, selectedDate)}
       </h2>
       {!isShowingToday ? (
         <button
-          className="h-8 rounded-md border border-line-strong px-2.5 text-xs font-semibold text-ink transition hover:bg-subtle"
+          className="h-8 rounded-full border border-line-strong px-3 text-xs font-semibold text-ink transition hover:border-accent hover:bg-subtle"
           onClick={onShowToday}
           type="button"
         >
@@ -86,11 +86,11 @@ export function CalendarToolbar({
       ) : null}
 
       <div className="ml-auto flex items-center gap-2">
-        <div className="inline-flex rounded-lg border border-line bg-subtle p-0.5">
+        <div className="inline-flex rounded-full border border-line bg-subtle p-0.5">
           {viewModes.map(({ label, mode }) => (
             <button
               aria-pressed={viewMode === mode}
-              className={`h-8 rounded-md px-3 text-sm font-semibold transition ${
+              className={`h-8 rounded-full px-3.5 text-sm font-semibold transition ${
                 viewMode === mode
                   ? "bg-surface text-ink shadow-sm"
                   : "text-ink-muted hover:text-ink"

@@ -8,9 +8,9 @@ const themeChangeEvent = "koskovi-theme-change";
 
 const variantClass = {
   header:
-    "inline-flex h-9 w-9 items-center justify-center rounded-md text-header-ink transition hover:bg-white/10 hover:text-white",
+    "inline-flex h-9 w-9 items-center justify-center rounded-full text-header-ink transition hover:bg-white/10 hover:text-white",
   solid:
-    "inline-flex h-11 w-11 items-center justify-center rounded-md border border-[#003758] bg-[#003758] text-white shadow-sm transition hover:bg-[#0b4d76]",
+    "inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand text-on-brand shadow-sm transition hover:bg-brand-hover",
 };
 
 export function ThemeToggle({

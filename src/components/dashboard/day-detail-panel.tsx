@@ -6,7 +6,7 @@ import {
   type DayAvailabilitySegment,
 } from "@/components/booking-dashboard-utils";
 import type { BookingActions } from "@/components/dashboard/use-booking-actions";
-import { buttonSecondary, noticeTone } from "@/components/ui/styles";
+import { buttonSecondary, eyebrow, noticeTone } from "@/components/ui/styles";
 import type { RecurringCancellationNotice } from "@/lib/bookings-db";
 import type { Booking } from "@/lib/schedule";
 
@@ -65,8 +65,11 @@ export function DayDetailPanel({
 
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
-      <p className="text-xs font-semibold uppercase text-ink-muted">Vybraný den</p>
-      <h2 className="mt-0.5 text-xl font-semibold capitalize text-ink">
+      <div className="flex items-center gap-3">
+        <p className={eyebrow}>Vybraný den</p>
+        <span aria-hidden="true" className="brand-stripes w-20" />
+      </div>
+      <h2 className="mt-1 text-xl font-black capitalize text-ink">
         {longDateFormatter.format(new Date(`${selectedDate}T12:00:00`))}
       </h2>
 
@@ -205,7 +208,7 @@ function CleanupButton({
 
   return (
     <button
-      className="mt-1.5 inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-brand px-3 text-xs font-semibold text-on-brand transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+      className="mt-1.5 inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-accent px-3.5 text-xs font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
       disabled={isCleaning || !canConfirm}
       onClick={() => (booking ? onRequestCleanup(booking) : undefined)}
       title={canConfirm ? undefined : "Úklid lze potvrdit až po skončení akce."}
