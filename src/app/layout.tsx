@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
-import { installCaptureScript, standaloneZoomScript } from "@/components/pwa/install-capture";
+import { AppSplash } from "@/components/pwa/app-splash";
+import {
+  installCaptureScript,
+  splashScript,
+  standaloneZoomScript,
+} from "@/components/pwa/install-capture";
 import "./globals.css";
 
 // BR Firma, the club's typeface (as on tkkoskovi.cz): Black for headings,
@@ -69,10 +74,12 @@ export default function RootLayout({
                 document.documentElement.dataset.theme = isDark ? "dark" : "light";
               } catch (_) {}
               ${standaloneZoomScript}
+              ${splashScript}
               ${installCaptureScript}
             `,
           }}
         />
+        <AppSplash />
         {children}
         <ServiceWorkerRegistration />
       </body>

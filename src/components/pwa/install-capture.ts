@@ -17,6 +17,27 @@ export const standaloneZoomScript = `
   }
 `;
 
+// Inline script for the root layout: fades out the launch screen (AppSplash)
+// once the page has loaded, but not before its animation had time to play.
+// Shown once per app launch; the browser never shows it (see globals.css).
+export const splashScript = `
+  (function () {
+    var root = document.documentElement;
+    var isApp = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    function done() { root.classList.add("splash-done"); }
+    if (!isApp) { done(); return; }
+    try {
+      if (sessionStorage.getItem("koskovi-splash")) { done(); return; }
+      sessionStorage.setItem("koskovi-splash", "1");
+    } catch (_) {}
+    var startedAt = Date.now();
+    var minimum = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 400 : 1100;
+    function hide() { setTimeout(done, Math.max(0, minimum - (Date.now() - startedAt))); }
+    if (document.readyState === "complete") { hide(); } else { window.addEventListener("load", hide); }
+    setTimeout(done, 4000);
+  })();
+`;
+
 // Inline script for the root layout. Browsers fire "beforeinstallprompt" once,
 // early, often before React starts; this keeps the event for the install
 // buttons (useInstallApp) and hides the browser's own mini install bar.

@@ -299,6 +299,147 @@ textarea {
   }
 }
 
+/* Launch screen of the installed app (components/pwa/app-splash.tsx). Only
+   in the installed app; the html class "splash-done" fades it out. */
+.app-splash {
+  display: none;
+}
+
+@media (display-mode: standalone) {
+  .app-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    background-color: var(--k-header);
+    color: #ffffff;
+    transition:
+      opacity 380ms ease,
+      visibility 0s linear 380ms;
+  }
+
+  .splash-done .app-splash {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .splash-done .app-splash-sign {
+    transform: scale(1.06);
+    transition: transform 380ms ease;
+  }
+}
+
+.app-splash-sign {
+  width: 5.75rem;
+  overflow: visible;
+  fill: currentColor;
+}
+
+.app-splash-sign path {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.app-splash-body {
+  animation: splash-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-splash-body-k {
+  animation-delay: 90ms;
+}
+
+.app-splash-head {
+  animation: splash-drop 620ms cubic-bezier(0.3, 0.7, 0.3, 1) 300ms both;
+}
+
+.app-splash-head-right {
+  animation-delay: 420ms;
+}
+
+.app-splash-wordmark {
+  width: 10rem;
+  fill: currentColor;
+  animation: splash-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) 650ms both;
+}
+
+/* The club's stripes, pulsing like a beat while the app loads. */
+.app-splash-stripes {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.app-splash-stripes span {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--k-accent-soft);
+  opacity: 0.35;
+  transform: scaleY(0.4);
+  animation: splash-beat 900ms ease-in-out infinite both;
+}
+
+@keyframes splash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+
+  55% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+
+  78% {
+    transform: translateY(-3px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-beat {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scaleY(0.4);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-splash-body,
+  .app-splash-head,
+  .app-splash-wordmark,
+  .app-splash-stripes span {
+    animation: none;
+  }
+}
+
 /* The "now" line stays above calendar blocks. */
 [data-current-slot="true"] {
   z-index: 11 !important;
