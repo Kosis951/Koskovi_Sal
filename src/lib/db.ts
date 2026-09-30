@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 2;
+const schemaVersion = 3;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -81,8 +81,33 @@ function migrate(db: Database) {
       migrateToV2(db);
     }
 
+    if (version < 3) {
+      migrateToV3(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Push notifications: devices that subscribed (per topic) and small state
+// records (what was already announced, today's last announced schedule).
+function migrateToV3(db: Database) {
+  db.exec(`
+    CREATE TABLE push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      topics TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE push_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 // Regular trainings move from code into the database so they can be added,

@@ -15,7 +15,9 @@ const signHeight = 62.36;
 
 // `signScale` is the sign's width as a share of the icon. Maskable icons keep
 // it inside the central safe zone, because Android may crop them to a circle.
-function iconSvg(size, signScale, rounded) {
+// `transparent` draws only the white sign (Android notification badge, which
+// the system tints itself).
+function iconSvg(size, signScale, rounded, transparent) {
   const width = size * signScale;
   const height = (width / signWidth) * signHeight;
   const x = (size - width) / 2;
@@ -31,7 +33,7 @@ function iconSvg(size, signScale, rounded) {
       <stop offset="1" stop-color="#008fcc"/>
     </linearGradient>
   </defs>
-  <rect width="${size}" height="${size}" rx="${radius}" fill="url(#g)"/>
+  ${transparent ? "" : `<rect width="${size}" height="${size}" rx="${radius}" fill="url(#g)"/>`}
   <g transform="translate(${x} ${y}) scale(${width / signWidth})">
     <path fill="#ffffff" d="${signPath}"/>
   </g>
@@ -47,12 +49,15 @@ const outputs = [
   { file: "src/app/apple-icon.png", size: 180, signScale: 0.6 },
   // Browser tab; rounded so it does not look like a square block.
   { file: "src/app/icon.png", size: 64, signScale: 0.66, rounded: true },
+  // Small monochrome icon in the Android status bar for notifications.
+  { file: "public/icons/badge-96.png", size: 96, signScale: 0.8, transparent: true },
 ];
 
 await mkdir(path.join(root, "public/icons"), { recursive: true });
 
-for (const { file, rounded = false, signScale, size } of outputs) {
-  const png = await sharp(Buffer.from(iconSvg(size, signScale, rounded))).png().toBuffer();
+for (const { file, rounded = false, signScale, size, transparent = false } of outputs) {
+  const svg = iconSvg(size, signScale, rounded, transparent);
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
 
   await writeFile(path.join(root, file), png);
   console.log(`${file} (${size}×${size})`);

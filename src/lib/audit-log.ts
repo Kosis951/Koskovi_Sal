@@ -51,6 +51,13 @@ export async function appendAuditLog(entry: Omit<AuditLogEntry, "timestamp">) {
     appendsSinceTrimCheck = 0;
     trimAuditLog();
   }
+
+  // Every booking change is logged here, so this is where changes to today
+  // get announced right away (instead of on the next minute check). Imported
+  // lazily to keep push code out of this module's dependencies.
+  void import("@/lib/push-notifications")
+    .then(({ queuePushCheck }) => queuePushCheck())
+    .catch((error) => console.error("[push] kontrolu nešlo naplánovat:", error));
 }
 
 // Newest first.

@@ -82,6 +82,24 @@ cache jen statickych souboru, stranky a API vzdy ze site, bez pripojeni `public/
 Ikony se generuji z `public/brand/Koskovi_logo_znak.svg` prikazem `node scripts/generate-app-icons.mjs`.
 Pokud je pred aplikaci nginx, nesmi `/sw.js` cachovat (aplikace posila `Cache-Control: no-cache`).
 
+## Push notifikace
+
+Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:
+
+- rano v 7:00 souhrn, pokud je dnes v sale jina blokace nez trenink nebo odpada trenink,
+- behem dne hned pri pridani/zmene/zruseni dnesni blokace nebo zruseni treninku (do 22:00),
+- „Sal ceka na uklid“, jakmile skonci akce s pozadovanym uklidem (kdo si to zapne).
+
+Na iPhonu/iPadu funguji jen v aplikaci pridane na plochu (iOS 16.4+). Nastaveni na serveru:
+
+```bash
+npm run vapid-keys          # vypise 3 radky, vlozit do .env.local (jen jednou!)
+pm2 restart koskovi-sal
+```
+
+Kontrola bezi uvnitr aplikace kazdou minutu (`src/instrumentation.ts`), cron neni potreba.
+Odeslane zpravy jsou videt v `pm2 logs koskovi-sal` (radky `[push]`).
+
 ## Hashovani hesel
 
 ```bash

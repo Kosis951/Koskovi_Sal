@@ -93,3 +93,50 @@ self.addEventListener("fetch", (event) => {
   }
   // Everything else (API, manifest, …) goes straight to the network.
 });
+
+// Push notifications from the server (src/lib/push-notifications.ts):
+// { title, body, url, tag }.
+self.addEventListener("push", (event) => {
+  let data = {};
+
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Koškovi sál", {
+      badge: "/icons/badge-96.png",
+      body: data.body || "",
+      data: { url: data.url || "/" },
+      icon: "/icons/icon-192.png",
+      lang: "cs",
+      renotify: Boolean(data.tag),
+      tag: data.tag,
+    }),
+  );
+});
+
+// Tapping a notification opens the app (or focuses it when already open).
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const target = new URL(event.notification.data?.url || "/", self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then((windows) => {
+      const existing = windows.find((client) => client.url.startsWith(self.location.origin));
+
+      if (existing) {
+        // navigate() only works for windows this worker controls.
+        return existing
+          .focus()
+          .then(() => existing.navigate(target))
+          .catch(() => self.clients.openWindow(target));
+      }
+
+      return self.clients.openWindow(target);
+    }),
+  );
+});

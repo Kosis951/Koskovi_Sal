@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bell,
   ChevronDown,
   KeyRound,
   LayoutDashboard,
@@ -36,7 +37,7 @@ export function AppHeader({
 }) {
   const canManage = session?.role === "admin" || session?.role === "manager";
   const tabClass = (isActive: boolean) =>
-    `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition sm:px-3.5 sm:text-sm ${
+    `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition sm:px-3.5 sm:text-sm ${
       isActive
         ? "bg-white/15 text-white"
         : "text-header-ink hover:bg-white/10 hover:text-white"
@@ -44,11 +45,11 @@ export function AppHeader({
 
   return (
     <header className="bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[env(safe-area-inset-top)] text-white">
-      <div className={`${pageContainer} flex h-14 items-center gap-3`}>
+      <div className={`${pageContainer} flex h-14 items-center gap-2 sm:gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
           <Image
             alt="Koškovi"
-            className="h-auto w-24 sm:w-32"
+            className="h-auto w-20 sm:w-32"
             height={62}
             priority
             src="/brand/Koskovi_logo_zaklad_white.svg"
@@ -78,6 +79,16 @@ export function AppHeader({
           ) : null}
         </nav>
         <div className="ml-auto flex items-center gap-1">
+          {/* On phones in the browser the "Aplikace" tab leads there too;
+              the installed app hides that tab, so the bell shows instead. */}
+          <Link
+            aria-label="Upozornění"
+            className="hidden h-9 w-9 items-center justify-center rounded-full text-header-ink transition hover:bg-white/10 hover:text-white sm:inline-flex [@media(display-mode:standalone)]:inline-flex"
+            href="/aplikace#upozorneni"
+            title="Upozornění"
+          >
+            <Bell size={18} />
+          </Link>
           <ThemeToggle variant="header" />
           {session?.username ? (
             <AccountMenu

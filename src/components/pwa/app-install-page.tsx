@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useState, type ReactNode } from "react";
+import { PushSettings } from "@/components/pwa/push-settings";
 import { useInstallApp, type InstallPlatform } from "@/components/pwa/use-install-app";
 import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { eyebrow, pageContainer } from "@/components/ui/styles";
@@ -88,6 +89,8 @@ export function AppInstallPage({
             </Benefit>
           </ul>
 
+          <PushSettings />
+
           {platform === "desktop" ? <DesktopCard qrSvg={qrSvg} /> : null}
 
           <div className="grid items-start gap-5 md:grid-cols-2">
@@ -107,6 +110,10 @@ export function AppInstallPage({
             <Faq question="Potřebuji internet?">
               Ano, kalendář se načítá vždy čerstvý ze serveru. Bez připojení aplikace ukáže
               upozornění a po připojení se načte.
+            </Faq>
+            <Faq question="Jak vypnu upozornění?">
+              Tady na této stránce v části Upozornění, nebo v nastavení telefonu u aplikace
+              Koškovi. Na iPhonu fungují upozornění jen v aplikaci přidané na plochu.
             </Faq>
             <Faq question="Jak ji odinstaluji?">
               Podržte prst na ikoně Koškovi na ploše a zvolte Odstranit (iPhone) nebo
