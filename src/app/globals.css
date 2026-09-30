@@ -42,7 +42,8 @@
   --k-free: #eaf6ee;
   --k-free-ink: #1f6040;
   --k-free-line: #a9d8b9;
-  --k-closed: #e8eef3;
+  --k-closed: #e7edf2;
+  --k-closed-stripe: #d2dde6;
   --k-now: #d64534;
 }
 
@@ -86,7 +87,8 @@ html[data-theme="dark"] {
   --k-free: #1a2e22;
   --k-free-ink: #9fdcb6;
   --k-free-line: #2f6b47;
-  --k-closed: #0c1d29;
+  --k-closed: #0a1a25;
+  --k-closed-stripe: #1b3448;
   --k-now: #ff7a66;
 }
 
@@ -149,21 +151,27 @@ html[data-theme="dark"] {
   mask-image: linear-gradient(90deg, #000 20%, transparent);
 }
 
-/* Diagonal stripes for "closed" and "waiting for cleanup" areas. */
-.pattern-closed {
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--k-closed) 0 6px,
-    transparent 6px 12px
-  );
-}
+/* Diagonal stripes for "closed" and "waiting for cleanup" areas. Closed
+   time has a solid tint under the stripes, so it clearly differs from free
+   (white) time. In the components layer so bg-* utilities (e.g. a selected
+   day) still win. */
+@layer components {
+  .pattern-closed {
+    background-color: var(--k-closed);
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--k-closed-stripe) 0 5px,
+      transparent 5px 11px
+    );
+  }
 
-.pattern-cleanup {
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--k-cleanup) 0 6px,
-    color-mix(in srgb, var(--k-cleanup-line) 45%, var(--k-cleanup)) 6px 9px
-  );
+  .pattern-cleanup {
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--k-cleanup) 0 6px,
+      color-mix(in srgb, var(--k-cleanup-line) 45%, var(--k-cleanup)) 6px 9px
+    );
+  }
 }
 
 .sheet-enter {

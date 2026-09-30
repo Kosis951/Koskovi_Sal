@@ -190,7 +190,8 @@ export function CalendarLegend() {
     { className: "border-busy-line bg-busy", label: "Obsazeno" },
     { className: "pattern-cleanup border-cleanup-line", label: "Čeká na úklid" },
     { className: "border-dashed border-line-strong", label: "Zrušeno" },
-    { className: "pattern-closed border-line", label: "Zavřeno" },
+    { className: "pattern-closed border-line-strong", label: "Zavřeno" },
+    { className: "border-cleanup-line bg-cleanup", label: "Odchod ze sálu" },
   ];
 
   return (

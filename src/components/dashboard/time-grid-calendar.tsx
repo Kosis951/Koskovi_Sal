@@ -254,14 +254,15 @@ function ClosedAreas({ day, range }: { day: CalendarDay; range: Range }) {
           { end: range.end, kind: "closed", start: day.openEnd },
         ];
 
+  // Labelled when the area is tall enough for a line of text.
   return areas
     .filter((area) => area.end > area.start)
     .map((area) => (
       <span
-        className={`pointer-events-none absolute inset-x-0 ${
+        className={`pointer-events-none absolute inset-x-0 overflow-hidden [container-type:size] ${
           area.kind === "closed"
             ? "pattern-closed"
-            : "border-y border-dashed border-cleanup-line/60 bg-cleanup/40"
+            : "border-t-2 border-cleanup-line bg-cleanup"
         }`}
         key={`${area.kind}-${area.start}`}
         style={{
@@ -269,7 +270,15 @@ function ClosedAreas({ day, range }: { day: CalendarDay; range: Range }) {
           top: toPercent(area.start, range),
         }}
         title={area.kind === "closed" ? "Zavřeno" : "Odchod ze sálu před zavíračkou"}
-      />
+      >
+        <span
+          className={`hidden truncate px-1.5 pt-px text-[10px] font-semibold uppercase leading-[11px] tracking-wide [@container(min-height:11px)]:block ${
+            area.kind === "closed" ? "text-ink-soft" : "text-cleanup-ink"
+          }`}
+        >
+          {area.kind === "closed" ? "Zavřeno" : "Odchod ze sálu"}
+        </span>
+      </span>
     ));
 }
 
