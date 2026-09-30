@@ -2,53 +2,29 @@
 
 import { Download, Share, SquarePlus, X } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { useState } from "react";
+import { useInstallApp } from "@/components/pwa/use-install-app";
 
 const dismissedKey = "koskovi-install-dismissed";
 // After closing the tip, it comes back only after a month.
 const dismissForMs = 30 * 24 * 60 * 60 * 1000;
 
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-type Platform = "ios" | "other" | null;
-
-// Offers to install the site as an app on phones and tablets: Chrome and
-// Android get a real "Install" button, iPhone/iPad (which has no install
-// prompt) a short "Share → Add to Home Screen" guide. Hidden once installed.
+// Short tip on the main page for phones and tablets: Android gets a real
+// "Install" button, iPhone/iPad (no install prompt there) a "Share → Add to
+// Home Screen" hint. Full instructions live on /aplikace.
 export function InstallAppPrompt() {
-  const platform = useSyncExternalStore(subscribeNothing, getPlatform, () => null);
-  const [installEvent, setInstallEvent] = useState<InstallPromptEvent | null>(null);
+  const { canPrompt, install, isInstalled, platform } = useInstallApp();
   const [isDismissed, setIsDismissed] = useState(false);
 
-  useEffect(() => {
-    function handleBeforeInstall(event: Event) {
-      // Show our own button instead of the browser's mini-infobar.
-      event.preventDefault();
-      setInstallEvent(event as InstallPromptEvent);
-    }
-
-    function handleInstalled() {
-      setInstallEvent(null);
-      setIsDismissed(true);
-    }
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-    window.addEventListener("appinstalled", handleInstalled);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
-      window.removeEventListener("appinstalled", handleInstalled);
-    };
-  }, []);
-
-  if (platform === null || isDismissed || wasDismissedRecently()) {
-    return null;
-  }
-
-  if (platform === "other" && !installEvent) {
+  if (
+    platform === null ||
+    platform === "desktop" ||
+    isInstalled ||
+    isDismissed ||
+    wasDismissedRecently() ||
+    (platform === "android" && !canPrompt)
+  ) {
     return null;
   }
 
@@ -62,17 +38,8 @@ export function InstallAppPrompt() {
     setIsDismissed(true);
   }
 
-  async function install() {
-    if (!installEvent) {
-      return;
-    }
-
-    await installEvent.prompt();
-    const { outcome } = await installEvent.userChoice;
-
-    setInstallEvent(null);
-
-    if (outcome === "dismissed") {
+  async function handleInstall() {
+    if ((await install()) === "dismissed") {
       dismiss();
     }
   }
@@ -83,6 +50,7 @@ export function InstallAppPrompt() {
         alt=""
         className="h-11 w-11 shrink-0 rounded-[10px]"
         height={44}
+        loading="eager"
         src="/icons/icon-192.png"
         width={44}
       />
@@ -91,10 +59,13 @@ export function InstallAppPrompt() {
         {platform === "ios" ? (
           <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">
             Klepněte na{" "}
-            <Share aria-label="Sdílet" className="inline -mt-0.5 text-accent" size={14} /> Sdílet
+            <Share aria-label="Sdílet" className="-mt-0.5 inline text-accent" size={14} /> Sdílet
             a pak na{" "}
-            <SquarePlus aria-hidden="true" className="inline -mt-0.5 text-accent" size={14} />{" "}
-            <strong className="text-ink">Přidat na plochu</strong>.
+            <SquarePlus aria-hidden="true" className="-mt-0.5 inline text-accent" size={14} />{" "}
+            <strong className="text-ink">Přidat na plochu</strong>.{" "}
+            <Link className="font-semibold text-accent underline-offset-2 hover:underline" href="/aplikace">
+              Návod
+            </Link>
           </p>
         ) : (
           <>
@@ -103,7 +74,7 @@ export function InstallAppPrompt() {
             </p>
             <button
               className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
-              onClick={install}
+              onClick={handleInstall}
               type="button"
             >
               <Download size={14} />
@@ -122,29 +93,6 @@ export function InstallAppPrompt() {
       </button>
     </div>
   );
-}
-
-function subscribeNothing() {
-  return () => {};
-}
-
-// null = do not offer (desktop, already installed).
-function getPlatform(): Platform {
-  const isInstalled =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  const isTouch = window.matchMedia("(pointer: coarse)").matches;
-
-  if (isInstalled || !isTouch) {
-    return null;
-  }
-
-  // iPadOS reports itself as a Mac, but with touch support.
-  const isIos =
-    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-    (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
-
-  return isIos ? "ios" : "other";
 }
 
 function wasDismissedRecently() {

@@ -28,7 +28,7 @@ export function AppHeader({
   onLogout,
   session,
 }: {
-  activeTab: "hall" | "admin";
+  activeTab: "hall" | "admin" | "app";
   onChangePassword?: () => void;
   onLogin?: () => void;
   onLogout: () => void;
@@ -57,7 +57,15 @@ export function AppHeader({
         </Link>
         <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-2">
           <Link className={tabClass(activeTab === "hall")} href="/">
-            Kalendář sálu
+            <span className="sm:hidden">Kalendář</span>
+            <span className="max-sm:hidden">Kalendář sálu</span>
+          </Link>
+          {/* Not needed inside the installed app. */}
+          <Link
+            className={`${tabClass(activeTab === "app")} [@media(display-mode:standalone)]:hidden`}
+            href="/aplikace"
+          >
+            Aplikace
           </Link>
           {canManage ? (
             // On phones the account menu links to administration instead.

@@ -70,7 +70,9 @@ Logy: `pm2 logs koskovi-sal`. Zalohuj soubor z `DATABASE_PATH`.
 
 ## Instalace jako aplikace (PWA)
 
-Stranka jde nainstalovat na telefon/tablet jako aplikace (jen pres HTTPS):
+Stranka jde nainstalovat na telefon/tablet jako aplikace (jen pres HTTPS). Navod pro uzivatele
+je na strance `/aplikace` (zalozka „Aplikace“ v hlavicce; na pocitaci s QR kodem, adresa z `APP_URL`
+nebo z pozadavku):
 
 - Android (Chrome): nabidka „Nainstalovat“ primo na strance, nebo menu ⋮ → Instalovat aplikaci.
 - iPhone/iPad (Safari): Sdilet → Pridat na plochu.
