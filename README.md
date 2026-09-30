@@ -68,6 +68,18 @@ Denni uklid probehlych rezervaci (volitelne, crontab):
 
 Logy: `pm2 logs koskovi-sal`. Zalohuj soubor z `DATABASE_PATH`.
 
+## Instalace jako aplikace (PWA)
+
+Stranka jde nainstalovat na telefon/tablet jako aplikace (jen pres HTTPS):
+
+- Android (Chrome): nabidka „Nainstalovat“ primo na strance, nebo menu ⋮ → Instalovat aplikaci.
+- iPhone/iPad (Safari): Sdilet → Pridat na plochu.
+
+Soubory: `src/app/manifest.ts` (nazev, barvy, ikony), `public/sw.js` (service worker:
+cache jen statickych souboru, stranky a API vzdy ze site, bez pripojeni `public/offline.html`).
+Ikony se generuji z `public/brand/Koskovi_logo_znak.svg` prikazem `node scripts/generate-app-icons.mjs`.
+Pokud je pred aplikaci nginx, nesmi `/sw.js` cachovat (aplikace posila `Cache-Control: no-cache`).
+
 ## Hashovani hesel
 
 ```bash

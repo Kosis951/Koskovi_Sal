@@ -190,7 +190,10 @@ export function Sheet({
             </button>
           </div>
         </div>
-        <div className="overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+        {/* Bottom padding keeps buttons above the iPhone home indicator. */}
+        <div className="overflow-y-auto overscroll-contain px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   );

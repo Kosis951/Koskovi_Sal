@@ -1,7 +1,9 @@
 // Shared class names for the redesigned screens. They use the colour tokens
 // from globals.css, so light and dark mode need no extra overrides.
 
-export const pageContainer = "mx-auto w-full max-w-[1600px] px-4 lg:px-6";
+// Side padding also clears the notch of an iPhone held sideways.
+export const pageContainer =
+  "mx-auto w-full max-w-[1600px] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:pl-[max(1.5rem,env(safe-area-inset-left))] lg:pr-[max(1.5rem,env(safe-area-inset-right))]";
 
 // Pill buttons as on tkkoskovi.cz: the main action in bright blue.
 export const buttonPrimary =

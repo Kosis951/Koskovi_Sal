@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import "./globals.css";
 
 // BR Firma, the club's typeface (as on tkkoskovi.cz): Black for headings,
@@ -19,6 +20,22 @@ const firma = localFont({
 export const metadata: Metadata = {
   title: "Koškovi | Dostupnost sálu",
   description: "Rezervační kalendář Koškovi.",
+  applicationName: "Koškovi sál",
+  // Installed on an iPhone/iPad home screen: full screen, the blue header
+  // runs under the status bar (see the safe-area padding in AppHeader).
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Koškovi sál",
+  },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#003758",
+  // Lets the installed app use the whole screen; safe-area insets keep the
+  // content clear of the notch and the home indicator.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -54,6 +71,7 @@ export default function RootLayout({
           }}
         />
         {children}
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

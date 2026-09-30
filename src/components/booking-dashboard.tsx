@@ -30,6 +30,7 @@ import type { ViewMode } from "@/components/dashboard/types";
 import { useBookingActions } from "@/components/dashboard/use-booking-actions";
 import { useCalendarData } from "@/components/dashboard/use-calendar-data";
 import { useNow } from "@/components/dashboard/use-now";
+import { InstallAppPrompt } from "@/components/pwa/install-app-prompt";
 import { AppHeader } from "@/components/ui/app-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
@@ -413,6 +414,7 @@ export function BookingDashboard({
       />
 
       <main className={`${pageContainer} grid grid-cols-1 gap-4 py-4 lg:py-5`}>
+            <InstallAppPrompt />
             <HallStatusBanner
               freeHours={freeHours}
               onRequestCleanup={requestCleanup}
@@ -507,7 +509,7 @@ export function BookingDashboard({
             {canStartBooking ? (
               <button
                 aria-label="Přidat akci"
-                className="fixed bottom-5 right-5 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_10px_24px_-8px_var(--k-accent)] transition hover:bg-accent-hover lg:hidden"
+                className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_10px_24px_-8px_var(--k-accent)] transition hover:bg-accent-hover lg:hidden"
                 onClick={() => openBookingForm({ date: selectedDate })}
                 type="button"
               >
@@ -518,7 +520,7 @@ export function BookingDashboard({
 
       {toast ? (
         <div
-          className="fade-enter fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-page shadow-lg lg:bottom-6"
+          className="fade-enter fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-page shadow-lg lg:bottom-6"
           role="status"
         >
           {toast}

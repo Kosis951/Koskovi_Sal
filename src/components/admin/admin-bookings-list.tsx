@@ -133,7 +133,7 @@ export function AdminBookingsList() {
         ) : (
           groups.map(([date, dateBookings]) => (
             <div key={date}>
-              <h2 className="sticky top-14 z-10 border-b border-line bg-subtle px-4 py-2 text-xs font-semibold uppercase text-ink-muted lg:top-14">
+              <h2 className="sticky top-[var(--app-header-h)] z-10 border-b border-line bg-subtle px-4 py-2 text-xs font-semibold uppercase text-ink-muted">
                 {formatDateCz(date)}
               </h2>
               <ul className="divide-y divide-line">

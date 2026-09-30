@@ -82,7 +82,7 @@ export function TimeGridCalendar({
   return (
     <div className="select-none">
       <div
-        className="sticky top-14 z-20 grid border-b border-line bg-surface"
+        className="sticky top-[var(--app-header-h)] z-20 grid border-b border-line bg-surface"
         style={{ gridTemplateColumns: columns }}
       >
         <span />

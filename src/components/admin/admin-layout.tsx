@@ -172,7 +172,7 @@ export function AdminLayout({
         </div>
       ) : (
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-6 lg:py-6">
-          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-[72px] lg:mx-0 lg:flex-col lg:self-start lg:px-0">
+          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:mx-0 lg:flex-col lg:self-start lg:px-0">
             {visibleNavItems.map(({ href, icon: Icon, label, section: itemSection }) => {
               const isActive = itemSection === section;
 

@@ -45,6 +45,10 @@
   --k-closed: #e7edf2;
   --k-closed-stripe: #d2dde6;
   --k-now: #d64534;
+
+  /* Height of the sticky header; in the installed iPhone app it also covers
+     the status bar. Sticky elements below it use this as their top. */
+  --app-header-h: calc(3.5rem + env(safe-area-inset-top));
 }
 
 html.dark,
