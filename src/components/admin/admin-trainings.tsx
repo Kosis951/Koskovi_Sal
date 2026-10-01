@@ -422,8 +422,9 @@ function TrainingForm({
           Když je vyplněný, každý druhý týden se použije místo hlavního názvu.
         </span>
       </label>
-      <div className="grid grid-cols-3 gap-2">
-        <label className="field-label">
+      {/* On phones the day gets its own row, so the two times have room. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <label className="field-label col-span-2 sm:col-span-1">
           Den
           <select
             className="field-input mt-1 min-h-10"

@@ -199,10 +199,14 @@ function BookingRow({
         onClick={onToggle}
         type="button"
       >
-        <span className="w-24 shrink-0 text-sm tabular-nums text-ink-muted">
+        <span className="w-24 shrink-0 text-sm tabular-nums text-ink-muted max-sm:hidden">
           {booking.start}–{booking.end}
         </span>
         <span className="min-w-0 flex-1">
+          {/* On phones the time sits above the title, so the title gets the row. */}
+          <span className="block text-xs tabular-nums text-ink-muted sm:hidden">
+            {booking.start}–{booking.end}
+          </span>
           <span className="block truncate font-semibold text-ink">{booking.title}</span>
           <span className="block truncate text-xs text-ink-muted">
             {[
@@ -292,7 +296,7 @@ function BookingEditor({
         </button>
       </div>
       <div className="flex items-end gap-2">
-        <label className="field-label">
+        <label className="field-label flex-1">
           Od
           <input
             className="field-input mt-1 min-h-10"
@@ -301,7 +305,7 @@ function BookingEditor({
             value={time.start}
           />
         </label>
-        <label className="field-label">
+        <label className="field-label flex-1">
           Do
           <input
             className="field-input mt-1 min-h-10"

@@ -259,14 +259,49 @@ textarea {
 
 .field-label {
   display: block;
+  /* Lets a label in a grid column shrink below its content's width. */
+  min-width: 0;
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--k-ink-muted);
 }
 
+/* iOS draws date and time fields with a fixed inner width that ignores the
+   column, so in two- or three-column rows they slid over their neighbours.
+   Without the native appearance they follow the layout like text fields. */
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+input::-webkit-date-and-time-value {
+  min-height: 1.5em;
+  margin: 0;
+  text-align: left;
+}
+
+/* On touch screens a tap anywhere in the field opens the picker, so the
+   small picker icon only takes room the value needs in narrow columns. */
+@media (pointer: coarse) {
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+
+  input[type="date"].field-input,
+  input[type="time"].field-input {
+    padding-inline: 0.625rem;
+  }
+}
+
 .field-input {
   min-height: 2.75rem;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 0.5rem;
   border: 1px solid var(--k-line-strong);
   background: var(--k-subtle);
