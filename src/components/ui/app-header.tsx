@@ -51,7 +51,7 @@ export function AppHeader({
     }`;
 
   return (
-    <header className="app-header bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[env(safe-area-inset-top)] text-white">
+    <header className="app-header bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[var(--app-safe-top)] text-white">
       <div className={`${pageContainer} flex h-14 items-center gap-2 sm:gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
           {/* Phones get the sign alone, so the tabs and icons fit next to it. */}

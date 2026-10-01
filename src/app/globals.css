@@ -48,7 +48,14 @@
 
   /* Height of the sticky header; in the installed iPhone app it also covers
      the status bar. Sticky elements below it use this as their top. */
-  --app-header-h: calc(3.5rem + env(safe-area-inset-top));
+  /* Space above the header row. Where the page runs under the status bar (an
+     iPhone app installed with the translucent status bar), a bit more than
+     the inset, so the header text stays clear of the blur iOS 26+ draws
+     there. Zero wherever the inset is zero (browsers, Android, desktop). */
+  --app-safe-top: calc(
+    env(safe-area-inset-top) + min(env(safe-area-inset-top) * 0.3, 14px)
+  );
+  --app-header-h: calc(3.5rem + var(--app-safe-top));
 }
 
 html.dark,

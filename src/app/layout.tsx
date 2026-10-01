@@ -89,7 +89,7 @@ export default function RootLayout({
             blurring the header. Zero height everywhere else. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed inset-x-0 top-0 z-[45] h-[env(safe-area-inset-top)] bg-header"
+          className="pointer-events-none fixed inset-x-0 top-0 z-[45] h-[var(--app-safe-top)] bg-header"
         />
         {children}
         <PullToRefresh />
