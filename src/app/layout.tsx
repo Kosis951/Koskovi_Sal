@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { PullToRefresh } from "@/components/pwa/pull-to-refresh";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { AppSplash } from "@/components/pwa/app-splash";
 import {
@@ -81,6 +82,7 @@ export default function RootLayout({
         />
         <AppSplash />
         {children}
+        <PullToRefresh />
         <ServiceWorkerRegistration />
       </body>
     </html>

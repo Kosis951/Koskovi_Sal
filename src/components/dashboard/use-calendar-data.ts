@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRefreshHandler } from "@/components/pwa/pull-to-refresh";
 import type {
   RecurringCancellationNotice,
   RecurringOverrideNotice,
@@ -85,6 +86,9 @@ export function useCalendarData({
       document.removeEventListener("visibilitychange", syncWhenVisible);
     };
   }, [syncCalendar]);
+
+  // Pull-to-refresh in the installed app.
+  useRefreshHandler(syncCalendar);
 
   return {
     addBooking,

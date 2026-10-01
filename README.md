@@ -77,6 +77,9 @@ nebo z pozadavku):
 - Android (Chrome): nabidka „Nainstalovat“ primo na strance, nebo menu ⋮ → Instalovat aplikaci.
 - iPhone/iPad (Safari): Sdilet → Pridat na plochu.
 
+V nainstalovane aplikaci jde data obnovit stazenim stranky dolu (nahore potahnout a pustit):
+kalendar, lekce i sprava si jen znovu nactou data (`src/components/pwa/pull-to-refresh.tsx`).
+
 Soubory: `src/app/manifest.ts` (nazev, barvy, ikony), `public/sw.js` (service worker:
 cache jen statickych souboru, stranky a API vzdy ze site, bez pripojeni `public/offline.html`).
 Ikony se generuji z `public/brand/Koskovi_logo_znak.svg` prikazem `node scripts/generate-app-icons.mjs`.

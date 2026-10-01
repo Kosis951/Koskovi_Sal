@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRefreshHandler } from "@/components/pwa/pull-to-refresh";
 import type { Booking } from "@/lib/schedule";
 
 const dateFormatter = new Intl.DateTimeFormat("cs-CZ", {
@@ -54,6 +55,9 @@ export function useAdminResource<T>(url: string, pick: (data: unknown) => T, emp
 
     return () => window.clearTimeout(timeout);
   }, [reload]);
+
+  // Pull-to-refresh in the installed app.
+  useRefreshHandler(reload);
 
   return { data, error, isLoading, reload };
 }

@@ -4,6 +4,7 @@ import { ArrowLeftRight, Check, Clock3, Copy, Plus, RefreshCw, Send, Trash2, X }
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { LoginForm } from "@/components/dashboard/login-form";
 import { LessonsWeekGrid, type GridBlock } from "@/components/lessons/lessons-week-grid";
+import { useRefreshHandler } from "@/components/pwa/pull-to-refresh";
 import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { Sheet } from "@/components/ui/sheet";
 import {
@@ -97,6 +98,9 @@ export function TrainerCalendarPage({
       window.clearInterval(interval);
     };
   }, [load, session]);
+
+  // Pull-to-refresh in the installed app.
+  useRefreshHandler(load);
 
   async function send(path: string, method: string, body?: unknown) {
     setIsBusy(true);

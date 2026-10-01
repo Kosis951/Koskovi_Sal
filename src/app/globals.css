@@ -246,6 +246,9 @@ textarea {
   html,
   body {
     background-color: var(--k-header);
+    /* The app has its own pull-to-refresh (components/pwa/pull-to-refresh);
+       this switches off the browser's one, which would reload the page. */
+    overscroll-behavior-y: none;
   }
 }
 
