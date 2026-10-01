@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 7;
+const schemaVersion = 8;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -101,8 +101,18 @@ function migrate(db: Database) {
       migrateToV7(db);
     }
 
+    if (version < 8) {
+      migrateToV8(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// A lesson the trainer wrote in for somebody without an account: guest_name
+// is who comes, requester is then the trainer's own account.
+function migrateToV8(db: Database) {
+  db.exec("ALTER TABLE trainer_lessons ADD COLUMN guest_name TEXT;");
 }
 
 

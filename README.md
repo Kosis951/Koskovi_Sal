@@ -109,6 +109,9 @@ nezavisly na kalendari salu. Vidi ho jen prihlaseni.
   vzniknou terminy na 6 tydnu dopredu.
 - Prihlaseny clovek si vybere volny termin a posle zadost; termin se mu podrzi. Trener zadost
   potvrdi nebo odmitne. Zrusit lekci muze trener i ten, kdo zadal.
+- Trener muze lekci i sam zapsat pro nekoho bez uctu („Zapsat lekci“ nebo klik na volny termin
+  v kalendari): jmeno, solo / v paru, libovolny volny cas (i mimo nabidku). Lekce je hned
+  potvrzena, nejde prohodit a zrusit ji muze jen trener nebo hlavni spravce.
 - Ostatni vidi u cizich lekci jen „Obsazeno“, jmena vidi trener a hlavni spravce.
 - Trener (a hlavni spravce) ma terminy i jako tydenni kalendar; klik na blok otevre lekci
   (potvrdit / odmitnout / zrusit). Tanecnici maji jen seznam.

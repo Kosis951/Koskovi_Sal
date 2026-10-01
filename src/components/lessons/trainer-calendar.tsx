@@ -43,6 +43,7 @@ function formatLesson(lesson: { date: string; end: string; start: string }) {
 
 type Notice = { ok: boolean; text: string } | null;
 type TrainerOption = { name: string; trainer: string };
+type SlotTime = { date: string; end: string; start: string };
 
 function rememberTrainer(trainer: string) {
   document.cookie = `${lessonsTrainerCookie}=${encodeURIComponent(trainer)}; path=/; max-age=31536000; samesite=lax`;
@@ -93,6 +94,9 @@ export function TrainerCalendarPage({
   const [isBusy, setIsBusy] = useState(false);
   // All trainers with a lesson calendar, for the switch above the calendar.
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
+  // The trainer is writing in a lesson for somebody without an account; the
+  // time is prefilled from a clicked free slot, or empty.
+  const [guestSlot, setGuestSlot] = useState<SlotTime | null>(null);
   // Lesson whose detail is open (from a click in the week calendar).
   const [openLessonId, setOpenLessonId] = useState("");
   const apiBase = `/api/lessons/${encodeURIComponent(trainer)}`;
@@ -217,7 +221,9 @@ export function TrainerCalendarPage({
       <AppHeader activeTab="lessons" onLogout={logout} session={session} />
 
       <main className={`${pageContainer} py-5 lg:py-8`}>
-        <div className="mx-auto grid max-w-4xl gap-5">
+        {/* One column that may shrink: the week calendar scrolls sideways
+            inside its card instead of widening the page on phones. */}
+        <div className="mx-auto grid max-w-4xl grid-cols-1 gap-5">
           <div>
             <p className={eyebrow}>Individuální lekce</p>
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">Lekce · {calendar?.trainerName ?? trainer}</h1>
@@ -279,7 +285,9 @@ export function TrainerCalendarPage({
                 />
               </Card>
               <SlotsCard
-                blocks={buildBlocks(calendar, setOpenLessonId)}
+                blocks={buildBlocks(calendar, setOpenLessonId, setGuestSlot)}
+                onAdd={() => setGuestSlot({ date: "", end: "", start: "" })}
+                onRequest={setGuestSlot}
                 slots={calendar.slots}
                 title="Kalendář lekcí"
               />
@@ -513,6 +521,21 @@ export function TrainerCalendarPage({
         ) : null}
       </Sheet>
 
+      <Sheet onClose={() => setGuestSlot(null)} open={guestSlot !== null} title="Zapsat lekci">
+        {guestSlot ? (
+          <GuestLessonForm
+            initial={guestSlot}
+            // A fresh form for every slot the trainer clicks.
+            key={`${guestSlot.date}-${guestSlot.start}`}
+            onSubmit={async (input) => {
+              if (await send("", "POST", input)) {
+                setGuestSlot(null);
+              }
+            }}
+          />
+        ) : null}
+      </Sheet>
+
       <Sheet onClose={() => setRequestSlot(null)} open={requestSlot !== null} title="Žádost o lekci">
         {requestSlot ? (
           <RequestForm
@@ -572,8 +595,12 @@ function Card({
 
 // Blocks for the trainer's week calendar: every offered slot, plus lessons
 // whose offer was removed later (they still take place). A click on a lesson
-// opens its detail.
-function buildBlocks(calendar: TrainerCalendar, onOpenLesson: (lessonId: string) => void): GridBlock[] {
+// opens its detail, a click on a free slot the form to write a lesson in.
+function buildBlocks(
+  calendar: TrainerCalendar,
+  onOpenLesson: (lessonId: string) => void,
+  onPickFree: (slot: SlotTime) => void,
+): GridBlock[] {
   const blocks = calendar.slots.map((slot): GridBlock => {
     const { lessonId } = slot;
 
@@ -582,7 +609,11 @@ function buildBlocks(calendar: TrainerCalendar, onOpenLesson: (lessonId: string)
       end: slot.end,
       key: `${slot.date}-${slot.start}`,
       label: slot.requester ?? slotStyle[slot.state].label,
-      onClick: lessonId ? () => onOpenLesson(lessonId) : undefined,
+      onClick: lessonId
+        ? () => onOpenLesson(lessonId)
+        : slot.state === "free"
+          ? () => onPickFree(slot)
+          : undefined,
       start: slot.start,
       state: slot.state,
     };
@@ -702,14 +733,16 @@ const slotStyle: Record<LessonSlot["state"], { className: string; label: string 
 
 // Offered slots as a list grouped by day; with `onRequest`, free slots are
 // buttons. With `blocks` (the trainer's view) there is also a week calendar,
-// shown first.
+// shown first, and with `onAdd` a button to write a lesson in at any time.
 function SlotsCard({
   blocks,
+  onAdd,
   onRequest,
   slots,
   title,
 }: {
   blocks?: GridBlock[];
+  onAdd?: () => void;
   onRequest?: (slot: LessonSlot) => void;
   slots: LessonSlot[];
   title: string;
@@ -725,20 +758,28 @@ function SlotsCard({
     <Card
       action={
         !blocks ? null : (
-        <div className="inline-flex rounded-full border border-line bg-subtle p-0.5">
-          {(["calendar", "list"] as const).map((mode) => (
-            <button
-              aria-pressed={view === mode}
-              className={`h-8 rounded-full px-3.5 text-sm font-semibold transition ${
-                view === mode ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
-              }`}
-              key={mode}
-              onClick={() => setView(mode)}
-              type="button"
-            >
-              {mode === "calendar" ? "Kalendář" : "Seznam"}
+        <div className="flex flex-wrap items-center gap-2">
+          {onAdd ? (
+            <button className={`${smallButton} bg-accent text-white hover:bg-accent-hover`} onClick={onAdd} type="button">
+              <Plus size={14} />
+              Zapsat lekci
             </button>
-          ))}
+          ) : null}
+          <div className="inline-flex rounded-full border border-line bg-subtle p-0.5">
+            {(["calendar", "list"] as const).map((mode) => (
+              <button
+                aria-pressed={view === mode}
+                className={`h-8 rounded-full px-3.5 text-sm font-semibold transition ${
+                  view === mode ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+                }`}
+                key={mode}
+                onClick={() => setView(mode)}
+                type="button"
+              >
+                {mode === "calendar" ? "Kalendář" : "Seznam"}
+              </button>
+            ))}
+          </div>
         </div>
         )
       }
@@ -746,9 +787,9 @@ function SlotsCard({
     >
       {(blocks ?? slots).length === 0 ? (
         <p className="text-sm text-ink-muted">
-          {onRequest
-            ? "Trenér teď nenabízí žádné termíny. Zkus to později."
-            : "Zatím nic nenabízíš. Přidej čas v části „Kdy mohu učit“."}
+          {blocks
+            ? "Zatím nic nenabízíš. Přidej čas v části „Kdy mohu učit“, nebo lekci rovnou zapiš."
+            : "Trenér teď nenabízí žádné termíny. Zkus to později."}
         </p>
       ) : blocks && view === "calendar" ? (
         <LessonsWeekGrid blocks={blocks} />
@@ -795,6 +836,122 @@ function SlotsCard({
         </div>
       )}
     </Card>
+  );
+}
+
+// The trainer writes a lesson in for somebody without an account: any free
+// time, confirmed right away.
+function GuestLessonForm({
+  initial,
+  onSubmit,
+}: {
+  initial: SlotTime;
+  onSubmit: (input: SlotTime & { guest: string; note: string; partner: string }) => Promise<void>;
+}) {
+  const [date, setDate] = useState(initial.date);
+  const [start, setStart] = useState(initial.start);
+  const [end, setEnd] = useState(initial.end);
+  const [guest, setGuest] = useState("");
+  const [isCouple, setIsCouple] = useState(false);
+  const [partner, setPartner] = useState("");
+  const [note, setNote] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const error =
+    start && end && start >= end
+      ? "Konec musí být později než začátek."
+      : isCouple && !partner.trim()
+        ? "Vyplň jméno partnera, nebo zvol Sólo."
+        : "";
+  const isIncomplete = !date || !start || !end || !guest.trim();
+
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setIsSending(true);
+
+        try {
+          await onSubmit({
+            date,
+            end,
+            guest: guest.trim(),
+            note: note.trim(),
+            partner: isCouple ? partner.trim() : "",
+            start,
+          });
+        } finally {
+          setIsSending(false);
+        }
+      }}
+    >
+      <div className="grid grid-cols-2 gap-2">
+        <label className="field-label col-span-2">
+          Datum
+          <input className="field-input mt-1" onChange={(event) => setDate(event.target.value)} required type="date" value={date} />
+        </label>
+        <label className="field-label">
+          Od
+          <input className="field-input mt-1" onChange={(event) => setStart(event.target.value)} required type="time" value={start} />
+        </label>
+        <label className="field-label">
+          Do
+          <input className="field-input mt-1" onChange={(event) => setEnd(event.target.value)} required type="time" value={end} />
+        </label>
+      </div>
+      <label className="field-label">
+        Kdo přijde
+        <input
+          className="field-input mt-1"
+          maxLength={60}
+          onChange={(event) => setGuest(event.target.value)}
+          placeholder="Jana Nováková"
+          required
+          value={guest}
+        />
+      </label>
+      <div>
+        <p className="field-label">Lekce</p>
+        <div className="mt-1 flex gap-1.5">
+          <button aria-pressed={!isCouple} className={chipClass(!isCouple)} onClick={() => setIsCouple(false)} type="button">
+            Sólo
+          </button>
+          <button aria-pressed={isCouple} className={chipClass(isCouple)} onClick={() => setIsCouple(true)} type="button">
+            V páru
+          </button>
+        </div>
+      </div>
+      {isCouple ? (
+        <label className="field-label">
+          Partner / partnerka
+          <input
+            className="field-input mt-1"
+            maxLength={60}
+            onChange={(event) => setPartner(event.target.value)}
+            placeholder="Petr Novák"
+            value={partner}
+          />
+        </label>
+      ) : null}
+      <label className="field-label">
+        Poznámka (nepovinné)
+        <textarea
+          className="field-input mt-1"
+          maxLength={300}
+          onChange={(event) => setNote(event.target.value)}
+          rows={2}
+          value={note}
+        />
+      </label>
+      <p className={`text-xs ${error ? "font-semibold text-busy-ink" : "text-ink-soft"}`}>
+        {error ||
+          "Pro někoho, kdo nemá účet. Lekce je hned potvrzená a ostatní uvidí v tomto čase jen „Obsazeno“. Čas nemusí být z tvé nabídky."}
+      </p>
+      <button className={`${buttonPrimary} h-11`} disabled={isSending || isIncomplete || Boolean(error)} type="submit">
+        <Check size={16} />
+        {isSending ? "Zapisuji…" : "Zapsat lekci"}
+      </button>
+    </form>
   );
 }
 

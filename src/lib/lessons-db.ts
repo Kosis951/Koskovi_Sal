@@ -33,6 +33,9 @@ export type LessonStatus = "cancelled" | "confirmed" | "declined" | "pending";
 export type TrainerLesson = {
   date: string;
   end: string;
+  // Set when the trainer wrote the lesson in for somebody without an account;
+  // `requester` is then the trainer's account.
+  guest?: string;
   id: string;
   note?: string;
   // Who comes along; empty for a solo lesson.
@@ -115,6 +118,7 @@ type WindowRow = {
 type LessonRow = {
   date: string;
   end: string;
+  guest_name: string | null;
   id: string;
   note: string | null;
   partner_name: string | null;
@@ -165,14 +169,15 @@ export function getTrainerCalendar(
   const lessons = readLessons(trainerKey, now.dateKey);
   const active = lessons.filter(isActive);
   const upcoming = lessons.filter((lesson) => !isPast(lesson, now));
-  const isMine = (lesson: TrainerLesson) => normalizeUsername(lesson.requester) === viewerKey;
+  const isMine = (lesson: TrainerLesson) => isRequestedBy(lesson, viewerKey);
   const names = createNameLookup();
-  // What people read for a lesson: the profile name, plus the partner when
-  // the lesson was requested as a couple.
-  const label = (lesson: TrainerLesson) =>
-    lesson.partner
-      ? `${names.name(lesson.requester)} a ${lesson.partner}`
-      : names.name(lesson.requester);
+  // What people read for a lesson: the profile name (or the name the trainer
+  // wrote in), plus the partner when the lesson is for a couple.
+  const label = (lesson: TrainerLesson) => {
+    const who = lesson.guest ?? names.name(lesson.requester);
+
+    return lesson.partner ? `${who} a ${lesson.partner}` : who;
+  };
   // Days on which the viewer has a confirmed lesson: there (and only there)
   // other people's confirmed lessons show their names, for swapping.
   const myDays = new Set(
@@ -181,7 +186,11 @@ export function getTrainerCalendar(
   const dayLessons = viewer.canManage
     ? []
     : upcoming
-        .filter((lesson) => lesson.status === "confirmed" && !isMine(lesson) && myDays.has(lesson.date))
+        // Not the written-in ones: nobody could answer a swap request there.
+        .filter(
+          (lesson) =>
+            lesson.status === "confirmed" && !lesson.guest && !isMine(lesson) && myDays.has(lesson.date),
+        )
         .map(
           (lesson): DayLesson => ({
             date: lesson.date,
@@ -397,6 +406,68 @@ export function requestLesson(input: {
   })();
 }
 
+// The trainer writes in a lesson for somebody without an account: any free
+// time (not only an offered slot), confirmed right away.
+export function addGuestLesson(input: {
+  actor: string;
+  date: string;
+  end: string;
+  guest: string;
+  note?: string;
+  partner?: string;
+  start: string;
+  trainer: string;
+}) {
+  const trainerKey = normalizeUsername(input.trainer);
+  const db = getDb();
+
+  return db.transaction((): { error: string; status: number } | { lesson: TrainerLesson } => {
+    const now = getPragueNow();
+    const lesson: TrainerLesson = {
+      date: input.date,
+      end: input.end,
+      guest: input.guest,
+      id: randomUUID(),
+      note: input.note || undefined,
+      partner: input.partner || undefined,
+      requester: trainerKey,
+      start: input.start,
+      status: "confirmed",
+    };
+
+    if (isPast(lesson, now)) {
+      return { error: "Tento čas už je pryč.", status: 400 };
+    }
+
+    if (readLessons(trainerKey, now.dateKey).some((other) => isActive(other) && overlaps(other, lesson))) {
+      return { error: "V tomto čase už máš jinou lekci nebo žádost.", status: 409 };
+    }
+
+    const createdAt = new Date().toISOString();
+
+    db.prepare(
+      `INSERT INTO trainer_lessons
+         (id, trainer, date, start, "end", requester, note, partner_name, guest_name, status, created_at, decided_at, decided_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
+    ).run(
+      lesson.id,
+      trainerKey,
+      lesson.date,
+      lesson.start,
+      lesson.end,
+      lesson.requester,
+      lesson.note ?? null,
+      lesson.partner ?? null,
+      input.guest,
+      createdAt,
+      createdAt,
+      input.actor,
+    );
+
+    return { lesson };
+  })();
+}
+
 // confirm / decline: the trainer (or an administrator) decides a pending
 // request. cancel: the trainer, an administrator or the requester calls off
 // a pending request or a confirmed lesson.
@@ -409,14 +480,14 @@ export function changeLesson(input: {
 }) {
   const db = getDb();
   const lesson = db
-    .prepare('SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(input.id, normalizeUsername(input.trainer)) as LessonRow | undefined;
 
   if (!lesson) {
     return { error: "Lekce nenalezena.", status: 404 };
   }
 
-  const isRequester = normalizeUsername(lesson.requester) === normalizeUsername(input.actor);
+  const isRequester = isRequestedBy(rowToLesson(lesson), normalizeUsername(input.actor));
 
   if (input.action === "cancel" ? !input.canManage && !isRequester : !input.canManage) {
     return { error: "Na tuto lekci nemáš oprávnění.", status: 403 };
@@ -462,7 +533,7 @@ function readPendingSwaps(trainerKey: string) {
 
 function readLesson(trainerKey: string, id: string) {
   const row = getDb()
-    .prepare('SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(id, trainerKey) as LessonRow | undefined;
 
   return row ? rowToLesson(row) : null;
@@ -496,11 +567,16 @@ export function requestSwap(input: {
     const mine = readLesson(trainerKey, input.myLessonId);
     const theirs = readLesson(trainerKey, input.otherLessonId);
 
-    if (!mine || normalizeUsername(mine.requester) !== actorKey) {
+    if (!mine || !isRequestedBy(mine, actorKey)) {
       return { error: "Prohodit můžeš jen svoji lekci.", status: 403 };
     }
 
-    if (!theirs || normalizeUsername(theirs.requester) === actorKey || !canSwap(mine, theirs, getPragueNow())) {
+    if (
+      !theirs ||
+      theirs.guest ||
+      isRequestedBy(theirs, actorKey) ||
+      !canSwap(mine, theirs, getPragueNow())
+    ) {
       return { error: "Prohodit jdou jen dvě potvrzené lekce ve stejný den.", status: 409 };
     }
 
@@ -635,7 +711,7 @@ function readWindows(trainerKey: string): TrainerWindow[] {
 function readLessons(trainerKey: string, fromDate: string) {
   const rows = getDb()
     .prepare(
-      `SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons
+      `SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons
        WHERE trainer = ? AND date >= ? ORDER BY date, start`,
     )
     .all(trainerKey, fromDate) as LessonRow[];
@@ -647,6 +723,7 @@ function rowToLesson(row: LessonRow): TrainerLesson {
   return {
     date: row.date,
     end: row.end,
+    guest: row.guest_name ?? undefined,
     id: row.id,
     note: row.note ?? undefined,
     partner: row.partner_name ?? undefined,
@@ -718,6 +795,11 @@ function getStoredPartner(usernameKey: string) {
   return readStoredAdminUsersSync().find(
     (user) => !user.deleted && normalizeUsername(user.username) === usernameKey,
   )?.partnerName;
+}
+
+// A lesson the trainer wrote in belongs to no account.
+function isRequestedBy(lesson: TrainerLesson, usernameKey: string) {
+  return !lesson.guest && normalizeUsername(lesson.requester) === usernameKey;
 }
 
 function isActive(lesson: TrainerLesson) {

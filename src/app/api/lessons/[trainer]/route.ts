@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isDateKey, isTimeValue } from "@/lib/booking-validation";
-import { getDisplayName, requireTrainerAccess } from "@/lib/lessons-auth";
+import { forbidden, getDisplayName, requireTrainerAccess } from "@/lib/lessons-auth";
 import {
+  addGuestLesson,
   getTrainerCalendar,
   maxLessonNoteLength,
   maxPartnerNameLength,
@@ -28,7 +29,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 // Request a free slot: { date, start, end, note?, partner? } – `partner` is
-// the name of whoever comes along; without it the lesson is solo.
+// the name of whoever comes along; without it the lesson is solo. The trainer
+// may add `guest` (a name) to write a lesson in directly.
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = await requireTrainerAccess((await context.params).trainer);
 
@@ -57,6 +59,44 @@ export async function POST(request: NextRequest, context: RouteContext) {
       { message: `Poznámka může mít nejvýš ${maxLessonNoteLength} znaků.` },
       { status: 400 },
     );
+  }
+
+  // With `guest` the trainer writes the lesson in for somebody without an
+  // account: any free time, confirmed right away.
+  if (payload.guest !== undefined) {
+    if (!auth.canManage) {
+      return forbidden();
+    }
+
+    const guest = typeof payload.guest === "string" ? payload.guest.replace(/\s+/g, " ").trim() : "";
+
+    if (!guest || guest.length > maxPartnerNameLength) {
+      return NextResponse.json(
+        { message: `Vyplň jméno (nejvýš ${maxPartnerNameLength} znaků).` },
+        { status: 400 },
+      );
+    }
+
+    if (payload.start >= payload.end) {
+      return NextResponse.json({ message: "Konec musí být později než začátek." }, { status: 400 });
+    }
+
+    const written = addGuestLesson({
+      actor: auth.access.username,
+      date: payload.date,
+      end: payload.end,
+      guest,
+      note,
+      partner,
+      start: payload.start,
+      trainer: auth.trainer,
+    });
+
+    if ("error" in written) {
+      return NextResponse.json({ message: written.error }, { status: written.status });
+    }
+
+    return NextResponse.json({ lesson: written.lesson, message: "Lekce je zapsaná." });
   }
 
   const result = requestLesson({
