@@ -103,6 +103,11 @@ nezavisly na kalendari salu. Vidi ho jen prihlaseni.
 - Prihlaseny clovek si vybere volny termin a posle zadost; termin se mu podrzi. Trener zadost
   potvrdi nebo odmitne. Zrusit lekci muze trener i ten, kdo zadal.
 - Ostatni vidi u cizich lekci jen „Obsazeno“, jmena vidi trener a hlavni spravce.
+- Trener (a hlavni spravce) ma terminy i jako tydenni kalendar; klik na blok otevre lekci
+  (potvrdit / odmitnout / zrusit). Tanecnici maji jen seznam.
+- Prohozeni: kdo ma na dany den potvrzenou lekci, vidi u ostatnich potvrzenych lekci toho dne
+  jmena a muze nekoho pozadat o prohozeni casu. Schvaluje jen osloveny; po souhlasu se lekce
+  hned prohodi (i s poznamkami). Zrusena lekce zrusi i cekajici prohozeni.
 - Registrace jde jen pres odkaz s pozvankou (`/pozvanka/<token>`), ktery trener najde ve svem
   kalendari a muze ho kdykoli vymenit za novy (stary prestane platit). Novy ucet ma roli
   „Jen cteni“; smazat ho muze hlavni spravce ve Sprave → Uzivatele. Jmeno smazaneho uctu

@@ -57,8 +57,31 @@ export type LessonSlot = {
   state: LessonSlotState;
 };
 
+// Somebody else's confirmed lesson on a day when the viewer has one too –
+// the only case in which a dancer learns another dancer's name, so the two
+// can swap their times.
+export type DayLesson = {
+  date: string;
+  end: string;
+  lessonId: string;
+  requester: string;
+  start: string;
+};
+
+// A swap waiting for an answer, from the viewer's side. "incoming": the other
+// person asked and the viewer decides; "outgoing": the viewer asked.
+export type LessonSwap = {
+  direction: "incoming" | "outgoing";
+  id: string;
+  mine: { date: string; end: string; id: string; start: string };
+  otherName: string;
+  theirs: { date: string; end: string; id: string; start: string };
+};
+
 export type TrainerCalendar = {
   canManage: boolean;
+  dayLessons: DayLesson[];
+  swaps: LessonSwap[];
   // Only when canManage.
   inviteToken?: string;
   // Confirmed lessons (canManage) with names.
@@ -126,6 +149,27 @@ export function getTrainerCalendar(
   const windows = readWindows(trainerKey);
   const lessons = readLessons(trainerKey, now.dateKey);
   const active = lessons.filter(isActive);
+  const upcoming = lessons.filter((lesson) => !isPast(lesson, now));
+  const isMine = (lesson: TrainerLesson) => normalizeUsername(lesson.requester) === viewerKey;
+  // Days on which the viewer has a confirmed lesson: there (and only there)
+  // other people's confirmed lessons show their names, for swapping.
+  const myDays = new Set(
+    upcoming.filter((lesson) => lesson.status === "confirmed" && isMine(lesson)).map((lesson) => lesson.date),
+  );
+  const dayLessons = viewer.canManage
+    ? []
+    : upcoming
+        .filter((lesson) => lesson.status === "confirmed" && !isMine(lesson) && myDays.has(lesson.date))
+        .map(
+          (lesson): DayLesson => ({
+            date: lesson.date,
+            end: lesson.end,
+            lessonId: lesson.id,
+            requester: lesson.requester,
+            start: lesson.start,
+          }),
+        );
+  const namedIds = new Set(dayLessons.map((lesson) => lesson.lessonId));
   const slots = generateSlots(windows, now).map((slot): LessonSlot => {
     const lesson = active.find((item) => overlaps(item, slot));
 
@@ -133,7 +177,7 @@ export function getTrainerCalendar(
       return { ...slot, state: "free" };
     }
 
-    if (normalizeUsername(lesson.requester) === viewerKey) {
+    if (isMine(lesson)) {
       return {
         ...slot,
         lessonId: lesson.id,
@@ -141,20 +185,46 @@ export function getTrainerCalendar(
       };
     }
 
-    return viewer.canManage
-      ? { ...slot, lessonId: lesson.id, requester: lesson.requester, state: lesson.status as "confirmed" | "pending" }
+    if (viewer.canManage) {
+      return { ...slot, lessonId: lesson.id, requester: lesson.requester, state: lesson.status as "confirmed" | "pending" };
+    }
+
+    return namedIds.has(lesson.id)
+      ? { ...slot, lessonId: lesson.id, requester: lesson.requester, state: "taken" }
       : { ...slot, state: "taken" };
   });
-  const upcoming = lessons.filter((lesson) => !isPast(lesson, now));
+  const byId = new Map(upcoming.map((lesson) => [lesson.id, lesson]));
+  const swaps = viewer.canManage
+    ? []
+    : readPendingSwaps(trainerKey).flatMap((swap): LessonSwap[] => {
+        const asking = byId.get(swap.lesson_a);
+        const asked = byId.get(swap.lesson_b);
+
+        if (!asking || !asked || (!isMine(asking) && !isMine(asked))) {
+          return [];
+        }
+
+        const [mine, theirs] = isMine(asking) ? [asking, asked] : [asked, asking];
+        const pick = ({ date, end, id, start }: TrainerLesson) => ({ date, end, id, start });
+
+        return [
+          {
+            direction: isMine(asking) ? "outgoing" : "incoming",
+            id: swap.id,
+            mine: pick(mine),
+            otherName: theirs.requester,
+            theirs: pick(theirs),
+          },
+        ];
+      });
 
   return {
     canManage: viewer.canManage,
+    dayLessons,
+    swaps,
     inviteToken: viewer.canManage ? getInviteToken(trainerKey) : undefined,
     lessons: viewer.canManage ? upcoming.filter((lesson) => lesson.status === "confirmed") : [],
-    mine: upcoming.filter(
-      (lesson) =>
-        normalizeUsername(lesson.requester) === viewerKey && lesson.status !== "cancelled",
-    ),
+    mine: upcoming.filter((lesson) => isMine(lesson) && lesson.status !== "cancelled"),
     requests: viewer.canManage ? upcoming.filter((lesson) => lesson.status === "pending") : [],
     slots,
     trainer,
@@ -326,11 +396,146 @@ export function changeLesson(input: {
   const status: LessonStatus =
     input.action === "confirm" ? "confirmed" : input.action === "decline" ? "declined" : "cancelled";
 
-  db.prepare(
-    "UPDATE trainer_lessons SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?",
-  ).run(status, new Date().toISOString(), input.actor, lesson.id);
+  db.transaction(() => {
+    const now = new Date().toISOString();
+
+    db.prepare(
+      "UPDATE trainer_lessons SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?",
+    ).run(status, now, input.actor, lesson.id);
+
+    // A lesson that no longer takes place cannot be swapped.
+    if (status !== "confirmed") {
+      db.prepare(
+        `UPDATE lesson_swaps SET status = 'cancelled', decided_at = ?
+         WHERE status = 'pending' AND (lesson_a = ? OR lesson_b = ?)`,
+      ).run(now, lesson.id, lesson.id);
+    }
+  })();
 
   return { lesson: { ...rowToLesson(lesson), status } };
+}
+
+type SwapRow = { id: string; lesson_a: string; lesson_b: string };
+type SwapResult = { error: string; status: number } | { swapped: boolean };
+
+function readPendingSwaps(trainerKey: string) {
+  return getDb()
+    .prepare("SELECT id, lesson_a, lesson_b FROM lesson_swaps WHERE trainer = ? AND status = 'pending'")
+    .all(trainerKey) as SwapRow[];
+}
+
+function readLesson(trainerKey: string, id: string) {
+  const row = getDb()
+    .prepare('SELECT id, date, start, "end", requester, note, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .get(id, trainerKey) as LessonRow | undefined;
+
+  return row ? rowToLesson(row) : null;
+}
+
+// Both lessons must be confirmed, on the same day and not over yet.
+function canSwap(mine: TrainerLesson | null, theirs: TrainerLesson | null, now: PragueNow) {
+  return Boolean(
+    mine &&
+      theirs &&
+      mine.status === "confirmed" &&
+      theirs.status === "confirmed" &&
+      mine.date === theirs.date &&
+      !isPast(mine, now) &&
+      !isPast(theirs, now),
+  );
+}
+
+// Ask the owner of another confirmed lesson on the same day to swap times.
+export function requestSwap(input: {
+  actor: string;
+  myLessonId: string;
+  otherLessonId: string;
+  trainer: string;
+}): SwapResult {
+  const trainerKey = normalizeUsername(input.trainer);
+  const actorKey = normalizeUsername(input.actor);
+  const db = getDb();
+
+  return db.transaction((): SwapResult => {
+    const mine = readLesson(trainerKey, input.myLessonId);
+    const theirs = readLesson(trainerKey, input.otherLessonId);
+
+    if (!mine || normalizeUsername(mine.requester) !== actorKey) {
+      return { error: "Prohodit můžeš jen svoji lekci.", status: 403 };
+    }
+
+    if (!theirs || normalizeUsername(theirs.requester) === actorKey || !canSwap(mine, theirs, getPragueNow())) {
+      return { error: "Prohodit jdou jen dvě potvrzené lekce ve stejný den.", status: 409 };
+    }
+
+    const isBusy = readPendingSwaps(trainerKey).some((swap) =>
+      [swap.lesson_a, swap.lesson_b].some((id) => id === mine.id || id === theirs.id),
+    );
+
+    if (isBusy) {
+      return { error: "O jedné z těchto lekcí se už jedná v jiné žádosti o prohození.", status: 409 };
+    }
+
+    db.prepare(
+      `INSERT INTO lesson_swaps (id, trainer, lesson_a, lesson_b, status, created_at)
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+    ).run(randomUUID(), trainerKey, mine.id, theirs.id, new Date().toISOString());
+
+    return { swapped: false };
+  })();
+}
+
+// accept / decline: by the person who was asked. cancel: by the one who asked.
+// Accepting exchanges the two people (and their notes) between the two times.
+export function changeSwap(input: {
+  action: "accept" | "cancel" | "decline";
+  actor: string;
+  id: string;
+  trainer: string;
+}): SwapResult {
+  const trainerKey = normalizeUsername(input.trainer);
+  const actorKey = normalizeUsername(input.actor);
+  const db = getDb();
+
+  return db.transaction((): SwapResult => {
+    const swap = db
+      .prepare("SELECT id, lesson_a, lesson_b FROM lesson_swaps WHERE id = ? AND trainer = ? AND status = 'pending'")
+      .get(input.id, trainerKey) as SwapRow | undefined;
+
+    if (!swap) {
+      return { error: "Tato žádost o prohození už neplatí.", status: 404 };
+    }
+
+    const asking = readLesson(trainerKey, swap.lesson_a);
+    const asked = readLesson(trainerKey, swap.lesson_b);
+    const decider = input.action === "cancel" ? asking : asked;
+
+    if (!decider || normalizeUsername(decider.requester) !== actorKey) {
+      return { error: "Na tuto žádost nemáš oprávnění.", status: 403 };
+    }
+
+    const now = new Date().toISOString();
+    const finish = (status: string) =>
+      db.prepare("UPDATE lesson_swaps SET status = ?, decided_at = ? WHERE id = ?").run(status, now, swap.id);
+
+    if (input.action !== "accept") {
+      finish(input.action === "cancel" ? "cancelled" : "declined");
+      return { swapped: false };
+    }
+
+    if (!asking || !asked || !canSwap(asking, asked, getPragueNow())) {
+      finish("cancelled");
+      return { error: "Lekce už prohodit nejde (některá se změnila nebo proběhla).", status: 409 };
+    }
+
+    const move = db.prepare("UPDATE trainer_lessons SET requester = ?, note = ? WHERE id = ?");
+
+    move.run(asked.requester, asked.note ?? null, asking.id);
+    move.run(asking.requester, asking.note ?? null, asked.id);
+    finish("accepted");
+
+    return { swapped: true };
+  })();
 }
 
 // The secret part of the trainer's invite link; created on first use.

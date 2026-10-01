@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, Clock3, Copy, Plus, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, Check, Clock3, Copy, Plus, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { LoginForm } from "@/components/dashboard/login-form";
+import { LessonsWeekGrid, type GridBlock } from "@/components/lessons/lessons-week-grid";
 import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { Sheet } from "@/components/ui/sheet";
 import {
@@ -54,7 +55,18 @@ export function TrainerCalendarPage({
   const [notice, setNotice] = useState<Notice>(null);
   const [requestSlot, setRequestSlot] = useState<LessonSlot | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  // Lesson whose detail is open (from a click in the week calendar).
+  const [openLessonId, setOpenLessonId] = useState("");
   const apiBase = `/api/lessons/${encodeURIComponent(trainer)}`;
+  const openLesson = calendar
+    ? [...calendar.requests, ...calendar.lessons, ...calendar.mine].find(
+        (lesson) => lesson.id === openLessonId,
+      )
+    : undefined;
+  // The dancer's own lesson for which a swap partner is being picked.
+  const [swapLessonId, setSwapLessonId] = useState("");
+  const swapLesson = calendar?.mine.find((lesson) => lesson.id === swapLessonId);
+  const incomingSwaps = calendar?.swaps.filter((swap) => swap.direction === "incoming") ?? [];
 
   const load = useCallback(async () => {
     const response = await fetch(apiBase, { cache: "no-store" });
@@ -106,6 +118,12 @@ export function TrainerCalendarPage({
       return response.ok;
     } finally {
       setIsBusy(false);
+    }
+  }
+
+  async function changeOpenLesson(action: "cancel" | "confirm" | "decline") {
+    if (await send(`/${openLessonId}`, "PATCH", { action })) {
+      setOpenLessonId("");
     }
   }
 
@@ -163,7 +181,6 @@ export function TrainerCalendarPage({
             <p className="text-sm text-ink-muted">Načítám…</p>
           ) : calendar.canManage ? (
             <>
-              <InviteCard isBusy={isBusy} onRegenerate={() => send("/invite", "POST")} token={calendar.inviteToken} />
               <Card count={calendar.requests.length} title="Žádosti ke schválení">
                 <LessonList
                   empty="Žádná žádost nečeká."
@@ -193,6 +210,11 @@ export function TrainerCalendarPage({
                   showRequester
                 />
               </Card>
+              <SlotsCard
+                blocks={buildBlocks(calendar, setOpenLessonId)}
+                slots={calendar.slots}
+                title="Kalendář lekcí"
+              />
               <Card count={calendar.lessons.length} title="Potvrzené lekce">
                 <LessonList
                   empty="Zatím žádná potvrzená lekce."
@@ -213,31 +235,215 @@ export function TrainerCalendarPage({
                 onDelete={(id) => send("/windows", "DELETE", { id })}
                 windows={calendar.windows}
               />
-              <SlotsCard slots={calendar.slots} title="Nabízené termíny" />
+              <InviteCard isBusy={isBusy} onRegenerate={() => send("/invite", "POST")} token={calendar.inviteToken} />
             </>
           ) : (
             <>
+              {incomingSwaps.length > 0 ? (
+                <Card count={incomingSwaps.length} title="Žádosti o prohození">
+                  <ul className="divide-y divide-line">
+                    {incomingSwaps.map((swap) => (
+                      <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5" key={swap.id}>
+                        <div className="min-w-0 flex-1 basis-56">
+                          <p className="font-semibold text-ink">
+                            {swap.otherName} si chce prohodit lekci
+                          </p>
+                          <p className="text-sm text-ink-muted">
+                            <span className="capitalize">{formatDay(swap.mine.date)}</span>: ty teď{" "}
+                            {swap.mine.start}–{swap.mine.end}, nově {swap.theirs.start}–{swap.theirs.end}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            className={`${smallButton} bg-accent text-white hover:bg-accent-hover`}
+                            disabled={isBusy}
+                            onClick={() => send(`/swaps/${swap.id}`, "PATCH", { action: "accept" })}
+                            type="button"
+                          >
+                            <Check size={14} />
+                            Souhlasím
+                          </button>
+                          <button
+                            className={`${smallButton} border border-line-strong text-ink hover:bg-subtle`}
+                            disabled={isBusy}
+                            onClick={() => send(`/swaps/${swap.id}`, "PATCH", { action: "decline" })}
+                            type="button"
+                          >
+                            <X size={14} />
+                            Odmítnout
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
               <Card count={calendar.mine.length} title="Moje lekce a žádosti">
                 <LessonList
                   empty="Zatím nemáš žádnou žádost. Vyber si termín níže."
                   lessons={calendar.mine}
-                  renderActions={(lesson) =>
-                    lesson.status === "declined" ? null : (
-                      <CancelButton
-                        isBusy={isBusy}
-                        onCancel={() => send(`/${lesson.id}`, "PATCH", { action: "cancel" })}
-                        question={`Zrušit ${lesson.status === "pending" ? "žádost" : "lekci"} ${formatLesson(lesson)}?`}
-                      />
-                    )
-                  }
+                  renderActions={(lesson) => {
+                    if (lesson.status === "declined") {
+                      return null;
+                    }
+
+                    const swap = calendar.swaps.find((item) => item.mine.id === lesson.id);
+                    const canSwap =
+                      lesson.status === "confirmed" &&
+                      !swap &&
+                      calendar.dayLessons.some((other) => other.date === lesson.date);
+
+                    return (
+                      <>
+                        {swap?.direction === "outgoing" ? (
+                          <button
+                            className={`${smallButton} border border-line-strong text-ink hover:bg-subtle`}
+                            disabled={isBusy}
+                            onClick={() => send(`/swaps/${swap.id}`, "PATCH", { action: "cancel" })}
+                            type="button"
+                          >
+                            <X size={14} />
+                            Zrušit prohození
+                          </button>
+                        ) : null}
+                        {canSwap ? (
+                          <button
+                            className={`${smallButton} border border-line-strong text-ink hover:border-accent hover:bg-subtle`}
+                            disabled={isBusy}
+                            onClick={() => setSwapLessonId(lesson.id)}
+                            type="button"
+                          >
+                            <ArrowLeftRight size={14} />
+                            Prohodit
+                          </button>
+                        ) : null}
+                        <CancelButton
+                          isBusy={isBusy}
+                          onCancel={() => send(`/${lesson.id}`, "PATCH", { action: "cancel" })}
+                          question={`Zrušit ${lesson.status === "pending" ? "žádost" : "lekci"} ${formatLesson(lesson)}?`}
+                        />
+                      </>
+                    );
+                  }}
+                  renderInfo={(lesson) => {
+                    const swap = calendar.swaps.find(
+                      (item) => item.direction === "outgoing" && item.mine.id === lesson.id,
+                    );
+
+                    return swap
+                      ? `Prohození na ${swap.theirs.start}–${swap.theirs.end} čeká na souhlas: ${swap.otherName}`
+                      : "";
+                  }}
                   showStatus
                 />
               </Card>
-              <SlotsCard onRequest={setRequestSlot} slots={calendar.slots} title="Volné termíny" />
+              <SlotsCard onRequest={setRequestSlot} slots={calendar.slots} title="Termíny" />
             </>
           )}
         </div>
       </main>
+
+      <Sheet onClose={() => setSwapLessonId("")} open={Boolean(swapLesson)} title="Prohodit lekci">
+        {swapLesson && calendar ? (
+          <div className="grid gap-3">
+            <div className="rounded-lg border border-line bg-subtle p-3">
+              <p className="text-xs font-semibold uppercase text-ink-muted">Tvoje lekce</p>
+              <p className="font-semibold capitalize text-ink">{formatLesson(swapLesson)}</p>
+            </div>
+            <p className="text-sm text-ink-muted">
+              S kým si chceš čas prohodit? Dotyčný dostane žádost, a jakmile bude souhlasit,
+              lekce se prohodí.
+            </p>
+            <ul className="divide-y divide-line rounded-lg border border-line">
+              {calendar.dayLessons
+                .filter((other) => other.date === swapLesson.date)
+                .map((other) => (
+                  <li className="flex items-center justify-between gap-3 px-3 py-2.5" key={other.lessonId}>
+                    <div className="min-w-0">
+                      <p className="font-semibold tabular-nums text-ink">
+                        {other.start}–{other.end}
+                      </p>
+                      <p className="truncate text-sm text-ink-muted">{other.requester}</p>
+                    </div>
+                    <button
+                      className={`${smallButton} shrink-0 bg-accent text-white hover:bg-accent-hover`}
+                      disabled={isBusy}
+                      onClick={async () => {
+                        if (
+                          await send("/swaps", "POST", {
+                            myLessonId: swapLesson.id,
+                            otherLessonId: other.lessonId,
+                          })
+                        ) {
+                          setSwapLessonId("");
+                        }
+                      }}
+                      type="button"
+                    >
+                      <ArrowLeftRight size={14} />
+                      Požádat
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
+      </Sheet>
+
+      <Sheet onClose={() => setOpenLessonId("")} open={Boolean(openLesson)} title="Lekce">
+        {openLesson && calendar ? (
+          <div className="grid gap-3">
+            <div className="rounded-lg border border-line bg-subtle p-3">
+              <p className="font-semibold capitalize text-ink">{formatDay(openLesson.date)}</p>
+              <p className="flex items-center gap-1.5 text-sm text-ink-muted">
+                <Clock3 size={14} />
+                {openLesson.start}–{openLesson.end}
+                {calendar.canManage ? ` · ${openLesson.requester}` : ""}
+              </p>
+              {openLesson.note ? <p className="mt-1.5 text-sm text-ink">{openLesson.note}</p> : null}
+            </div>
+            <span className={`justify-self-start rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadge[openLesson.status].className}`}>
+              {statusBadge[openLesson.status].label}
+            </span>
+            {calendar.canManage && openLesson.status === "pending" ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={buttonSecondary}
+                  disabled={isBusy}
+                  onClick={() => changeOpenLesson("decline")}
+                  type="button"
+                >
+                  <X size={16} />
+                  Odmítnout
+                </button>
+                <button
+                  className={buttonPrimary}
+                  disabled={isBusy}
+                  onClick={() => changeOpenLesson("confirm")}
+                  type="button"
+                >
+                  <Check size={16} />
+                  Potvrdit
+                </button>
+              </div>
+            ) : (
+              <button
+                className={`${buttonSecondary} border-busy-line bg-busy text-busy-ink`}
+                disabled={isBusy}
+                onClick={() => {
+                  if (window.confirm(`Zrušit ${openLesson.status === "pending" ? "žádost" : "lekci"} ${formatLesson(openLesson)}?`)) {
+                    void changeOpenLesson("cancel");
+                  }
+                }}
+                type="button"
+              >
+                <Trash2 size={16} />
+                {openLesson.status === "pending" ? "Zrušit žádost" : "Zrušit lekci"}
+              </button>
+            )}
+          </div>
+        ) : null}
+      </Sheet>
 
       <Sheet onClose={() => setRequestSlot(null)} open={requestSlot !== null} title="Žádost o lekci">
         {requestSlot ? (
@@ -259,18 +465,68 @@ export function TrainerCalendarPage({
 const smallButton =
   "inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
 
-function Card({ children, count, title }: { children: ReactNode; count?: number; title: string }) {
+function Card({
+  action,
+  children,
+  count,
+  title,
+}: {
+  // Shown on the right of the title (e.g. a view switch).
+  action?: ReactNode;
+  children: ReactNode;
+  count?: number;
+  title: string;
+}) {
   return (
     <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
-      <h2 className="flex items-center gap-2 text-lg font-black">
-        {title}
-        {count ? (
-          <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">{count}</span>
-        ) : null}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-lg font-black">
+          {title}
+          {count ? (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">{count}</span>
+          ) : null}
+        </h2>
+        {action}
+      </div>
       <div className="mt-3">{children}</div>
     </section>
   );
+}
+
+// Blocks for the trainer's week calendar: every offered slot, plus lessons
+// whose offer was removed later (they still take place). A click on a lesson
+// opens its detail.
+function buildBlocks(calendar: TrainerCalendar, onOpenLesson: (lessonId: string) => void): GridBlock[] {
+  const blocks = calendar.slots.map((slot): GridBlock => {
+    const { lessonId } = slot;
+
+    return {
+      date: slot.date,
+      end: slot.end,
+      key: `${slot.date}-${slot.start}`,
+      label: slot.requester ?? slotStyle[slot.state].label,
+      onClick: lessonId ? () => onOpenLesson(lessonId) : undefined,
+      start: slot.start,
+      state: slot.state,
+    };
+  });
+  const known = new Set(calendar.slots.map((slot) => slot.lessonId).filter(Boolean));
+
+  for (const lesson of [...calendar.requests, ...calendar.lessons]) {
+    if (!known.has(lesson.id) && (lesson.status === "pending" || lesson.status === "confirmed")) {
+      blocks.push({
+        date: lesson.date,
+        end: lesson.end,
+        key: lesson.id,
+        label: lesson.requester,
+        onClick: () => onOpenLesson(lesson.id),
+        start: lesson.start,
+        state: lesson.status,
+      });
+    }
+  }
+
+  return blocks;
 }
 
 const statusBadge: Record<TrainerLesson["status"], { className: string; label: string }> = {
@@ -284,12 +540,15 @@ function LessonList({
   empty,
   lessons,
   renderActions,
+  renderInfo,
   showRequester = false,
   showStatus = false,
 }: {
   empty: string;
   lessons: TrainerLesson[];
   renderActions: (lesson: TrainerLesson) => ReactNode;
+  // Extra line under a lesson (e.g. a swap waiting for an answer).
+  renderInfo?: (lesson: TrainerLesson) => string;
   showRequester?: boolean;
   showStatus?: boolean;
 }) {
@@ -306,6 +565,9 @@ function LessonList({
             <p className="text-sm text-ink-muted">
               {[showRequester ? lesson.requester : null, lesson.note].filter(Boolean).join(" · ")}
             </p>
+            {renderInfo?.(lesson) ? (
+              <p className="text-xs font-semibold text-cleanup-ink">{renderInfo(lesson)}</p>
+            ) : null}
           </div>
           {showStatus ? (
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadge[lesson.status].className}`}>
@@ -354,16 +616,21 @@ const slotStyle: Record<LessonSlot["state"], { className: string; label: string 
   taken: { className: "border-line bg-subtle text-ink-soft", label: "Obsazeno" },
 };
 
-// Slots grouped by day. With `onRequest`, free slots are buttons.
+// Offered slots as a list grouped by day; with `onRequest`, free slots are
+// buttons. With `blocks` (the trainer's view) there is also a week calendar,
+// shown first.
 function SlotsCard({
+  blocks,
   onRequest,
   slots,
   title,
 }: {
+  blocks?: GridBlock[];
   onRequest?: (slot: LessonSlot) => void;
   slots: LessonSlot[];
   title: string;
 }) {
+  const [view, setView] = useState<"calendar" | "list">(blocks ? "calendar" : "list");
   const days = new Map<string, LessonSlot[]>();
 
   for (const slot of slots) {
@@ -371,13 +638,36 @@ function SlotsCard({
   }
 
   return (
-    <Card title={title}>
-      {slots.length === 0 ? (
+    <Card
+      action={
+        !blocks ? null : (
+        <div className="inline-flex rounded-full border border-line bg-subtle p-0.5">
+          {(["calendar", "list"] as const).map((mode) => (
+            <button
+              aria-pressed={view === mode}
+              className={`h-8 rounded-full px-3.5 text-sm font-semibold transition ${
+                view === mode ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
+              }`}
+              key={mode}
+              onClick={() => setView(mode)}
+              type="button"
+            >
+              {mode === "calendar" ? "Kalendář" : "Seznam"}
+            </button>
+          ))}
+        </div>
+        )
+      }
+      title={title}
+    >
+      {(blocks ?? slots).length === 0 ? (
         <p className="text-sm text-ink-muted">
           {onRequest
             ? "Trenér teď nenabízí žádné termíny. Zkus to později."
             : "Zatím nic nenabízíš. Přidej čas v části „Kdy mohu učit“."}
         </p>
+      ) : blocks && view === "calendar" ? (
+        <LessonsWeekGrid blocks={blocks} />
       ) : (
         <div className="grid gap-4">
           {[...days].map(([date, daySlots]) => (

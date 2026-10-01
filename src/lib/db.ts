@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 5;
+const schemaVersion = 6;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -93,8 +93,29 @@ function migrate(db: Database) {
       migrateToV5(db);
     }
 
+    if (version < 6) {
+      migrateToV6(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Two people with confirmed lessons on the same day can swap them: one asks
+// (lesson_a is theirs), the owner of lesson_b accepts or declines.
+function migrateToV6(db: Database) {
+  db.exec(`
+    CREATE TABLE lesson_swaps (
+      id TEXT PRIMARY KEY,
+      trainer TEXT NOT NULL,
+      lesson_a TEXT NOT NULL,
+      lesson_b TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled')),
+      created_at TEXT NOT NULL,
+      decided_at TEXT
+    );
+    CREATE INDEX lesson_swaps_trainer_status ON lesson_swaps (trainer, status);
+  `);
 }
 
 // Trainers' own lesson calendars (independent of the hall): when a trainer
