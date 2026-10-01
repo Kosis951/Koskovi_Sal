@@ -82,6 +82,17 @@ cache jen statickych souboru, stranky a API vzdy ze site, bez pripojeni `public/
 Ikony se generuji z `public/brand/Koskovi_logo_znak.svg` prikazem `node scripts/generate-app-icons.mjs`.
 Pokud je pred aplikaci nginx, nesmi `/sw.js` cachovat (aplikace posila `Cache-Control: no-cache`).
 
+## Pravidelne treninky s omezenim
+
+Ve Sprave → Treninky jde u treninku nastavit, jak dlouho pobezi:
+
+- **Stale** – kazdy tyden (vychozi).
+- **Jen v obdobi** – od/do (obe data vcetne, staci i jen jedno).
+- **Pocet lekci** – kurz: datum prvni lekce + pocet. Zrusene lekce, prazdniny a pauza se
+  nepocitaji, kurz se o ne prodlouzi. Karta ukazuje „probehlo X, zbyva Y, posledni …“.
+- **Pauza od–do** – trenink se v pauze neukazuje a pak pokracuje. Docasny presun: puvodnimu
+  treninku nastavit pauzu a pridat novy trenink v jinem case s obdobim na stejne dny.
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:

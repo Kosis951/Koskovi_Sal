@@ -10,16 +10,40 @@ export type BookingInput = Omit<Booking, "id">;
 // A training that repeats every week. `weekday` is ISO (1 = Monday …
 // 7 = Sunday); when `alternateTitle` is set, weeks alternate between the two
 // titles (e.g. LAT / STT).
+//
+// Optional limits (dates are YYYY-MM-DD, inclusive):
+// - validFrom / validUntil: the training runs only in this period.
+// - lessonCount: a course of that many lessons counted from validFrom;
+//   cancelled dates, holidays and the pause do not count, so the course gets
+//   longer by them.
+// - pausedFrom / pausedUntil: no lessons in between, then it continues.
 export type RecurringTraining = {
   alternateTitle?: string;
   end: string;
   key: string;
+  lessonCount?: number;
+  pausedFrom?: string;
+  pausedUntil?: string;
   start: string;
   title: string;
   trainer?: string;
+  validFrom?: string;
+  validUntil?: string;
   weekday: number;
 };
 export type RecurringTrainingInput = Omit<RecurringTraining, "key">;
+// Where a limited training stands today, for administration.
+export type RecurringTrainingStatus = {
+  // Lessons of a course (lessonCount) already held / still to come.
+  heldLessons?: number;
+  // Last lesson of a course, or the end of the period.
+  lastDate?: string;
+  remainingLessons?: number;
+  state: "active" | "finished" | "paused" | "upcoming";
+};
+export type RecurringTrainingWithStatus = RecurringTraining & {
+  status: RecurringTrainingStatus;
+};
 export type RecurringCancellationNotice = {
   date: string;
   end: string;
@@ -86,6 +110,23 @@ export async function getRecurringTrainings() {
   return readRecurringTrainings();
 }
 
+// Trainings with their current state (running, paused, finished, lessons
+// left), computed from the same rules that generate the calendar.
+export async function getRecurringTrainingsWithStatus(): Promise<RecurringTrainingWithStatus[]> {
+  const [cancelledIds, holidays, trainings] = await Promise.all([
+    readRecurringCancellations(),
+    readRecurringHolidays(),
+    readRecurringTrainings(),
+  ]);
+  const cancelled = new Set(cancelledIds);
+  const today = getTodayPragueDateKey();
+
+  return trainings.map((training) => ({
+    ...training,
+    status: getTrainingStatus(training, holidays, cancelled, today),
+  }));
+}
+
 export async function createRecurringTraining(input: RecurringTrainingInput) {
   return withDatabaseLock(async () => {
     const key = await createTrainingKey(input.title);
@@ -93,8 +134,9 @@ export async function createRecurringTraining(input: RecurringTrainingInput) {
     getDb()
       .prepare(`
         INSERT INTO recurring_trainings
-          (key, title, alternate_title, weekday, start, "end", trainer, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (key, title, alternate_title, weekday, start, "end", trainer, valid_from,
+           valid_until, lesson_count, paused_from, paused_until, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         key,
@@ -104,6 +146,11 @@ export async function createRecurringTraining(input: RecurringTrainingInput) {
         input.start,
         input.end,
         input.trainer ?? null,
+        input.validFrom ?? null,
+        input.validUntil ?? null,
+        input.lessonCount ?? null,
+        input.pausedFrom ?? null,
+        input.pausedUntil ?? null,
         new Date().toISOString(),
       );
 
@@ -118,7 +165,8 @@ export async function updateRecurringTraining(key: string, input: RecurringTrain
     const result = getDb()
       .prepare(`
         UPDATE recurring_trainings SET title = ?, alternate_title = ?, weekday = ?,
-          start = ?, "end" = ?, trainer = ?, updated_at = ?
+          start = ?, "end" = ?, trainer = ?, valid_from = ?, valid_until = ?,
+          lesson_count = ?, paused_from = ?, paused_until = ?, updated_at = ?
         WHERE key = ?
       `)
       .run(
@@ -128,6 +176,11 @@ export async function updateRecurringTraining(key: string, input: RecurringTrain
         input.start,
         input.end,
         input.trainer ?? null,
+        input.validFrom ?? null,
+        input.validUntil ?? null,
+        input.lessonCount ?? null,
+        input.pausedFrom ?? null,
+        input.pausedUntil ?? null,
         new Date().toISOString(),
         key,
       );
@@ -714,6 +767,13 @@ function createRecurringBookings({
 }: RecurringConfig) {
   const today = dateKeyToUtcDate(getTodayPragueDateKey());
   const bookings: Booking[] = [];
+  // Courses limited by a lesson count run only on their computed dates.
+  const courseDates = new Map(
+    trainings.map((training) => [
+      training.key,
+      getCourseLessonDates(training, recurringHolidays, cancelledIds),
+    ]),
+  );
 
   for (let offset = 0; offset <= recurringHorizonDays; offset += 1) {
     const date = new Date(today);
@@ -726,7 +786,13 @@ function createRecurringBookings({
     }
 
     for (const training of trainings) {
-      if (training.weekday === isoWeekday) {
+      const lessonDates = courseDates.get(training.key);
+
+      if (
+        training.weekday === isoWeekday &&
+        isTrainingPeriodDate(training, dateKey) &&
+        (!lessonDates || lessonDates.includes(dateKey))
+      ) {
         pushRecurringBooking(
           bookings,
           cancelledIds,
@@ -737,6 +803,94 @@ function createRecurringBookings({
   }
 
   return bookings;
+}
+
+// Inside the training's period and outside its pause.
+function isTrainingPeriodDate(training: RecurringTraining, dateKey: string) {
+  if (training.validFrom && dateKey < training.validFrom) {
+    return false;
+  }
+
+  if (training.validUntil && dateKey > training.validUntil) {
+    return false;
+  }
+
+  return !(
+    training.pausedFrom &&
+    training.pausedUntil &&
+    dateKey >= training.pausedFrom &&
+    dateKey <= training.pausedUntil
+  );
+}
+
+// Dates of a course limited by a lesson count: every week from validFrom on
+// the training's weekday, skipping holidays, the pause and cancelled dates,
+// until the count is reached. Null for trainings without a lesson count.
+function getCourseLessonDates(
+  training: RecurringTraining,
+  holidays: RecurringHoliday[],
+  cancelledIds: Set<string>,
+) {
+  if (!training.lessonCount || !training.validFrom) {
+    return null;
+  }
+
+  const dates: string[] = [];
+  const date = dateKeyToUtcDate(training.validFrom);
+
+  while ((date.getUTCDay() || 7) !== training.weekday) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+
+  // Ten years of weeks at most, in case holidays cover everything.
+  for (let week = 0; week < 520 && dates.length < training.lessonCount; week += 1) {
+    const dateKey = formatUtcDateKey(date);
+
+    if (training.validUntil && dateKey > training.validUntil) {
+      break;
+    }
+
+    if (
+      isTrainingPeriodDate(training, dateKey) &&
+      !isRecurringHolidayDate(dateKey, holidays) &&
+      !cancelledIds.has(`recurring-${training.key}-${dateKey}`)
+    ) {
+      dates.push(dateKey);
+    }
+
+    date.setUTCDate(date.getUTCDate() + 7);
+  }
+
+  return dates;
+}
+
+function getTrainingStatus(
+  training: RecurringTraining,
+  holidays: RecurringHoliday[],
+  cancelledIds: Set<string>,
+  today: string,
+): RecurringTrainingStatus {
+  const lessonDates = getCourseLessonDates(training, holidays, cancelledIds);
+  const lastDate = lessonDates ? lessonDates[lessonDates.length - 1] : training.validUntil;
+  const heldLessons = lessonDates?.filter((dateKey) => dateKey < today).length;
+  const counts = lessonDates
+    ? { heldLessons, remainingLessons: lessonDates.length - (heldLessons ?? 0) }
+    : {};
+  const isPaused =
+    Boolean(training.pausedFrom && training.pausedUntil) &&
+    today >= training.pausedFrom! &&
+    today <= training.pausedUntil!;
+  const state =
+    (lessonDates && (lessonDates.length === 0 || lastDate! < today)) ||
+    (training.validUntil && training.validUntil < today)
+      ? "finished"
+      : training.validFrom && today < training.validFrom
+        ? "upcoming"
+        : isPaused
+          ? "paused"
+          : "active";
+
+  return { ...counts, lastDate, state };
 }
 
 function getTrainingTitle(training: RecurringTraining, dateKey: string) {
@@ -1032,15 +1186,22 @@ async function writeRecurringCancellations(ids: string[]) {
 async function readRecurringTrainings(): Promise<RecurringTraining[]> {
   const rows = getDb()
     .prepare(
-      'SELECT key, title, alternate_title, weekday, start, "end", trainer FROM recurring_trainings ORDER BY weekday, start',
+      `SELECT key, title, alternate_title, weekday, start, "end", trainer, valid_from,
+         valid_until, lesson_count, paused_from, paused_until
+       FROM recurring_trainings ORDER BY weekday, start`,
     )
     .all() as Array<{
     alternate_title: string | null;
     end: string;
     key: string;
+    lesson_count: number | null;
+    paused_from: string | null;
+    paused_until: string | null;
     start: string;
     title: string;
     trainer: string | null;
+    valid_from: string | null;
+    valid_until: string | null;
     weekday: number;
   }>;
 
@@ -1048,9 +1209,14 @@ async function readRecurringTrainings(): Promise<RecurringTraining[]> {
     alternateTitle: row.alternate_title ?? undefined,
     end: row.end,
     key: row.key,
+    lessonCount: row.lesson_count ?? undefined,
+    pausedFrom: row.paused_from ?? undefined,
+    pausedUntil: row.paused_until ?? undefined,
     start: row.start,
     title: row.title,
     trainer: row.trainer ?? undefined,
+    validFrom: row.valid_from ?? undefined,
+    validUntil: row.valid_until ?? undefined,
     weekday: row.weekday,
   }));
 }

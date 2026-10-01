@@ -15,16 +15,75 @@ import {
   buttonDanger,
   buttonPrimary,
   buttonSecondary,
+  chipClass,
   noticeTone,
 } from "@/components/ui/styles";
-import type { RecurringTraining, RecurringTrainingInput } from "@/lib/bookings-db";
+import type {
+  RecurringTrainingInput,
+  RecurringTrainingWithStatus as RecurringTraining,
+} from "@/lib/bookings-db";
 import { trainerOptions, type Booking } from "@/lib/schedule";
 
 const weekdays = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"];
 const noTrainings: RecurringTraining[] = [];
+// How long a training runs: every week, only in a period, or as a course
+// with a fixed number of lessons.
+type ValidityMode = "always" | "count" | "period";
+const validityModes: Array<{ label: string; mode: ValidityMode }> = [
+  { label: "Stále", mode: "always" },
+  { label: "Jen v období", mode: "period" },
+  { label: "Počet lekcí", mode: "count" },
+];
 
 function pickTrainings(data: unknown) {
   return (data as { trainings?: RecurringTraining[] }).trainings ?? noTrainings;
+}
+
+// "6. 10." – with the year when it is not the current one.
+function formatShortDate(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const isThisYear = String(year) === getTodayPragueDateKey().slice(0, 4);
+
+  return `${day}. ${month}.${isThisYear ? "" : ` ${year}`}`;
+}
+
+function formatLessons(count: number) {
+  return `${count} ${count >= 1 && count <= 4 ? "lekce" : "lekcí"}`;
+}
+
+// Period, course progress and pause of a training in words; empty for a
+// training that simply runs every week.
+function describeLimits(training: RecurringTraining) {
+  const { status } = training;
+  const lines: string[] = [];
+
+  if (training.lessonCount && training.validFrom) {
+    lines.push(
+      `Kurz ${formatLessons(training.lessonCount)} od ${formatShortDate(training.validFrom)}` +
+        ` · proběhlo ${status.heldLessons ?? 0}, zbývá ${status.remainingLessons ?? 0}` +
+        (status.lastDate ? ` · poslední ${formatShortDate(status.lastDate)}` : ""),
+    );
+  } else if (training.validFrom && training.validUntil) {
+    lines.push(
+      `Od ${formatShortDate(training.validFrom)} do ${formatShortDate(training.validUntil)}`,
+    );
+  } else if (training.validFrom) {
+    lines.push(`Od ${formatShortDate(training.validFrom)}`);
+  } else if (training.validUntil) {
+    lines.push(`Do ${formatShortDate(training.validUntil)}`);
+  }
+
+  if (
+    training.pausedFrom &&
+    training.pausedUntil &&
+    training.pausedUntil >= getTodayPragueDateKey()
+  ) {
+    lines.push(
+      `Pauza ${formatShortDate(training.pausedFrom)} – ${formatShortDate(training.pausedUntil)}`,
+    );
+  }
+
+  return lines;
 }
 
 type Result = { message: string; ok: boolean } | null;
@@ -160,21 +219,42 @@ function TrainingCard({
 }) {
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const occurrenceTitle = titleDraft ?? booking?.title ?? "";
+  const { state } = training.status;
+  const stateBadge =
+    state === "finished"
+      ? { className: "bg-subtle text-ink-muted", label: "Skončil" }
+      : state === "upcoming" && training.validFrom
+        ? { className: "bg-training text-training-ink", label: `Začne ${formatShortDate(training.validFrom)}` }
+        : state === "paused" && training.pausedUntil
+          ? { className: "bg-cleanup text-cleanup-ink", label: `Pauza do ${formatShortDate(training.pausedUntil)}` }
+          : null;
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-4">
+    <div className={`rounded-xl border border-line bg-surface p-4 ${state === "finished" ? "opacity-75" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-ink">
-            {training.title}
-            {training.alternateTitle ? (
-              <span className="font-normal text-ink-muted"> / {training.alternateTitle}</span>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-ink">
+            <span className="min-w-0 truncate">
+              {training.title}
+              {training.alternateTitle ? (
+                <span className="font-normal text-ink-muted"> / {training.alternateTitle}</span>
+              ) : null}
+            </span>
+            {stateBadge ? (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${stateBadge.className}`}>
+                {stateBadge.label}
+              </span>
             ) : null}
           </p>
           <p className="text-sm text-ink-muted">
             {weekdays[training.weekday - 1]} {training.start}–{training.end}
             {training.trainer ? ` · ${training.trainer}` : ""}
           </p>
+          {describeLimits(training).map((line) => (
+            <p className="text-xs text-ink-muted" key={line}>
+              {line}
+            </p>
+          ))}
         </div>
         <button
           aria-label={isEditing ? "Zavřít úpravy" : `Upravit ${training.title}`}
@@ -241,7 +321,11 @@ function TrainingCard({
         </div>
       ) : (
         <p className="mt-3 text-sm text-ink-muted">
-          V nejbližších 4 týdnech není žádný termín (prázdniny nebo zrušení).
+          {state === "finished"
+            ? "Trénink už skončil. Můžeš ho smazat, nebo mu v úpravách prodloužit platnost."
+            : state === "upcoming"
+              ? "První termín je dál než za 4 týdny, v kalendáři se objeví později."
+              : "V nejbližších 4 týdnech není žádný termín (pauza, prázdniny nebo zrušení)."}
         </p>
       )}
     </div>
@@ -263,10 +347,31 @@ function TrainingForm({
   const [start, setStart] = useState(initial?.start ?? "17:00");
   const [end, setEnd] = useState(initial?.end ?? "18:00");
   const [trainer, setTrainer] = useState(initial?.trainer ?? "");
+  const [validityMode, setValidityMode] = useState<ValidityMode>(
+    initial?.lessonCount ? "count" : initial?.validFrom || initial?.validUntil ? "period" : "always",
+  );
+  const [validFrom, setValidFrom] = useState(initial?.validFrom ?? "");
+  const [validUntil, setValidUntil] = useState(initial?.validUntil ?? "");
+  const [lessonCount, setLessonCount] = useState(String(initial?.lessonCount ?? 10));
+  const [pausedFrom, setPausedFrom] = useState(initial?.pausedFrom ?? "");
+  const [pausedUntil, setPausedUntil] = useState(initial?.pausedUntil ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const trainers = initial?.trainer && !trainerOptions.includes(initial.trainer)
     ? [...trainerOptions, initial.trainer]
     : trainerOptions;
+  const lessons = Number(lessonCount);
+  const validityError =
+    validityMode === "count" && !validFrom
+      ? "Vyplň datum první lekce."
+      : validityMode === "count" && (!Number.isInteger(lessons) || lessons < 1 || lessons > 200)
+        ? "Počet lekcí musí být 1 až 200."
+        : validityMode === "period" && validFrom && validUntil && validUntil < validFrom
+          ? "Konec období musí být po jeho začátku."
+          : Boolean(pausedFrom) !== Boolean(pausedUntil)
+            ? "U pauzy vyplň začátek i konec."
+            : pausedFrom && pausedUntil < pausedFrom
+              ? "Konec pauzy musí být po jejím začátku."
+              : "";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -276,9 +381,14 @@ function TrainingForm({
       await onSubmit({
         alternateTitle: alternateTitle.trim() || undefined,
         end,
+        lessonCount: validityMode === "count" ? lessons : undefined,
+        pausedFrom: pausedFrom || undefined,
+        pausedUntil: pausedUntil || undefined,
         start,
         title: title.trim(),
         trainer: trainer || undefined,
+        validFrom: validityMode === "always" ? undefined : validFrom || undefined,
+        validUntil: validityMode === "period" ? validUntil || undefined : undefined,
         weekday,
       });
     } finally {
@@ -363,14 +473,135 @@ function TrainingForm({
           ))}
         </select>
       </label>
-      {start >= end ? (
+      <fieldset className="grid gap-2 rounded-lg border border-line p-3">
+        <legend className="field-label px-1">Jak dlouho trénink poběží</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {validityModes.map(({ label, mode }) => (
+            <button
+              aria-pressed={validityMode === mode}
+              className={chipClass(validityMode === mode)}
+              key={mode}
+              onClick={() => setValidityMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {validityMode === "period" ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="field-label">
+                Od (nepovinné)
+                <input
+                  className="field-input mt-1 min-h-10"
+                  onChange={(event) => setValidFrom(event.target.value)}
+                  type="date"
+                  value={validFrom}
+                />
+              </label>
+              <label className="field-label">
+                Do (nepovinné)
+                <input
+                  className="field-input mt-1 min-h-10"
+                  min={validFrom || undefined}
+                  onChange={(event) => setValidUntil(event.target.value)}
+                  type="date"
+                  value={validUntil}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-ink-soft">
+              Trénink se v kalendáři ukáže jen v tomto období (včetně obou dnů).
+            </p>
+          </>
+        ) : null}
+        {validityMode === "count" ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="field-label">
+                První lekce
+                <input
+                  className="field-input mt-1 min-h-10"
+                  onChange={(event) => setValidFrom(event.target.value)}
+                  required
+                  type="date"
+                  value={validFrom}
+                />
+              </label>
+              <label className="field-label">
+                Počet lekcí
+                <input
+                  className="field-input mt-1 min-h-10"
+                  inputMode="numeric"
+                  max={200}
+                  min={1}
+                  onChange={(event) => setLessonCount(event.target.value)}
+                  required
+                  type="number"
+                  value={lessonCount}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-ink-soft">
+              Zrušené lekce, prázdniny a pauza se nepočítají – kurz se o ně prodlouží.
+            </p>
+          </>
+        ) : null}
+      </fieldset>
+      <details className="group rounded-lg border border-line" open={Boolean(pausedFrom || pausedUntil)}>
+        <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-[13px] font-semibold text-ink-muted [&::-webkit-details-marker]:hidden">
+          Pauza (nepovinné)
+          <span className="text-ink-soft transition group-open:rotate-45">+</span>
+        </summary>
+        <div className="grid gap-2 px-3 pb-3">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="field-label">
+              Od
+              <input
+                className="field-input mt-1 min-h-10"
+                onChange={(event) => setPausedFrom(event.target.value)}
+                type="date"
+                value={pausedFrom}
+              />
+            </label>
+            <label className="field-label">
+              Do
+              <input
+                className="field-input mt-1 min-h-10"
+                min={pausedFrom || undefined}
+                onChange={(event) => setPausedUntil(event.target.value)}
+                type="date"
+                value={pausedUntil}
+              />
+            </label>
+          </div>
+          <p className="text-xs text-ink-soft">
+            V pauze se trénink neukazuje, pak pokračuje. Hodí se při dočasném přesunu: tady
+            nastav pauzu a přidej nový trénink v jiném čase s obdobím na stejné dny.
+          </p>
+          {pausedFrom || pausedUntil ? (
+            <button
+              className="justify-self-start text-xs font-semibold text-accent underline-offset-2 hover:underline"
+              onClick={() => {
+                setPausedFrom("");
+                setPausedUntil("");
+              }}
+              type="button"
+            >
+              Zrušit pauzu
+            </button>
+          ) : null}
+        </div>
+      </details>
+      {start >= end || validityError ? (
         <p className={`rounded-lg border px-3 py-2 text-xs font-semibold ${noticeTone.error}`}>
-          Konec musí být později než začátek.
+          {start >= end ? "Konec musí být později než začátek." : validityError}
         </p>
       ) : null}
       <button
         className={initial ? buttonSecondary : `${buttonPrimary} h-11`}
-        disabled={isSaving || start >= end || !title.trim()}
+        disabled={isSaving || start >= end || !title.trim() || Boolean(validityError)}
         type="submit"
       >
         {initial ? <Save size={15} /> : <Plus size={16} />}

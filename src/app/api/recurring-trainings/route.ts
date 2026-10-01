@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireManager, requireSession } from "@/lib/api-auth";
 import {
   getTimeRangeError,
+  isDateKey,
   maxBookingTitleLength,
   maxTrainerLength,
 } from "@/lib/booking-validation";
 import {
   createRecurringTraining,
   deleteRecurringTraining,
-  getRecurringTrainings,
+  getRecurringTrainingsWithStatus,
   updateRecurringTraining,
   type RecurringTrainingInput,
 } from "@/lib/bookings-db";
 
 export const dynamic = "force-dynamic";
+
+const maxLessonCount = 200;
 
 export async function GET() {
   const auth = await requireSession();
@@ -23,7 +26,7 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { trainings: await getRecurringTrainings() },
+    { trainings: await getRecurringTrainingsWithStatus() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -126,13 +129,52 @@ function parseTraining(
     return { error: timeError, ok: false };
   }
 
+  const validFrom = text("validFrom");
+  const validUntil = text("validUntil");
+  const pausedFrom = text("pausedFrom");
+  const pausedUntil = text("pausedUntil");
+  const hasLessonCount = value.lessonCount !== undefined && value.lessonCount !== null && value.lessonCount !== "";
+  const lessonCount = hasLessonCount ? Number(value.lessonCount) : undefined;
+
+  if ([validFrom, validUntil, pausedFrom, pausedUntil].some((date) => date && !isDateKey(date))) {
+    return { error: "Neplatné datum.", ok: false };
+  }
+
+  if (validFrom && validUntil && validUntil < validFrom) {
+    return { error: "Konec období musí být po jeho začátku.", ok: false };
+  }
+
+  if (
+    lessonCount !== undefined &&
+    (!Number.isInteger(lessonCount) || lessonCount < 1 || lessonCount > maxLessonCount)
+  ) {
+    return { error: `Počet lekcí musí být 1 až ${maxLessonCount}.`, ok: false };
+  }
+
+  if (lessonCount !== undefined && !validFrom) {
+    return { error: "U kurzu na počet lekcí vyplň datum první lekce.", ok: false };
+  }
+
+  if (Boolean(pausedFrom) !== Boolean(pausedUntil)) {
+    return { error: "U pauzy vyplň začátek i konec.", ok: false };
+  }
+
+  if (pausedFrom && pausedUntil < pausedFrom) {
+    return { error: "Konec pauzy musí být po jejím začátku.", ok: false };
+  }
+
   return {
     input: {
       alternateTitle: alternateTitle || undefined,
       end: value.end as string,
+      lessonCount,
+      pausedFrom: pausedFrom || undefined,
+      pausedUntil: pausedUntil || undefined,
       start: value.start as string,
       title,
       trainer: trainer || undefined,
+      validFrom: validFrom || undefined,
+      validUntil: validUntil || undefined,
       weekday,
     },
     ok: true,

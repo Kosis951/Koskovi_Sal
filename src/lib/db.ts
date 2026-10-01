@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 3;
+const schemaVersion = 4;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -85,8 +85,25 @@ function migrate(db: Database) {
       migrateToV3(db);
     }
 
+    if (version < 4) {
+      migrateToV4(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Regular trainings can be limited: to a period (valid_from / valid_until),
+// to a number of lessons counted from valid_from (courses), and paused for a
+// while (paused_from / paused_until). All empty = runs every week as before.
+function migrateToV4(db: Database) {
+  db.exec(`
+    ALTER TABLE recurring_trainings ADD COLUMN valid_from TEXT;
+    ALTER TABLE recurring_trainings ADD COLUMN valid_until TEXT;
+    ALTER TABLE recurring_trainings ADD COLUMN lesson_count INTEGER;
+    ALTER TABLE recurring_trainings ADD COLUMN paused_from TEXT;
+    ALTER TABLE recurring_trainings ADD COLUMN paused_until TEXT;
+  `);
 }
 
 // Push notifications: devices that subscribed (per topic) and small state
