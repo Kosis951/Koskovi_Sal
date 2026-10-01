@@ -28,8 +28,9 @@ const scryptAsync = promisify(scrypt) as (
 const dummyPasswordHash = `scrypt$${"0".repeat(32)}$${"0".repeat(128)}`;
 
 // admin: everything incl. user management; manager: hall bookings;
-// viewer: read-only.
-export type AdminRole = "admin" | "manager" | "viewer";
+// viewer: read-only (dancers; may request lessons); trainer: like a viewer
+// for the hall, plus an own lesson calendar (see lessons-db.ts).
+export type AdminRole = "admin" | "manager" | "trainer" | "viewer";
 
 type AdminCredential = {
   password?: string;
@@ -268,7 +269,11 @@ export function getAdminRole(
     (user) => normalizeUsername(user.username) === normalizedUsername,
   );
 
-  if (storedUser?.role === "manager" || storedUser?.role === "viewer") {
+  if (
+    storedUser?.role === "manager" ||
+    storedUser?.role === "viewer" ||
+    storedUser?.role === "trainer"
+  ) {
     return storedUser.role;
   }
 
@@ -352,7 +357,7 @@ export function normalizeUsername(username: string) {
 }
 
 export function sanitizeRole(role: unknown): AdminRole | undefined {
-  return role === "manager" || role === "viewer" ? role : undefined;
+  return role === "manager" || role === "viewer" || role === "trainer" ? role : undefined;
 }
 
 export function sanitizeLessonFilter(filter?: Partial<LessonFilter> | null) {

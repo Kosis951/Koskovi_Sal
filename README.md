@@ -93,6 +93,21 @@ Ve Sprave → Treninky jde u treninku nastavit, jak dlouho pobezi:
 - **Pauza od–do** – trenink se v pauze neukazuje a pak pokracuje. Docasny presun: puvodnimu
   treninku nastavit pauzu a pridat novy trenink v jinem case s obdobim na stejne dny.
 
+## Lekce u treneru
+
+Trener (role „Trener“ ve Sprave → Uzivatele) ma vlastni kalendar lekci na `/lekce/<jmeno>`,
+nezavisly na kalendari salu. Vidi ho jen prihlaseni.
+
+- Trener zadava, kdy muze ucit (kazdy tyden nebo jeden den, od–do, delka lekce). Z toho
+  vzniknou terminy na 6 tydnu dopredu.
+- Prihlaseny clovek si vybere volny termin a posle zadost; termin se mu podrzi. Trener zadost
+  potvrdi nebo odmitne. Zrusit lekci muze trener i ten, kdo zadal.
+- Ostatni vidi u cizich lekci jen „Obsazeno“, jmena vidi trener a hlavni spravce.
+- Registrace jde jen pres odkaz s pozvankou (`/pozvanka/<token>`), ktery trener najde ve svem
+  kalendari a muze ho kdykoli vymenit za novy (stary prestane platit). Novy ucet ma roli
+  „Jen cteni“; smazat ho muze hlavni spravce ve Sprave → Uzivatele. Jmeno smazaneho uctu
+  zustava obsazene (obnovit ho jde jen pres „Novy uzivatel“ ve sprave).
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:

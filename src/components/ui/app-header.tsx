@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  Smartphone,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -29,7 +30,7 @@ export function AppHeader({
   onLogout,
   session,
 }: {
-  activeTab: "hall" | "admin" | "app";
+  activeTab: "hall" | "admin" | "app" | "lessons";
   onChangePassword?: () => void;
   onLogin?: () => void;
   onLogout: () => void;
@@ -61,9 +62,16 @@ export function AppHeader({
             <span className="sm:hidden">Kalendář</span>
             <span className="max-sm:hidden">Kalendář sálu</span>
           </Link>
-          {/* Not needed inside the installed app. */}
+          {/* Trainers' lesson calendars are for signed-in people only. */}
+          {session ? (
+            <Link className={tabClass(activeTab === "lessons")} href="/lekce">
+              Lekce
+            </Link>
+          ) : null}
+          {/* Not needed inside the installed app. On phones a signed-in user
+              finds it in the account menu instead, to keep the bar short. */}
           <Link
-            className={`${tabClass(activeTab === "app")} [@media(display-mode:standalone)]:hidden`}
+            className={`${tabClass(activeTab === "app")} ${session ? "max-sm:hidden" : ""} [@media(display-mode:standalone)]:hidden`}
             href="/aplikace"
           >
             Aplikace
@@ -167,7 +175,8 @@ function AccountMenu({
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-xs uppercase">
           {username.slice(0, 1)}
         </span>
-        <span className="hidden max-w-32 truncate sm:inline">{username}</span>
+        {/* The session carries the name in lower case. */}
+        <span className="hidden max-w-32 truncate capitalize sm:inline">{username}</span>
         <ChevronDown size={15} />
       </button>
       {isOpen ? (
@@ -177,7 +186,9 @@ function AccountMenu({
               ? "Hlavní správce"
               : role === "manager"
                 ? "Správa sálu"
-                : "Jen čtení"}
+                : role === "trainer"
+                  ? "Trenér"
+                  : "Jen čtení"}
           </p>
           {canManage ? (
             <Link className={itemClass} href="/admin" onClick={() => setIsOpen(false)}>
@@ -195,6 +206,14 @@ function AccountMenu({
               Uživatelé
             </Link>
           ) : null}
+          <Link
+            className={`${itemClass} sm:hidden [@media(display-mode:standalone)]:hidden`}
+            href="/aplikace"
+            onClick={() => setIsOpen(false)}
+          >
+            <Smartphone size={16} />
+            Aplikace do telefonu
+          </Link>
           {onChangePassword ? (
             <button
               className={itemClass}

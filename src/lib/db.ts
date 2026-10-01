@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 4;
+const schemaVersion = 5;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -89,8 +89,53 @@ function migrate(db: Database) {
       migrateToV4(db);
     }
 
+    if (version < 5) {
+      migrateToV5(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Trainers' own lesson calendars (independent of the hall): when a trainer
+// can teach (weekly or one-off windows cut into lessons), lesson requests
+// with their approval state, and the trainer's invite link token that lets
+// people register.
+function migrateToV5(db: Database) {
+  db.exec(`
+    CREATE TABLE trainer_windows (
+      id TEXT PRIMARY KEY,
+      trainer TEXT NOT NULL,
+      weekday INTEGER CHECK (weekday BETWEEN 1 AND 7),
+      date TEXT,
+      start TEXT NOT NULL,
+      "end" TEXT NOT NULL,
+      lesson_minutes INTEGER NOT NULL,
+      valid_from TEXT,
+      valid_until TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX trainer_windows_trainer ON trainer_windows (trainer);
+    CREATE TABLE trainer_lessons (
+      id TEXT PRIMARY KEY,
+      trainer TEXT NOT NULL,
+      date TEXT NOT NULL,
+      start TEXT NOT NULL,
+      "end" TEXT NOT NULL,
+      requester TEXT NOT NULL,
+      note TEXT,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'confirmed', 'declined', 'cancelled')),
+      created_at TEXT NOT NULL,
+      decided_at TEXT,
+      decided_by TEXT
+    );
+    CREATE INDEX trainer_lessons_trainer_date ON trainer_lessons (trainer, date);
+    CREATE TABLE trainer_invites (
+      trainer TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    );
+  `);
 }
 
 // Regular trainings can be limited: to a period (valid_from / valid_until),

@@ -29,6 +29,7 @@ function pickUsers(data: unknown) {
 const roleBadge: Record<AdminRole, { className: string; label: string }> = {
   admin: { className: "bg-event text-event-ink", label: "Hlavní správce" },
   manager: { className: "bg-training text-training-ink", label: "Správa sálu" },
+  trainer: { className: "bg-free text-free-ink", label: "Trenér" },
   viewer: { className: "bg-subtle text-ink-muted", label: "Jen čtení" },
 };
 
@@ -93,7 +94,9 @@ export function AdminUsersTable({
         </ul>
       </div>
       <p className="text-xs text-ink-soft">
-        Správa sálu smí přidávat a měnit akce. Účet jen pro čtení vidí kalendář, ale nic nezmění.
+        Správa sálu smí přidávat a měnit akce. Trenér má navíc vlastní kalendář lekcí, kde
+        nabízí časy a schvaluje žádosti. Účet jen pro čtení vidí kalendář sálu a může u trenérů
+        žádat o lekci.
       </p>
 
       <Sheet onClose={() => onCreateOpenChange(false)} open={isCreateOpen} title="Nový uživatel">
@@ -311,7 +314,8 @@ function RoleSelect({
         value={value}
       >
         <option value="manager">Správa sálu</option>
-        <option value="viewer">Jen čtení</option>
+        <option value="trainer">Trenér (vlastní kalendář lekcí)</option>
+        <option value="viewer">Jen čtení (tanečník)</option>
       </select>
     </label>
   );

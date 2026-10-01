@@ -1,4 +1,4 @@
-export type AdminRole = "admin" | "manager" | "viewer";
+export type AdminRole = "admin" | "manager" | "trainer" | "viewer";
 
 export type AdminSession = {
   authenticated: boolean;

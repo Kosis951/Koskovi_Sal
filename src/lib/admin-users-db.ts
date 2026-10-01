@@ -76,6 +76,55 @@ export async function upsertAdminUserPassword(input: {
   });
 }
 
+const invitedByPrefix = "pozvánka: ";
+const maxInvitedUsers = 300;
+
+// Self-registration through a trainer's invite link: a new read-only account.
+// Never touches an existing name – not even a deleted account or one from the
+// server configuration – so a registration cannot take over anybody's account.
+export async function registerInvitedUser(input: {
+  invitedBy: string;
+  password: string;
+  username: string;
+}) {
+  return withUsersLock(async () => {
+    const normalizedUsername = normalizeUsername(input.username);
+    const users = await readStoredUsers();
+    const isTaken =
+      users.some((user) => normalizeUsername(user.username) === normalizedUsername) ||
+      listAdminUsernames().some((username) => normalizeUsername(username) === normalizedUsername);
+
+    if (isTaken) {
+      return { error: "taken" as const };
+    }
+
+    if (
+      users.filter((user) => !user.deleted && user.createdBy?.startsWith(invitedByPrefix)).length >=
+      maxInvitedUsers
+    ) {
+      return { error: "full" as const };
+    }
+
+    const now = new Date().toISOString();
+    const username = input.username.trim();
+
+    await writeStoredUsers([
+      {
+        createdAt: now,
+        createdBy: `${invitedByPrefix}${input.invitedBy}`,
+        deleted: false,
+        passwordHash: await hashPassword(input.password),
+        role: "viewer",
+        updatedAt: now,
+        updatedBy: username,
+        username,
+      },
+    ]);
+
+    return { username };
+  });
+}
+
 export async function upsertAdminUserRole(input: {
   actor: string;
   role: AdminRole;
