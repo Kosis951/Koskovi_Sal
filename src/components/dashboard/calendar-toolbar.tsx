@@ -90,7 +90,11 @@ export function CalendarToolbar({
           {viewModes.map(({ label, mode }) => (
             <button
               aria-pressed={viewMode === mode}
+              // Phones show the week as a strip of days with one day's
+              // agenda, which is what "Den" would show too.
               className={`h-8 rounded-full px-3.5 text-sm font-semibold transition ${
+                mode === "today" ? "max-md:hidden" : ""
+              } ${
                 viewMode === mode
                   ? "bg-surface text-ink shadow-sm"
                   : "text-ink-muted hover:text-ink"
