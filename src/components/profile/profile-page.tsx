@@ -112,7 +112,7 @@ function ProfileForm({ initialProfile, isTrainer }: { initialProfile: UserProfil
           className="field-input mt-1"
           maxLength={60}
           onChange={(event) => setDisplayName(event.target.value)}
-          placeholder="Marek Bureš"
+          placeholder="Petr Novák"
           value={displayName}
         />
         <span className="mt-1 block text-xs font-normal text-ink-soft">

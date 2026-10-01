@@ -9,6 +9,8 @@ const themeChangeEvent = "koskovi-theme-change";
 const variantClass = {
   header:
     "inline-flex h-9 w-9 items-center justify-center rounded-full text-header-ink transition hover:bg-white/10 hover:text-white",
+  // A row in the account menu, with a label.
+  menu: "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-ink transition hover:bg-subtle",
   solid:
     "inline-flex h-11 w-11 items-center justify-center rounded-full bg-brand text-on-brand shadow-sm transition hover:bg-brand-hover",
 };
@@ -40,7 +42,8 @@ export function ThemeToggle({
       title={isDark ? "Světlý režim" : "Tmavý režim"}
       type="button"
     >
-      {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      {isDark ? <Sun size={variant === "menu" ? 16 : 18} /> : <Moon size={variant === "menu" ? 16 : 18} />}
+      {variant === "menu" ? (isDark ? "Světlý režim" : "Tmavý režim") : null}
     </button>
   );
 }

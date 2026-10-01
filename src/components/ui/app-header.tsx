@@ -41,27 +41,38 @@ export function AppHeader({
   session: HeaderSession;
 }) {
   const canManage = session?.role === "admin" || session?.role === "manager";
+  // On phones the tabs form one compact switch (the active one is a white
+  // pill); from 640px they are separate tabs.
   const tabClass = (isActive: boolean) =>
-    `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition sm:px-3.5 sm:text-sm ${
+    `inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition sm:h-9 sm:px-3.5 sm:text-sm ${
       isActive
-        ? "bg-white/15 text-white"
-        : "text-header-ink hover:bg-white/10 hover:text-white"
+        ? "bg-white text-header sm:bg-white/15 sm:text-white"
+        : "text-header-ink hover:text-white sm:hover:bg-white/10"
     }`;
 
   return (
     <header className="app-header bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[env(safe-area-inset-top)] text-white">
       <div className={`${pageContainer} flex h-14 items-center gap-2 sm:gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
+          {/* Phones get the sign alone, so the tabs and icons fit next to it. */}
           <Image
             alt="Koškovi"
-            className="h-auto w-20 sm:w-32"
+            className="h-7 w-auto sm:hidden"
+            height={62}
+            priority
+            src="/brand/Koskovi_logo_znak_white.svg"
+            width={71}
+          />
+          <Image
+            alt="Koškovi"
+            className="h-auto w-32 max-sm:hidden"
             height={62}
             priority
             src="/brand/Koskovi_logo_zaklad_white.svg"
             width={369}
           />
         </Link>
-        <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:ml-2">
+        <nav className="flex min-w-0 items-center overflow-x-auto rounded-full bg-white/10 p-0.5 sm:ml-2 sm:gap-1 sm:rounded-none sm:bg-transparent sm:p-0">
           <Link className={tabClass(activeTab === "hall")} href="/">
             <span className="sm:hidden">Kalendář</span>
             <span className="max-sm:hidden">Kalendář sálu</span>
@@ -101,7 +112,10 @@ export function AppHeader({
           >
             <Bell size={18} />
           </Link>
-          <ThemeToggle variant="header" />
+          {/* Signed-in phones find the theme switch in the account menu. */}
+          <span className={session ? "max-sm:hidden" : ""}>
+            <ThemeToggle variant="header" />
+          </span>
           {session?.username ? (
             <AccountMenu
               displayName={session.displayName ?? undefined}
@@ -258,6 +272,9 @@ function AccountMenu({
             <Smartphone size={16} />
             Aplikace do telefonu
           </Link>
+          <div className="sm:hidden">
+            <ThemeToggle variant="menu" />
+          </div>
           {onChangePassword ? (
             <button
               className={itemClass}

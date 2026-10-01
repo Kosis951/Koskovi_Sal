@@ -105,9 +105,7 @@ function migrate(db: Database) {
   })();
 }
 
-// Profile of an account: the name shown instead of the login ("Marek Bureš"
-// rather than "bures") and the usual dance partner. A lesson remembers who
-// came along: partner_name is empty for a solo lesson.
+
 function migrateToV7(db: Database) {
   db.exec(`
     ALTER TABLE admin_users ADD COLUMN display_name TEXT;

@@ -48,7 +48,6 @@ export type StoredAdminUser = {
   createdBy?: string;
   // Also hides accounts defined in server configuration.
   deleted?: boolean;
-  // Shown instead of the login name ("Marek Bureš" rather than "bures").
   displayName?: string;
   // Usual dance partner, offered when requesting a lesson as a couple.
   partnerName?: string;
