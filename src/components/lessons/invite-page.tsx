@@ -58,7 +58,8 @@ export function InvitePage({
           <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
             {!trainer ? (
               <p className="text-sm text-ink-muted">
-                Tento odkaz už neplatí. Požádej trenéra o nový.
+                Tento odkaz nepatří žádnému trenérovi. Zkontroluj ho, nebo o něj trenéra požádej
+                znovu.
               </p>
             ) : initialSession ? (
               <>

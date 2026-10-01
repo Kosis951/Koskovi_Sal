@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { getAdminUsers } from "@/lib/admin-users-db";
 import { createNameLookup, normalizeUsername, readStoredAdminUsersSync } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -88,8 +88,6 @@ export type TrainerCalendar = {
   canManage: boolean;
   dayLessons: DayLesson[];
   swaps: LessonSwap[];
-  // Only when canManage.
-  inviteToken?: string;
   // Confirmed lessons (canManage) with names.
   lessons: TrainerLesson[];
   // The viewer's own requests and lessons.
@@ -144,11 +142,15 @@ export async function getTrainers() {
     .map((user) => user.username);
 }
 
-// Trainers with the name to show (profile name, else the account name).
-export async function getTrainerList() {
+// Trainers with the name to show (profile name, else the account name), as
+// the viewer may see them: a trainer only gets their own calendar.
+export async function getTrainerList(viewer?: { role: string; username: string }) {
   const names = createNameLookup();
+  const viewerKey = viewer?.role === "trainer" ? normalizeUsername(viewer.username) : null;
 
-  return (await getTrainers()).map((trainer) => ({ name: names.name(trainer), trainer }));
+  return (await getTrainers())
+    .filter((trainer) => !viewerKey || normalizeUsername(trainer) === viewerKey)
+    .map((trainer) => ({ name: names.name(trainer), trainer }));
 }
 
 // The trainer's account name as stored, or null when there is no such trainer.
@@ -257,7 +259,6 @@ export function getTrainerCalendar(
     canManage: viewer.canManage,
     dayLessons,
     swaps,
-    inviteToken: viewer.canManage ? getInviteToken(trainerKey) : undefined,
     lessons: viewer.canManage
       ? upcoming.filter((lesson) => lesson.status === "confirmed").map(named)
       : [],
@@ -650,40 +651,19 @@ export function changeSwap(input: {
   })();
 }
 
-// The secret part of the trainer's invite link; created on first use.
-export function getInviteToken(trainer: string) {
-  const trainerKey = normalizeUsername(trainer);
-  const row = getDb()
-    .prepare("SELECT token FROM trainer_invites WHERE trainer = ?")
-    .get(trainerKey) as { token: string } | undefined;
+// The trainer an invite link (/pozvanka/<trainer's account>) belongs to. Every
+// trainer has one permanent link. Links with a random code, handed out before,
+// keep working.
+export async function findTrainerByInvite(value: string) {
+  const trainer = await findTrainer(value);
 
-  return row?.token ?? regenerateInviteToken(trainerKey);
-}
-
-// The previous link stops working.
-export function regenerateInviteToken(trainer: string) {
-  const token = randomBytes(18).toString("base64url");
-
-  getDb()
-    .prepare(
-      `INSERT INTO trainer_invites (trainer, token, created_at) VALUES (?, ?, ?)
-       ON CONFLICT(trainer) DO UPDATE SET token = excluded.token, created_at = excluded.created_at`,
-    )
-    .run(normalizeUsername(trainer), token, new Date().toISOString());
-
-  return token;
-}
-
-// The trainer an invite link belongs to, if the link is valid and the
-// account still is a trainer.
-export async function findTrainerByInvite(token: string) {
-  if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) {
-    return null;
+  if (trainer || !/^[A-Za-z0-9_-]{16,64}$/.test(value)) {
+    return trainer;
   }
 
   const row = getDb()
     .prepare("SELECT trainer FROM trainer_invites WHERE token = ?")
-    .get(token) as { trainer: string } | undefined;
+    .get(value) as { trainer: string } | undefined;
 
   return row ? findTrainer(row.trainer) : null;
 }

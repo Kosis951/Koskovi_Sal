@@ -77,6 +77,11 @@ nebo z pozadavku):
 - Android (Chrome): nabidka „Nainstalovat“ primo na strance, nebo menu ⋮ → Instalovat aplikaci.
 - iPhone/iPad (Safari): Sdilet → Pridat na plochu.
 
+Na iPhonu ma aplikace plny stavovy radek v barve hlavicky (`statusBarStyle: "default"` v
+`src/app/layout.tsx`): kdyz stranka bezela pod stavovym radkem, iOS 26+ pres hlavicku kreslil
+rozmazany prechod. iOS si to nastaveni cte jen pri pridani na plochu, takze drive nainstalovanou
+aplikaci je potreba z plochy odebrat a pridat znovu.
+
 V nainstalovane aplikaci jde data obnovit stazenim stranky dolu (nahore potahnout a pustit):
 kalendar, lekce i sprava si jen znovu nactou data (`src/components/pwa/pull-to-refresh.tsx`).
 
@@ -118,8 +123,11 @@ nezavisly na kalendari salu. Vidi ho jen prihlaseni.
 - Prohozeni: kdo ma na dany den potvrzenou lekci, vidi u ostatnich potvrzenych lekci toho dne
   jmena a muze nekoho pozadat o prohozeni casu. Schvaluje jen osloveny; po souhlasu se lekce
   hned prohodi (i s poznamkami). Zrusena lekce zrusi i cekajici prohozeni.
-- Registrace jde jen pres odkaz s pozvankou (`/pozvanka/<token>`), ktery trener najde ve svem
-  kalendari a muze ho kdykoli vymenit za novy (stary prestane platit). Novy ucet ma roli
+- Trener vidi jen svuj kalendar lekci (cizi ne, ani prepinac treneru).
+- Registrace jde jen pres odkaz s pozvankou `/pozvanka/<ucet trenera>` (napr. `/pozvanka/bures`),
+  ktery trener najde ve svem kalendari. Kazdy trener ma jeden staly odkaz; drive rozeslane
+  odkazy s nahodnym kodem plati dal. Odkaz jde uhodnout, takze registrace brzdi jen limit
+  uctu na trenera a limit pokusu z jedne adresy. Novy ucet ma roli
   „Jen cteni“; smazat ho muze hlavni spravce ve Sprave → Uzivatele. Jmeno smazaneho uctu
   zustava obsazene (obnovit ho jde jen pres „Novy uzivatel“ ve sprave).
 

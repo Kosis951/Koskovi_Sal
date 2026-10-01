@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { TrainerCalendarPage } from "@/components/lessons/trainer-calendar";
-import { getAdminAccess } from "@/lib/auth";
+import { getAdminAccess, normalizeUsername } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +16,17 @@ export default async function TrainerLessonsPage({
   params: Promise<{ trainer: string }>;
 }) {
   const access = getAdminAccess(await cookies());
+  const trainer = decodeURIComponent((await params).trainer);
+
+  // A trainer has only their own calendar.
+  if (access?.role === "trainer" && normalizeUsername(trainer) !== normalizeUsername(access.username)) {
+    redirect(`/lekce/${encodeURIComponent(access.username)}`);
+  }
 
   return (
     <TrainerCalendarPage
       initialSession={access ? { role: access.role, username: access.username } : null}
-      trainer={decodeURIComponent((await params).trainer)}
+      trainer={trainer}
     />
   );
 }

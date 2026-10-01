@@ -14,7 +14,7 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { trainers: await getTrainerList() },
+    { trainers: await getTrainerList(auth.access) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

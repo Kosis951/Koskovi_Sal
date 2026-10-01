@@ -28,11 +28,14 @@ export const metadata: Metadata = {
   title: "Koškovi | Dostupnost sálu",
   description: "Rezervační kalendář Koškovi.",
   applicationName: "Koškovi sál",
-  // Installed on an iPhone/iPad home screen: full screen, the blue header
-  // runs under the status bar (see the safe-area padding in AppHeader).
+  // Installed on an iPhone/iPad home screen. Not "black-translucent": with
+  // the page running under the status bar, iOS 26+ draws its edge blur over
+  // the top of the header. With "default" the status bar is solid, tinted by
+  // themeColor (the header colour), and the page starts below it. iOS reads
+  // this only when the app is added to the home screen.
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Koškovi sál",
   },
   formatDetection: { telephone: false },
@@ -81,6 +84,13 @@ export default function RootLayout({
           }}
         />
         <AppSplash />
+        {/* For apps installed before the status bar change above: a fixed box
+            over the status bar area makes iOS show its colour instead of
+            blurring the header. Zero height everywhere else. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-x-0 top-0 z-[45] h-[env(safe-area-inset-top)] bg-header"
+        />
         {children}
         <PullToRefresh />
         <ServiceWorkerRegistration />

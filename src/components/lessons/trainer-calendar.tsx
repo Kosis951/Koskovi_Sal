@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, Check, Clock3, Copy, Plus, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, Check, Clock3, Copy, Plus, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { LoginForm } from "@/components/dashboard/login-form";
@@ -311,7 +311,7 @@ export function TrainerCalendarPage({
                 onDelete={(id) => send("/windows", "DELETE", { id })}
                 windows={calendar.windows}
               />
-              <InviteCard isBusy={isBusy} onRegenerate={() => send("/invite", "POST")} token={calendar.inviteToken} />
+              <InviteCard trainer={calendar.trainer} />
             </>
           ) : (
             <>
@@ -1045,18 +1045,11 @@ function RequestForm({
   );
 }
 
-function InviteCard({
-  isBusy,
-  onRegenerate,
-  token,
-}: {
-  isBusy: boolean;
-  onRegenerate: () => void;
-  token?: string;
-}) {
+// Every trainer has one permanent invite link, named after their account.
+function InviteCard({ trainer }: { trainer: string }) {
   const [isCopied, setIsCopied] = useState(false);
   const [origin, setOrigin] = useState("");
-  const link = token ? `${origin}/pozvanka/${token}` : "";
+  const link = origin ? `${origin}/pozvanka/${encodeURIComponent(trainer.toLowerCase())}` : "";
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setOrigin(window.location.origin), 0);
@@ -1068,7 +1061,8 @@ function InviteCard({
     <Card title="Odkaz s pozvánkou">
       <p className="text-sm text-ink-muted">
         Pošli tento odkaz lidem, kteří k tobě mají chodit. Kdo ho otevře, založí si účet (nebo se
-        přihlásí) a uvidí tvůj kalendář. Bez odkazu se nikdo zaregistrovat nemůže.
+        přihlásí) a uvidí tvůj kalendář. Odkaz je pořád stejný, jinde než přes odkaz trenéra se
+        zaregistrovat nejde.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <input
@@ -1096,19 +1090,6 @@ function InviteCard({
           {isCopied ? "Zkopírováno" : "Kopírovat"}
         </button>
       </div>
-      <button
-        className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-accent underline-offset-2 hover:underline disabled:opacity-60"
-        disabled={isBusy}
-        onClick={() => {
-          if (window.confirm("Vytvořit nový odkaz? Ten starý přestane fungovat. Už založené účty zůstanou.")) {
-            onRegenerate();
-          }
-        }}
-        type="button"
-      >
-        <RefreshCw size={13} />
-        Vytvořit nový odkaz (starý přestane platit)
-      </button>
     </Card>
   );
 }

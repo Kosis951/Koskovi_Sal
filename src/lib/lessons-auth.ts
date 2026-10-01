@@ -15,7 +15,7 @@ export function getDisplayName(username: string) {
 }
 
 // The trainer's own calendar is managed by the trainer and by the main
-// administrator; everybody else signed in may look and request lessons.
+// administrator; dancers and hall managers may look and request lessons.
 export function canManageLessons(access: AdminAccess, trainer: string) {
   return access.role === "admin" || normalizeUsername(access.username) === normalizeUsername(trainer);
 }
@@ -34,7 +34,19 @@ export async function requireTrainerAccess(trainerParam: string) {
     return { error: NextResponse.json({ message: "Trenér nenalezen." }, { status: 404 }) };
   }
 
-  return { access: auth.access, canManage: canManageLessons(auth.access, trainer), trainer };
+  const canManage = canManageLessons(auth.access, trainer);
+
+  // A trainer has only their own calendar; other trainers' are not for them.
+  if (auth.access.role === "trainer" && !canManage) {
+    return {
+      error: NextResponse.json(
+        { message: "Jako trenér vidíš jen svůj kalendář lekcí." },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { access: auth.access, canManage, trainer };
 }
 
 export function forbidden() {

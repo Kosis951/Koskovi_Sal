@@ -20,7 +20,7 @@ export default async function LessonsPage() {
     return <LessonsIndex initialSession={null} trainers={[]} />;
   }
 
-  const trainers = await getTrainerList();
+  const trainers = await getTrainerList(access);
   const own = trainers.find(
     ({ trainer }) => normalizeUsername(trainer) === normalizeUsername(access.username),
   );

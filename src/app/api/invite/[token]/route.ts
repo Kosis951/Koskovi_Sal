@@ -27,7 +27,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const trainer = await findTrainerByInvite((await context.params).token);
+  let invite = (await context.params).token;
+
+  try {
+    invite = decodeURIComponent(invite);
+  } catch {
+    // Not URL-encoded; use as it is.
+  }
+
+  const trainer = await findTrainerByInvite(invite);
 
   if (!trainer) {
     return NextResponse.json({ message: "Pozvánka neplatí." }, { status: 404 });

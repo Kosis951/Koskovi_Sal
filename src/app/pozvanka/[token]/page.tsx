@@ -6,16 +6,25 @@ import { findTrainerByInvite } from "@/lib/lessons-db";
 
 export const dynamic = "force-dynamic";
 
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export const metadata: Metadata = {
   title: "Pozvánka | Koškovi",
-  // The link is a secret; keep it out of search engines and referrers.
+  // Not for search engines: only people the trainer sends it to should come.
   referrer: "no-referrer",
   robots: { follow: false, index: false },
 };
 
-// A trainer's invite link: the only way to create an account.
+// A trainer's invite link, /pozvanka/<trainer's account>: the only way to
+// create an account.
 export default async function InviteRoute({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
+  const token = safeDecode((await params).token);
   const access = getAdminAccess(await cookies());
   const trainer = await findTrainerByInvite(token);
 
