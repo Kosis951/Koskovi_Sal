@@ -252,9 +252,10 @@ textarea {
   }
 }
 
-/* In the installed app on phones the header is plain dark blue: the gradient
-   reaches under the status bar there and only lightens it. */
-@media (display-mode: standalone) and (max-width: 767px) {
+/* In the installed app the header is plain dark blue: the gradient reaches
+   under the status bar there and reads as a blue smudge (also on a tablet or
+   a phone held sideways). */
+@media (display-mode: standalone) {
   .app-header {
     background-image: none;
   }

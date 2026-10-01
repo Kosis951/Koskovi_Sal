@@ -28,8 +28,9 @@ const scryptAsync = promisify(scrypt) as (
 const dummyPasswordHash = `scrypt$${"0".repeat(32)}$${"0".repeat(128)}`;
 
 // admin: everything incl. user management; manager: hall bookings;
-// viewer: read-only (dancers; may request lessons); trainer: like a viewer
-// for the hall, plus an own lesson calendar (see lessons-db.ts).
+// viewer: read-only (dancers; may request lessons); trainer: may add hall
+// bookings and change the ones they added, plus an own lesson calendar (see
+// lessons-db.ts).
 export type AdminRole = "admin" | "manager" | "trainer" | "viewer";
 
 type AdminCredential = {
@@ -252,6 +253,11 @@ export function getAdminAccess(cookies: ReadonlyRequestCookies) {
 
 export function canManageBookings(access: AdminAccess | null) {
   return access?.role === "admin" || access?.role === "manager";
+}
+
+// Trainers may add hall bookings and change the ones they added themselves.
+export function canAddBookings(access: AdminAccess | null) {
+  return canManageBookings(access) || access?.role === "trainer";
 }
 
 export function isMainAdmin(access: AdminAccess | null) {

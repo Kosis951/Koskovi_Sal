@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
-import { getTrainers } from "@/lib/lessons-db";
+import { getTrainerList } from "@/lib/lessons-db";
 
 export const dynamic = "force-dynamic";
 
-// Trainers that have a lesson calendar (signed-in users only).
+// Trainers that have a lesson calendar, with their profile names (signed-in
+// users only).
 export async function GET() {
   const auth = await requireSession();
 
@@ -13,7 +14,7 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { trainers: await getTrainers() },
+    { trainers: await getTrainerList() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

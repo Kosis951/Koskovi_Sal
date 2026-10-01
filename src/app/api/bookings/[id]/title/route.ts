@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireBookingEditor } from "@/lib/api-auth";
 import { maxBookingTitleLength } from "@/lib/booking-validation";
 import {
   getBookings,
@@ -14,14 +14,15 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const auth = await requireManager();
+  const { id } = await context.params;
+  const existing =(await getBookings()).find((booking) => booking.id === id);
+  const auth = await requireBookingEditor(existing);
 
   if (auth.error) {
     return auth.error;
   }
 
   const actor = auth.access.username;
-  const { id } = await context.params;
   const payload = (await request.json()) as { title?: unknown };
   const title = typeof payload.title === "string" ? payload.title.trim() : "";
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireBookingAuthor } from "@/lib/api-auth";
+import { canManageBookings } from "@/lib/auth";
 import { parseBookingInput } from "@/lib/booking-validation";
 import { createBooking } from "@/lib/bookings-db";
 import type { BookingRequest } from "@/lib/schedule";
@@ -8,7 +9,7 @@ import type { BookingRequest } from "@/lib/schedule";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireBookingAuthor();
 
   if (auth.error) {
     return auth.error;
@@ -33,6 +34,14 @@ export async function POST(request: NextRequest) {
   }
 
   const isIndividualLesson = payload.bookingKind === "individual-lesson";
+
+  // Trainers add hall occupancy only.
+  if (isIndividualLesson && !canManageBookings(auth.access)) {
+    return NextResponse.json(
+      { message: "Tento účet může přidávat jen akce v sále." },
+      { status: 403 },
+    );
+  }
 
   if (!isIndividualLesson && !isHallEventType(payload.eventType)) {
     return NextResponse.json(

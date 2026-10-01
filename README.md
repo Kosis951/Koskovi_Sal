@@ -101,6 +101,10 @@ Ve Sprave → Treninky jde u treninku nastavit, jak dlouho pobezi:
 Trener (role „Trener“ ve Sprave → Uzivatele) ma vlastni kalendar lekci na `/lekce/<jmeno>`,
 nezavisly na kalendari salu. Vidi ho jen prihlaseni.
 
+- Kdyz je treneru vic, je nad kalendarem prepinac treneru; zalozka „Lekce“ otevre toho,
+  ktereho si clovek prohlizel naposledy (trener vzdy svuj kalendar).
+- Trener smi pridavat akce i do kalendare salu. Upravit a smazat muze jen akce, ktere sam
+  pridal; cizi akce a pravidelne treninky meni jen Sprava salu a hlavni spravce.
 - Trener zadava, kdy muze ucit (kazdy tyden nebo jeden den, od–do, delka lekce). Z toho
   vzniknou terminy na 6 tydnu dopredu.
 - Prihlaseny clovek si vybere volny termin a posle zadost; termin se mu podrzi. Trener zadost

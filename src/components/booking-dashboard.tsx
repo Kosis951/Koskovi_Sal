@@ -6,6 +6,7 @@ import {
   getDayAvailabilitySegments,
   getMonthDays,
   getWeekStartDate,
+  isRecurringBookingId,
 } from "@/components/booking-dashboard-utils";
 import {
   buildCalendarDays,
@@ -37,6 +38,7 @@ import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
 import { pageContainer } from "@/components/ui/styles";
 import {
+  canRoleAddBookings,
   canRoleManageBookings,
   getAdminSession,
   loginAdmin,
@@ -123,8 +125,10 @@ export function BookingDashboard({
 
   const { isAuthenticated } = session;
   const canManageBookings = isAuthenticated && canRoleManageBookings(session.role);
+  // Trainers add bookings too, but change only the ones they added.
+  const canAddBookings = isAuthenticated && canRoleAddBookings(session.role);
   // Anonymous visitors see the button too; it leads them to the login.
-  const canStartBooking = !isAuthenticated || canManageBookings;
+  const canStartBooking = !isAuthenticated || canAddBookings;
   const currentDateKey = now ? formatDateKey(now) : "";
   const nowMinutes = now ? now.getHours() * 60 + now.getMinutes() : null;
   const todayKey = currentDateKey || initialDate;
@@ -170,6 +174,23 @@ export function BookingDashboard({
     () => getDayAvailabilitySegments(selectedDate, hallBookings, 30),
     [hallBookings, selectedDate],
   );
+  const ownBookingIds = useMemo(() => {
+    const username = session.username?.toLowerCase();
+
+    return new Set(
+      username
+        ? hallBookings
+            .filter(
+              (booking) =>
+                !isRecurringBookingId(booking.id) &&
+                booking.createdBy?.toLowerCase() === username,
+            )
+            .map((booking) => booking.id)
+        : [],
+    );
+  }, [hallBookings, session.username]);
+  const canEditBooking = (bookingId: string) =>
+    canManageBookings || (canAddBookings && ownBookingIds.has(bookingId));
   const availableTrainers = useMemo(() => {
     const trainers = new Set(trainerOptions);
 
@@ -236,7 +257,7 @@ export function BookingDashboard({
   }
 
   function openBookingForm(prefill?: { date: string; start?: string; end?: string }) {
-    if (!canManageBookings) {
+    if (!canAddBookings) {
       setOpenBookingAfterLogin(true);
       setSheet("login");
       return;
@@ -272,7 +293,9 @@ export function BookingDashboard({
     setSelectedDate(dateKey);
     setRequest((current) => ({ ...current, date: dateKey }));
     setExpandedBookingId(
-      canManageBookings && item.booking && item.kind !== "cleanup" ? item.booking.id : "",
+      item.booking && item.kind !== "cleanup" && canEditBooking(item.booking.id)
+        ? item.booking.id
+        : "",
     );
 
     if (item.kind === "cleanup" && item.booking) {
@@ -342,7 +365,7 @@ export function BookingDashboard({
 
     void syncCalendar();
 
-    if (openBookingAfterLogin && canRoleManageBookings(role)) {
+    if (openBookingAfterLogin && canRoleAddBookings(role)) {
       setOpenBookingAfterLogin(false);
       setSubmitMessage("");
       setRequest((current) => ({ ...current, date: selectedDate, eventType: "seminar", name: "" }));
@@ -457,7 +480,7 @@ export function BookingDashboard({
                     </div>
                     <div className="hidden md:block">
                       <TimeGridCalendar
-                        canAdd={canManageBookings}
+                        canAdd={canAddBookings}
                         days={viewDays}
                         nowMinutes={nowMinutes}
                         onPickTime={pickTime}
@@ -482,6 +505,8 @@ export function BookingDashboard({
                     actions={actions}
                     availableTrainers={availableTrainers}
                     bookings={hallBookings}
+                    canAdd={canStartBooking}
+                    canEditBooking={canEditBooking}
                     canManageBookings={canManageBookings}
                     cancellations={calendar.recurringCancellations}
                     currentDateKey={currentDateKey}
@@ -542,7 +567,7 @@ export function BookingDashboard({
       <Sheet onClose={closeSheet} open={sheet === "login"} title="Přihlášení">
         {openBookingAfterLogin ? (
           <p className="mb-2 text-sm text-ink-muted">
-            Akce do kalendáře přidávají přihlášení správci sálu.
+            Akce do kalendáře přidávají přihlášení správci sálu a trenéři.
           </p>
         ) : null}
         <LoginForm onLogin={login} />

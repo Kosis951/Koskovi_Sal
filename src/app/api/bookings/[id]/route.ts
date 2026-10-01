@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireBookingEditor, requireManager } from "@/lib/api-auth";
 import { parseBookingInput } from "@/lib/booking-validation";
 import {
   deleteBooking,
@@ -67,15 +67,15 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
-  const auth = await requireManager();
+  const { id } = await context.params;
+  const existingBooking = (await getBookings()).find((booking) => booking.id === id);
+  const auth = await requireBookingEditor(existingBooking);
 
   if (auth.error) {
     return auth.error;
   }
 
   const actor = auth.access.username;
-  const { id } = await context.params;
-  const existingBooking = (await getBookings()).find((booking) => booking.id === id);
   const deleted = await deleteBooking(id);
 
   if (!deleted) {

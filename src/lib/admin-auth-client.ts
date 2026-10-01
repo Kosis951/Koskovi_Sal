@@ -12,6 +12,11 @@ export function canRoleManageBookings(role: AdminRole | null | undefined) {
   return role === "admin" || role === "manager";
 }
 
+// Trainers add hall bookings too, and may change the ones they added.
+export function canRoleAddBookings(role: AdminRole | null | undefined) {
+  return canRoleManageBookings(role) || role === "trainer";
+}
+
 export async function loginAdmin(username: string, password: string) {
   const response = await fetch("/api/auth/login", {
     method: "POST",

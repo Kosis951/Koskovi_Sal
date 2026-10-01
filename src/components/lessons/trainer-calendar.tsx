@@ -2,6 +2,7 @@
 
 import { ArrowLeftRight, Check, Clock3, Copy, Plus, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { LoginForm } from "@/components/dashboard/login-form";
 import { LessonsWeekGrid, type GridBlock } from "@/components/lessons/lessons-week-grid";
 import { useRefreshHandler } from "@/components/pwa/pull-to-refresh";
@@ -16,6 +17,7 @@ import {
   pageContainer,
 } from "@/components/ui/styles";
 import { getAdminSession, loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
+import { lessonsTrainerCookie } from "@/lib/lessons-shared";
 import type {
   LessonSlot,
   TrainerCalendar,
@@ -40,6 +42,39 @@ function formatLesson(lesson: { date: string; end: string; start: string }) {
 }
 
 type Notice = { ok: boolean; text: string } | null;
+type TrainerOption = { name: string; trainer: string };
+
+function rememberTrainer(trainer: string) {
+  document.cookie = `${lessonsTrainerCookie}=${encodeURIComponent(trainer)}; path=/; max-age=31536000; samesite=lax`;
+}
+
+// Switch between the trainers' lesson calendars (shown when there are several).
+function TrainerSwitch({ current, trainers }: { current: string; trainers: TrainerOption[] }) {
+  const currentKey = current.toLowerCase();
+
+  return (
+    <nav aria-label="Trenér" className="-mx-1 overflow-x-auto px-1">
+      <div className="inline-flex gap-0.5 rounded-full border border-line bg-surface p-1">
+        {trainers.map(({ name, trainer }) => {
+          const isCurrent = trainer.toLowerCase() === currentKey;
+
+          return (
+            <Link
+              aria-current={isCurrent ? "page" : undefined}
+              className={`inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold transition ${
+                isCurrent ? "bg-brand text-on-brand" : "text-ink-muted hover:bg-subtle hover:text-ink"
+              }`}
+              href={`/lekce/${encodeURIComponent(trainer)}`}
+              key={trainer}
+            >
+              {name}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
 
 // A trainer's lesson calendar. Signed-in people pick a free slot and send a
 // request; the trainer (and the main administrator) confirm or decline,
@@ -56,6 +91,8 @@ export function TrainerCalendarPage({
   const [notice, setNotice] = useState<Notice>(null);
   const [requestSlot, setRequestSlot] = useState<LessonSlot | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  // All trainers with a lesson calendar, for the switch above the calendar.
+  const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   // Lesson whose detail is open (from a click in the week calendar).
   const [openLessonId, setOpenLessonId] = useState("");
   const apiBase = `/api/lessons/${encodeURIComponent(trainer)}`;
@@ -98,6 +135,29 @@ export function TrainerCalendarPage({
       window.clearInterval(interval);
     };
   }, [load, session]);
+
+  useEffect(() => {
+    if (!session) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    // "Lekce" in the header comes back to the trainer chosen last.
+    rememberTrainer(trainer);
+    void fetch("/api/lessons", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { trainers: [] }))
+      .then((data: { trainers?: TrainerOption[] }) => {
+        if (!isCancelled) {
+          setTrainers(data.trainers ?? []);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [session, trainer]);
 
   // Pull-to-refresh in the installed app.
   useRefreshHandler(load);
@@ -167,6 +227,10 @@ export function TrainerCalendarPage({
                 : "Vyber si volný termín a pošli žádost. Lekce platí, až ji trenér potvrdí."}
             </p>
           </div>
+
+          {session && trainers.length > 1 ? (
+            <TrainerSwitch current={trainer} trainers={trainers} />
+          ) : null}
 
           {notice ? (
             <p className={`rounded-lg border px-3 py-2 text-sm ${notice.ok ? noticeTone.success : noticeTone.error}`}>

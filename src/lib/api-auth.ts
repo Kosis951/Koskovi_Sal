@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  canAddBookings,
   canManageBookings,
   getAdminAccess,
   isMainAdmin,
@@ -35,6 +36,50 @@ export async function requireManager(): Promise<AuthResult> {
   return {
     error: NextResponse.json(
       { message: "Tento účet nemá přístup ke správě akcí." },
+      { status: 403 },
+    ),
+  };
+}
+
+// Hall managers and trainers may add bookings to the hall calendar.
+export async function requireBookingAuthor(): Promise<AuthResult> {
+  const result = await requireSession();
+
+  if (result.error || canAddBookings(result.access)) {
+    return result;
+  }
+
+  return {
+    error: NextResponse.json(
+      { message: "Tento účet nemůže přidávat akce do kalendáře sálu." },
+      { status: 403 },
+    ),
+  };
+}
+
+// Like requireBookingAuthor, but for changing one existing booking: managers
+// may change any, a trainer only the ones that trainer added (and never the
+// regular trainings).
+export async function requireBookingEditor(
+  booking: { createdBy?: string; id: string } | undefined,
+): Promise<AuthResult> {
+  const result = await requireBookingAuthor();
+
+  if (result.error || canManageBookings(result.access) || !booking) {
+    return result;
+  }
+
+  if (
+    !booking.id.startsWith("recurring-") &&
+    booking.createdBy !== undefined &&
+    booking.createdBy.toLowerCase() === result.access.username.toLowerCase()
+  ) {
+    return result;
+  }
+
+  return {
+    error: NextResponse.json(
+      { message: "Upravit nebo smazat jde jen akce, které jsi přidal(a)." },
       { status: 403 },
     ),
   };

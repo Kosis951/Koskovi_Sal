@@ -33,6 +33,8 @@ export function DayDetailPanel({
   actions,
   availableTrainers,
   bookings,
+  canAdd,
+  canEditBooking,
   canManageBookings,
   cancellations,
   currentDateKey,
@@ -47,6 +49,9 @@ export function DayDetailPanel({
   actions: BookingActions;
   availableTrainers: string[];
   bookings: Booking[];
+  canAdd: boolean;
+  // Managers edit everything, trainers only the bookings they added.
+  canEditBooking: (bookingId: string) => boolean;
   canManageBookings: boolean;
   cancellations: RecurringCancellationNotice[];
   currentDateKey: string;
@@ -76,7 +81,8 @@ export function DayDetailPanel({
       <ol className="mt-4 grid gap-1.5">
         {segments.map((segment) => {
           const isBooked = segment.kind === "booked";
-          const isExpanded = isBooked && expandedBookingId === segment.bookingId;
+          const canEdit = isBooked && canEditBooking(segment.bookingId);
+          const isExpanded = canEdit && expandedBookingId === segment.bookingId;
 
           return (
             <li
@@ -121,7 +127,7 @@ export function DayDetailPanel({
                     />
                   ) : null}
                 </div>
-                {isBooked && canManageBookings ? (
+                {isBooked && canEdit ? (
                   <button
                     aria-expanded={isExpanded}
                     aria-label={isExpanded ? "Skrýt úpravy" : "Upravit"}
@@ -136,7 +142,7 @@ export function DayDetailPanel({
                   </button>
                 ) : null}
               </div>
-              {isBooked && isExpanded && canManageBookings ? (
+              {isBooked && isExpanded ? (
                 <SegmentEditor
                   actions={actions}
                   availableTrainers={availableTrainers}
@@ -177,10 +183,12 @@ export function DayDetailPanel({
         </div>
       ) : null}
 
-      <button className={`${buttonSecondary} mt-4 w-full`} onClick={onAddBooking} type="button">
-        <Plus size={16} />
-        Přidat akci na tento den
-      </button>
+      {canAdd ? (
+        <button className={`${buttonSecondary} mt-4 w-full`} onClick={onAddBooking} type="button">
+          <Plus size={16} />
+          Přidat akci na tento den
+        </button>
+      ) : null}
 
       <StatusMessage tone="error">{messages.delete}</StatusMessage>
       <StatusMessage tone="success">{messages.trainer}</StatusMessage>
