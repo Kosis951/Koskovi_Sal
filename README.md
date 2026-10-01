@@ -113,6 +113,13 @@ nezavisly na kalendari salu. Vidi ho jen prihlaseni.
   „Jen cteni“; smazat ho muze hlavni spravce ve Sprave → Uzivatele. Jmeno smazaneho uctu
   zustava obsazene (obnovit ho jde jen pres „Novy uzivatel“ ve sprave).
 
+- Profil (nabidka uctu → Muj profil): jmeno a prijmeni se ukazuje misto nazvu uctu (trener
+  „Marek Bures“ misto „bures“), student si tam ulozi i obvykleho partnera. Pri zadosti o lekci
+  se voli Solo / V paru; u paru se partner predvyplni z profilu a trener vidi „jmeno a partner“.
+
+Ve Sprave → Prehled jdou nejblizsi akce upravit primo kliknutim na radek (stejny editor jako
+na strance Akce).
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:

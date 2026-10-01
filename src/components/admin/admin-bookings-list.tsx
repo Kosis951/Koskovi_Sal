@@ -175,18 +175,22 @@ const kindLabel = {
   training: { className: "bg-training text-training-ink", label: "Trénink" },
 };
 
-function BookingRow({
+// One booking; a click opens its editor right under the row. `showDate` is
+// for lists that are not grouped by day (the overview).
+export function BookingRow({
   actions,
   availableTrainers,
   booking,
   isExpanded,
   onToggle,
+  showDate = false,
 }: {
   actions: BookingActions;
   availableTrainers: string[];
   booking: Booking;
   isExpanded: boolean;
   onToggle: () => void;
+  showDate?: boolean;
 }) {
   const badge =
     kindLabel[booking.bookingKind === "individual-lesson" ? "lesson" : getBookingKind(booking)];
@@ -199,12 +203,16 @@ function BookingRow({
         onClick={onToggle}
         type="button"
       >
-        <span className="w-24 shrink-0 text-sm tabular-nums text-ink-muted max-sm:hidden">
+        <span className={`shrink-0 text-sm tabular-nums text-ink-muted max-sm:hidden ${showDate ? "w-28" : "w-24"}`}>
+          {showDate ? (
+            <span className="block font-semibold capitalize text-ink">{formatDateCz(booking.date)}</span>
+          ) : null}
           {booking.start}–{booking.end}
         </span>
         <span className="min-w-0 flex-1">
           {/* On phones the time sits above the title, so the title gets the row. */}
           <span className="block text-xs tabular-nums text-ink-muted sm:hidden">
+            {showDate ? <span className="capitalize">{formatDateCz(booking.date)} · </span> : null}
             {booking.start}–{booking.end}
           </span>
           <span className="block truncate font-semibold text-ink">{booking.title}</span>
@@ -259,7 +267,10 @@ function BookingEditor({
     "inline-flex h-10 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <div className="grid grid-cols-1 gap-3 border-t border-line bg-subtle px-4 py-4 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end">
+    // The columns follow the width of the list the editor sits in (the
+    // overview card is much narrower than the "Akce" page), not the window.
+    <div className="@container border-t border-line bg-subtle">
+    <div className="grid grid-cols-1 gap-3 px-4 py-4 @md:grid-cols-2 @md:items-end @3xl:grid-cols-[1fr_1fr_1fr_auto]">
       <label className="field-label">
         Trenér
         <select
@@ -338,6 +349,7 @@ function BookingEditor({
         <Trash2 size={15} />
         {isRecurringBookingId(booking.id) ? "Zrušit termín" : "Smazat"}
       </button>
+    </div>
     </div>
   );
 }

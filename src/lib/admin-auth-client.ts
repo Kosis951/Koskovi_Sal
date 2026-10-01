@@ -2,6 +2,7 @@ export type AdminRole = "admin" | "manager" | "trainer" | "viewer";
 
 export type AdminSession = {
   authenticated: boolean;
+  displayName?: string | null;
   role?: AdminRole | null;
   username?: string | null;
 };

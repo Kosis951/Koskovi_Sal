@@ -156,7 +156,7 @@ export function TrainerCalendarPage({
         <div className="mx-auto grid max-w-4xl gap-5">
           <div>
             <p className={eyebrow}>Individuální lekce</p>
-            <h1 className="mt-1 text-2xl font-black sm:text-3xl">Lekce · {calendar?.trainer ?? trainer}</h1>
+            <h1 className="mt-1 text-2xl font-black sm:text-3xl">Lekce · {calendar?.trainerName ?? trainer}</h1>
             <p className="mt-1 text-sm text-ink-muted">
               {calendar?.canManage
                 ? "Tady nabízíš časy, schvaluješ žádosti a vidíš potvrzené lekce."
@@ -448,13 +448,22 @@ export function TrainerCalendarPage({
       <Sheet onClose={() => setRequestSlot(null)} open={requestSlot !== null} title="Žádost o lekci">
         {requestSlot ? (
           <RequestForm
-            onSubmit={async (note) => {
-              if (await send("", "POST", { ...requestSlot, note })) {
+            defaultPartner={calendar?.viewerPartner ?? ""}
+            onSubmit={async (note, partner) => {
+              if (
+                await send("", "POST", {
+                  date: requestSlot.date,
+                  end: requestSlot.end,
+                  note,
+                  partner,
+                  start: requestSlot.start,
+                })
+              ) {
                 setRequestSlot(null);
               }
             }}
             slot={requestSlot}
-            trainer={calendar?.trainer ?? trainer}
+            trainer={calendar?.trainerName ?? trainer}
           />
         ) : null}
       </Sheet>
@@ -563,7 +572,14 @@ function LessonList({
           <div className="min-w-0 flex-1 basis-48">
             <p className="font-semibold capitalize text-ink">{formatLesson(lesson)}</p>
             <p className="text-sm text-ink-muted">
-              {[showRequester ? lesson.requester : null, lesson.note].filter(Boolean).join(" · ")}
+              {[
+                // The requester's name already carries the partner; the
+                // dancer's own list says it in words instead.
+                showRequester ? lesson.requester : lesson.partner ? `v páru: ${lesson.partner}` : "sólo",
+                lesson.note,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
             {renderInfo?.(lesson) ? (
               <p className="text-xs font-semibold text-cleanup-ink">{renderInfo(lesson)}</p>
@@ -715,16 +731,23 @@ function SlotsCard({
 }
 
 function RequestForm({
+  defaultPartner,
   onSubmit,
   slot,
   trainer,
 }: {
-  onSubmit: (note: string) => Promise<void>;
+  // The usual partner from the profile; makes "as a couple" the default.
+  defaultPartner: string;
+  // `partner` is empty for a solo lesson.
+  onSubmit: (note: string, partner: string) => Promise<void>;
   slot: LessonSlot;
   trainer: string;
 }) {
   const [note, setNote] = useState("");
+  const [isCouple, setIsCouple] = useState(Boolean(defaultPartner));
+  const [partner, setPartner] = useState(defaultPartner);
   const [isSending, setIsSending] = useState(false);
+  const isPartnerMissing = isCouple && !partner.trim();
 
   return (
     <form
@@ -734,7 +757,7 @@ function RequestForm({
         setIsSending(true);
 
         try {
-          await onSubmit(note.trim());
+          await onSubmit(note.trim(), isCouple ? partner.trim() : "");
         } finally {
           setIsSending(false);
         }
@@ -747,6 +770,34 @@ function RequestForm({
           {slot.start}–{slot.end} · trenér {trainer}
         </p>
       </div>
+      <div>
+        <p className="field-label">Přijdu</p>
+        <div className="mt-1 flex gap-1.5">
+          <button aria-pressed={!isCouple} className={chipClass(!isCouple)} onClick={() => setIsCouple(false)} type="button">
+            Sólo
+          </button>
+          <button aria-pressed={isCouple} className={chipClass(isCouple)} onClick={() => setIsCouple(true)} type="button">
+            V páru
+          </button>
+        </div>
+      </div>
+      {isCouple ? (
+        <label className="field-label">
+          Partner / partnerka
+          <input
+            className="field-input mt-1"
+            maxLength={60}
+            onChange={(event) => setPartner(event.target.value)}
+            placeholder="Petr Novák"
+            value={partner}
+          />
+          <span className="mt-1 block text-xs font-normal text-ink-soft">
+            {defaultPartner
+              ? "Předvyplněno z tvého profilu, jde přepsat."
+              : "Aby se příště vyplnil sám, ulož si partnera v profilu (nabídka účtu → Můj profil)."}
+          </span>
+        </label>
+      ) : null}
       <label className="field-label">
         Poznámka pro trenéra (nepovinné)
         <textarea
@@ -761,7 +812,7 @@ function RequestForm({
       <p className="text-xs text-ink-soft">
         Termín se ti podrží. Lekce platí, až ji trenér potvrdí – uvidíš to tady v části Moje lekce.
       </p>
-      <button className={`${buttonPrimary} h-11`} disabled={isSending} type="submit">
+      <button className={`${buttonPrimary} h-11`} disabled={isSending || isPartnerMissing} type="submit">
         <Send size={16} />
         {isSending ? "Odesílám…" : "Poslat žádost"}
       </button>

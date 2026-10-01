@@ -15,10 +15,13 @@ export function InvitePage({
   initialSession,
   token,
   trainer,
+  trainerName,
 }: {
   initialSession: HeaderSession;
   token: string;
+  // The trainer's account (for the calendar address) and the name to show.
   trainer: string | null;
+  trainerName: string | null;
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">("register");
@@ -49,7 +52,7 @@ export function InvitePage({
           <div>
             <p className={eyebrow}>Pozvánka</p>
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">
-              {trainer ? `Lekce s trenérem ${trainer}` : "Pozvánka neplatí"}
+              {trainer ? `Lekce · ${trainerName}` : "Pozvánka neplatí"}
             </h1>
           </div>
           <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
@@ -70,7 +73,7 @@ export function InvitePage({
             ) : (
               <>
                 <p className="text-sm text-ink-muted">
-                  Trenér {trainer} tě zve do svého kalendáře lekcí. Založ si účet a pak si vyber
+                  {trainerName} tě zve do svého kalendáře lekcí. Založ si účet a pak si vyber
                   termín.
                 </p>
                 <div className="my-3 flex gap-1.5">

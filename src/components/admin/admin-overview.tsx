@@ -2,17 +2,19 @@
 
 import { CalendarDays, History, Palmtree, Repeat, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { BookingRow } from "@/components/admin/admin-bookings-list";
 import {
-  formatDateCz,
   getTodayPragueDateKey,
   useAdminBookings,
   useAdminResource,
 } from "@/components/admin/admin-data";
 import { getWeekStartDate, isCountableEvent } from "@/components/booking-dashboard-utils";
 import { getBookingKind } from "@/components/dashboard/calendar-events";
+import { useBookingActions } from "@/components/dashboard/use-booking-actions";
+import { noticeTone } from "@/components/ui/styles";
 import type { RecurringCancellationNotice } from "@/lib/bookings-db";
-import { formatDateKey } from "@/lib/schedule";
+import { formatDateKey, trainerOptions } from "@/lib/schedule";
 
 const noCancellations: RecurringCancellationNotice[] = [];
 
@@ -23,14 +25,20 @@ function pickCancellations(data: unknown) {
   );
 }
 
-const kindBadge = {
-  busy: "bg-busy text-busy-ink",
-  event: "bg-event text-event-ink",
-  training: "bg-training text-training-ink",
-};
-
 export function AdminOverview() {
-  const { data: bookings, isLoading } = useAdminBookings();
+  const { data: bookings, isLoading, reload } = useAdminBookings();
+  const actions = useBookingActions(reload);
+  const [expandedId, setExpandedId] = useState("");
+  const actionMessage = Object.values(actions.messages).find(Boolean);
+  const availableTrainers = useMemo(
+    () => [
+      ...new Set([
+        ...trainerOptions,
+        ...bookings.flatMap((booking) => (booking.trainer ? [booking.trainer] : [])),
+      ]),
+    ],
+    [bookings],
+  );
   const { data: cancellations } = useAdminResource(
     "/api/availability",
     pickCancellations,
@@ -89,7 +97,10 @@ export function AdminOverview() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded-xl border border-line bg-surface">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <h2 className="font-semibold">Nejbližší akce</h2>
+            <h2 className="font-semibold">
+              Nejbližší akce{" "}
+              <span className="text-sm font-normal text-ink-muted">· kliknutím upravíš</span>
+            </h2>
             <Link className="text-sm font-semibold text-brand hover:underline" href="/admin/akce">
               Všechny akce
             </Link>
@@ -99,38 +110,29 @@ export function AdminOverview() {
               {isLoading ? "Načítám…" : "V kalendáři teď nejsou žádné jednorázové akce."}
             </p>
           ) : (
+            // The same editable rows as on the "Akce" page: a click opens
+            // the editor in place.
             <ul className="divide-y divide-line">
-              {stats.upcoming.map((booking) => {
-                const kind = getBookingKind(booking);
-
-                return (
-                  <li className="flex items-center gap-3 px-4 py-3" key={booking.id}>
-                    <div className="w-28 shrink-0 text-sm">
-                      <p className="font-semibold capitalize text-ink">
-                        {formatDateCz(booking.date)}
-                      </p>
-                      <p className="text-ink-muted">
-                        {booking.start}–{booking.end}
-                      </p>
-                    </div>
-                    <p className="min-w-0 flex-1 truncate font-semibold">{booking.title}</p>
-                    {booking.cleanupRequired && !booking.cleanedAt ? (
-                      <span className="hidden rounded-full bg-cleanup px-2 py-0.5 text-xs font-semibold text-cleanup-ink sm:inline">
-                        úklid
-                      </span>
-                    ) : null}
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        kindBadge[kind === "busy" ? "busy" : kind === "training" ? "training" : "event"]
-                      }`}
-                    >
-                      {kind === "busy" ? "Obsazeno" : "Akce"}
-                    </span>
-                  </li>
-                );
-              })}
+              {stats.upcoming.map((booking) => (
+                <BookingRow
+                  actions={actions}
+                  availableTrainers={availableTrainers}
+                  booking={booking}
+                  isExpanded={expandedId === booking.id}
+                  key={booking.id}
+                  onToggle={() =>
+                    setExpandedId((current) => (current === booking.id ? "" : booking.id))
+                  }
+                  showDate
+                />
+              ))}
             </ul>
           )}
+          {actionMessage ? (
+            <p className={`m-3 rounded-lg border px-3 py-2 text-sm ${noticeTone.info}`}>
+              {actionMessage}
+            </p>
+          ) : null}
         </section>
 
         <section className="grid content-start gap-2">

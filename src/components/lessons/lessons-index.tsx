@@ -14,7 +14,7 @@ export function LessonsIndex({
   trainers,
 }: {
   initialSession: HeaderSession;
-  trainers: string[];
+  trainers: Array<{ name: string; trainer: string }>;
 }) {
   const router = useRouter();
 
@@ -58,13 +58,13 @@ export function LessonsIndex({
               <p className="text-sm text-ink-muted">Zatím žádný trenér lekce nenabízí.</p>
             ) : (
               <ul className="divide-y divide-line">
-                {trainers.map((trainer) => (
+                {trainers.map(({ name, trainer }) => (
                   <li key={trainer}>
                     <Link
                       className="flex items-center justify-between gap-3 py-3 font-semibold text-ink transition hover:text-accent"
                       href={`/lekce/${encodeURIComponent(trainer)}`}
                     >
-                      {trainer}
+                      {name}
                       <ChevronRight className="text-ink-soft" size={18} />
                     </Link>
                   </li>

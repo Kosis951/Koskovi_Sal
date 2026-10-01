@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { LessonsIndex } from "@/components/lessons/lessons-index";
 import { getAdminAccess, normalizeUsername } from "@/lib/auth";
-import { getTrainers } from "@/lib/lessons-db";
+import { getTrainerList } from "@/lib/lessons-db";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +19,14 @@ export default async function LessonsPage() {
     return <LessonsIndex initialSession={null} trainers={[]} />;
   }
 
-  const trainers = await getTrainers();
+  const trainers = await getTrainerList();
   const own = trainers.find(
-    (trainer) => normalizeUsername(trainer) === normalizeUsername(access.username),
+    ({ trainer }) => normalizeUsername(trainer) === normalizeUsername(access.username),
   );
   const target = own ?? (trainers.length === 1 ? trainers[0] : null);
 
   if (target) {
-    redirect(`/lekce/${encodeURIComponent(target)}`);
+    redirect(`/lekce/${encodeURIComponent(target.trainer)}`);
   }
 
   return (

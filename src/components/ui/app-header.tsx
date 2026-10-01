@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Smartphone,
+  UserRound,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -15,9 +16,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { pageContainer } from "@/components/ui/styles";
-import type { AdminRole } from "@/lib/admin-auth-client";
+import { getAdminSession, type AdminRole } from "@/lib/admin-auth-client";
 
 export type HeaderSession = {
+  // Profile name; the header fetches it itself when a page does not pass it.
+  displayName?: string | null;
   role: AdminRole | null;
   username: string | null;
 } | null;
@@ -30,7 +33,8 @@ export function AppHeader({
   onLogout,
   session,
 }: {
-  activeTab: "hall" | "admin" | "app" | "lessons";
+  // "none": a page outside the tabs (the profile).
+  activeTab: "hall" | "admin" | "app" | "lessons" | "none";
   onChangePassword?: () => void;
   onLogin?: () => void;
   onLogout: () => void;
@@ -100,6 +104,7 @@ export function AppHeader({
           <ThemeToggle variant="header" />
           {session?.username ? (
             <AccountMenu
+              displayName={session.displayName ?? undefined}
               onChangePassword={onChangePassword}
               onLogout={onLogout}
               role={session.role}
@@ -121,22 +126,56 @@ export function AppHeader({
   );
 }
 
+// Fired after the profile is saved, so the header shows the new name.
+export const profileChangeEvent = "koskovi-profile-change";
+
 function AccountMenu({
+  displayName,
   onChangePassword,
   onLogout,
   role,
   username,
 }: {
+  displayName?: string;
   onChangePassword?: () => void;
   onLogout: () => void;
   role: AdminRole | null;
   username: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  // The profile name for this account, fetched here unless the page passed it.
+  const [fetched, setFetched] = useState<{ name: string; username: string } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const canManage = role === "admin" || role === "manager";
   const itemClass =
     "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-ink transition hover:bg-subtle";
+  const shownName = displayName ?? (fetched?.username === username ? fetched.name : username);
+
+  useEffect(() => {
+    if (displayName) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+
+    function load() {
+      void getAdminSession()
+        .then((next) => {
+          if (!isCancelled && next.displayName) {
+            setFetched({ name: next.displayName, username });
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    load();
+    window.addEventListener(profileChangeEvent, load);
+
+    return () => {
+      isCancelled = true;
+      window.removeEventListener(profileChangeEvent, load);
+    };
+  }, [displayName, username]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -173,10 +212,11 @@ function AccountMenu({
         type="button"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-xs uppercase">
-          {username.slice(0, 1)}
+          {shownName.slice(0, 1)}
         </span>
-        {/* The session carries the name in lower case. */}
-        <span className="hidden max-w-32 truncate capitalize sm:inline">{username}</span>
+        {/* Without a profile name this is the login, which the session
+            carries in lower case. */}
+        <span className="hidden max-w-36 truncate capitalize sm:inline">{shownName}</span>
         <ChevronDown size={15} />
       </button>
       {isOpen ? (
@@ -190,6 +230,10 @@ function AccountMenu({
                   ? "Trenér"
                   : "Jen čtení"}
           </p>
+          <Link className={itemClass} href="/profil" onClick={() => setIsOpen(false)}>
+            <UserRound size={16} />
+            Můj profil
+          </Link>
           {canManage ? (
             <Link className={itemClass} href="/admin" onClick={() => setIsOpen(false)}>
               <LayoutDashboard size={16} />

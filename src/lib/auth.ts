@@ -48,6 +48,10 @@ export type StoredAdminUser = {
   createdBy?: string;
   // Also hides accounts defined in server configuration.
   deleted?: boolean;
+  // Shown instead of the login name ("Marek Bureš" rather than "bures").
+  displayName?: string;
+  // Usual dance partner, offered when requesting a lesson as a couple.
+  partnerName?: string;
   lessonFilter?: LessonFilter;
   passwordHash?: string;
   role?: AdminRole;
@@ -290,6 +294,24 @@ export function getAdminRole(
   return "manager";
 }
 
+// Names for showing people: the profile name where one is set, otherwise the
+// account name as its owner typed it.
+export function createNameLookup(storedUsers: StoredAdminUser[] = readStoredAdminUsersSync()) {
+  const byKey = new Map(
+    storedUsers
+      .filter((user) => !user.deleted)
+      .map((user) => [normalizeUsername(user.username), user]),
+  );
+
+  return {
+    name(username: string) {
+      const user = byKey.get(normalizeUsername(username));
+
+      return user?.displayName || user?.username || username;
+    },
+  };
+}
+
 export function listAdminUsernames() {
   return getAdminCredentials().map((credential) => credential.username);
 }
@@ -379,6 +401,8 @@ type AdminUserRow = {
   created_at: string | null;
   created_by: string | null;
   deleted: number;
+  display_name: string | null;
+  partner_name: string | null;
   lesson_filter: string | null;
   password_hash: string | null;
   role: AdminRole | null;
@@ -396,6 +420,8 @@ export function readStoredAdminUsersSync(): StoredAdminUser[] {
     createdAt: row.created_at ?? undefined,
     createdBy: row.created_by ?? undefined,
     deleted: row.deleted === 1,
+    displayName: row.display_name ?? undefined,
+    partnerName: row.partner_name ?? undefined,
     lessonFilter: row.lesson_filter ? (JSON.parse(row.lesson_filter) as LessonFilter) : undefined,
     passwordHash: row.password_hash ?? undefined,
     role: row.role ?? undefined,

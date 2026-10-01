@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 6;
+const schemaVersion = 7;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -97,8 +97,23 @@ function migrate(db: Database) {
       migrateToV6(db);
     }
 
+    if (version < 7) {
+      migrateToV7(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Profile of an account: the name shown instead of the login ("Marek Bureš"
+// rather than "bures") and the usual dance partner. A lesson remembers who
+// came along: partner_name is empty for a solo lesson.
+function migrateToV7(db: Database) {
+  db.exec(`
+    ALTER TABLE admin_users ADD COLUMN display_name TEXT;
+    ALTER TABLE admin_users ADD COLUMN partner_name TEXT;
+    ALTER TABLE trainer_lessons ADD COLUMN partner_name TEXT;
+  `);
 }
 
 // Two people with confirmed lessons on the same day can swap them: one asks

@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { getAdminUsers } from "@/lib/admin-users-db";
-import { normalizeUsername } from "@/lib/auth";
+import { createNameLookup, normalizeUsername, readStoredAdminUsersSync } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
 // Trainers' lesson calendars. A trainer offers windows ("every Tuesday
@@ -13,6 +13,7 @@ const horizonDays = 42;
 const maxWindowsPerTrainer = 50;
 const maxPendingPerRequester = 5;
 export const maxLessonNoteLength = 300;
+export const maxPartnerNameLength = 60;
 export const lessonLengths = [30, 45, 60, 90];
 
 export type TrainerWindow = {
@@ -34,6 +35,8 @@ export type TrainerLesson = {
   end: string;
   id: string;
   note?: string;
+  // Who comes along; empty for a solo lesson.
+  partner?: string;
   requester: string;
   start: string;
   status: LessonStatus;
@@ -91,7 +94,11 @@ export type TrainerCalendar = {
   // Requests waiting for the trainer (canManage).
   requests: TrainerLesson[];
   slots: LessonSlot[];
+  // The trainer's account (used in addresses) and the name to show.
   trainer: string;
+  trainerName: string;
+  // The viewer's usual partner from their profile, to prefill a request.
+  viewerPartner?: string;
   windows: TrainerWindow[];
 };
 
@@ -110,6 +117,7 @@ type LessonRow = {
   end: string;
   id: string;
   note: string | null;
+  partner_name: string | null;
   requester: string;
   start: string;
   status: LessonStatus;
@@ -132,6 +140,13 @@ export async function getTrainers() {
     .map((user) => user.username);
 }
 
+// Trainers with the name to show (profile name, else the account name).
+export async function getTrainerList() {
+  const names = createNameLookup();
+
+  return (await getTrainers()).map((trainer) => ({ name: names.name(trainer), trainer }));
+}
+
 // The trainer's account name as stored, or null when there is no such trainer.
 export async function findTrainer(name: string) {
   const key = normalizeUsername(name);
@@ -151,6 +166,13 @@ export function getTrainerCalendar(
   const active = lessons.filter(isActive);
   const upcoming = lessons.filter((lesson) => !isPast(lesson, now));
   const isMine = (lesson: TrainerLesson) => normalizeUsername(lesson.requester) === viewerKey;
+  const names = createNameLookup();
+  // What people read for a lesson: the profile name, plus the partner when
+  // the lesson was requested as a couple.
+  const label = (lesson: TrainerLesson) =>
+    lesson.partner
+      ? `${names.name(lesson.requester)} a ${lesson.partner}`
+      : names.name(lesson.requester);
   // Days on which the viewer has a confirmed lesson: there (and only there)
   // other people's confirmed lessons show their names, for swapping.
   const myDays = new Set(
@@ -165,7 +187,7 @@ export function getTrainerCalendar(
             date: lesson.date,
             end: lesson.end,
             lessonId: lesson.id,
-            requester: lesson.requester,
+            requester: label(lesson),
             start: lesson.start,
           }),
         );
@@ -186,11 +208,11 @@ export function getTrainerCalendar(
     }
 
     if (viewer.canManage) {
-      return { ...slot, lessonId: lesson.id, requester: lesson.requester, state: lesson.status as "confirmed" | "pending" };
+      return { ...slot, lessonId: lesson.id, requester: label(lesson), state: lesson.status as "confirmed" | "pending" };
     }
 
     return namedIds.has(lesson.id)
-      ? { ...slot, lessonId: lesson.id, requester: lesson.requester, state: "taken" }
+      ? { ...slot, lessonId: lesson.id, requester: label(lesson), state: "taken" }
       : { ...slot, state: "taken" };
   });
   const byId = new Map(upcoming.map((lesson) => [lesson.id, lesson]));
@@ -212,22 +234,32 @@ export function getTrainerCalendar(
             direction: isMine(asking) ? "outgoing" : "incoming",
             id: swap.id,
             mine: pick(mine),
-            otherName: theirs.requester,
+            otherName: label(theirs),
             theirs: pick(theirs),
           },
         ];
       });
+
+  // Everything above compares account names; in what goes out they are
+  // replaced by what people should read.
+  const named = (lesson: TrainerLesson) => ({ ...lesson, requester: label(lesson) });
 
   return {
     canManage: viewer.canManage,
     dayLessons,
     swaps,
     inviteToken: viewer.canManage ? getInviteToken(trainerKey) : undefined,
-    lessons: viewer.canManage ? upcoming.filter((lesson) => lesson.status === "confirmed") : [],
-    mine: upcoming.filter((lesson) => isMine(lesson) && lesson.status !== "cancelled"),
-    requests: viewer.canManage ? upcoming.filter((lesson) => lesson.status === "pending") : [],
+    lessons: viewer.canManage
+      ? upcoming.filter((lesson) => lesson.status === "confirmed").map(named)
+      : [],
+    mine: upcoming.filter((lesson) => isMine(lesson) && lesson.status !== "cancelled").map(named),
+    requests: viewer.canManage
+      ? upcoming.filter((lesson) => lesson.status === "pending").map(named)
+      : [],
     slots,
     trainer,
+    trainerName: names.name(trainer),
+    viewerPartner: getStoredPartner(viewerKey),
     windows: viewer.canManage ? windows : [],
   };
 }
@@ -292,6 +324,8 @@ export function requestLesson(input: {
   date: string;
   end: string;
   note?: string;
+  // Who comes along; empty for a solo lesson.
+  partner?: string;
   requester: string;
   start: string;
   trainer: string;
@@ -338,14 +372,15 @@ export function requestLesson(input: {
       end: slot.end,
       id: randomUUID(),
       note: input.note || undefined,
+      partner: input.partner || undefined,
       requester: input.requester,
       start: slot.start,
       status: "pending",
     };
 
     db.prepare(
-      `INSERT INTO trainer_lessons (id, trainer, date, start, "end", requester, note, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      `INSERT INTO trainer_lessons (id, trainer, date, start, "end", requester, note, partner_name, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     ).run(
       lesson.id,
       trainerKey,
@@ -354,6 +389,7 @@ export function requestLesson(input: {
       lesson.end,
       lesson.requester,
       lesson.note ?? null,
+      lesson.partner ?? null,
       new Date().toISOString(),
     );
 
@@ -373,7 +409,7 @@ export function changeLesson(input: {
 }) {
   const db = getDb();
   const lesson = db
-    .prepare('SELECT id, date, start, "end", requester, note, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(input.id, normalizeUsername(input.trainer)) as LessonRow | undefined;
 
   if (!lesson) {
@@ -426,7 +462,7 @@ function readPendingSwaps(trainerKey: string) {
 
 function readLesson(trainerKey: string, id: string) {
   const row = getDb()
-    .prepare('SELECT id, date, start, "end", requester, note, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(id, trainerKey) as LessonRow | undefined;
 
   return row ? rowToLesson(row) : null;
@@ -528,10 +564,10 @@ export function changeSwap(input: {
       return { error: "Lekce už prohodit nejde (některá se změnila nebo proběhla).", status: 409 };
     }
 
-    const move = db.prepare("UPDATE trainer_lessons SET requester = ?, note = ? WHERE id = ?");
+    const move = db.prepare("UPDATE trainer_lessons SET requester = ?, note = ?, partner_name = ? WHERE id = ?");
 
-    move.run(asked.requester, asked.note ?? null, asking.id);
-    move.run(asking.requester, asking.note ?? null, asked.id);
+    move.run(asked.requester, asked.note ?? null, asked.partner ?? null, asking.id);
+    move.run(asking.requester, asking.note ?? null, asking.partner ?? null, asked.id);
     finish("accepted");
 
     return { swapped: true };
@@ -599,7 +635,7 @@ function readWindows(trainerKey: string): TrainerWindow[] {
 function readLessons(trainerKey: string, fromDate: string) {
   const rows = getDb()
     .prepare(
-      `SELECT id, date, start, "end", requester, note, status FROM trainer_lessons
+      `SELECT id, date, start, "end", requester, note, partner_name, status FROM trainer_lessons
        WHERE trainer = ? AND date >= ? ORDER BY date, start`,
     )
     .all(trainerKey, fromDate) as LessonRow[];
@@ -613,6 +649,7 @@ function rowToLesson(row: LessonRow): TrainerLesson {
     end: row.end,
     id: row.id,
     note: row.note ?? undefined,
+    partner: row.partner_name ?? undefined,
     requester: row.requester,
     start: row.start,
     status: row.status,
@@ -674,6 +711,13 @@ function generateSlots(windows: TrainerWindow[], now: PragueNow) {
   }
 
   return slots;
+}
+
+// The usual partner from the account's profile.
+function getStoredPartner(usernameKey: string) {
+  return readStoredAdminUsersSync().find(
+    (user) => !user.deleted && normalizeUsername(user.username) === usernameKey,
+  )?.partnerName;
 }
 
 function isActive(lesson: TrainerLesson) {
