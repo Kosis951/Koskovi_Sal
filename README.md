@@ -138,6 +138,24 @@ nezavisly na kalendari salu. Vidi ho jen prihlaseni.
 Ve Sprave → Prehled jdou nejblizsi akce upravit primo kliknutim na radek (stejny editor jako
 na strance Akce).
 
+## Rozpis externiho trenera
+
+Verejna stranka `/rozpis` (v hlavicce „Externi trener“, na telefonu „Rozpis“) ukazuje lekce
+hostujiciho trenera vsem, i bez prihlaseni; vyhledavacum je skryta (noindex). Zalozka je videt jen
+kdyz je rozpis zverejneny. Upravuje se ve Sprave → Rozpis (sprava salu a hlavni spravce): text se
+vlozi tak, jak ho trener posle:
+
+```
+5.11.
+10:00–10:45 – Bily
+13:00–13:45 – Obed
+18:00-19:00 - GROUP
+```
+
+Radek s datem zacina den, radky „od–do jmeno“ jsou lekce (pomlcky libovolne). Obed, coffee break,
+pauza se zasedi, GROUP se zvyrazni, jine radky se ukazou jako poznamka. Rok se doplni sam
+(nejblizsi k dnesku). Vedle editoru je ziva ukazka.
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:

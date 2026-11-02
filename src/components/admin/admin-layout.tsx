@@ -2,6 +2,7 @@
 
 import {
   CalendarDays,
+  ClipboardList,
   History,
   LayoutDashboard,
   Palmtree,
@@ -36,6 +37,7 @@ export type AdminSection =
   | "bookings"
   | "trainings"
   | "holidays"
+  | "schedule"
   | "users"
   | "history";
 
@@ -64,6 +66,7 @@ const navItems: Array<{
   { href: "/admin/akce", icon: CalendarDays, label: "Akce", section: "bookings" },
   { href: "/admin/treninky", icon: Repeat, label: "Tréninky", section: "trainings" },
   { href: "/admin/prazdniny", icon: Palmtree, label: "Prázdniny", section: "holidays" },
+  { href: "/admin/rozpis", icon: ClipboardList, label: "Rozpis", section: "schedule" },
   { adminOnly: true, href: "/admin/users", icon: Users, label: "Uživatelé", section: "users" },
   { href: "/admin/historie", icon: History, label: "Historie", section: "history" },
 ];

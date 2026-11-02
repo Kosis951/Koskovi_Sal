@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 8;
+const schemaVersion = 9;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -105,8 +105,26 @@ function migrate(db: Database) {
       migrateToV8(db);
     }
 
+    if (version < 9) {
+      migrateToV9(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// The public schedule of a visiting trainer: one row, plain text as entered.
+function migrateToV9(db: Database) {
+  db.exec(`
+    CREATE TABLE public_schedule (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      published INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT,
+      updated_by TEXT
+    );
+  `);
 }
 
 // A lesson the trainer wrote in for somebody without an account: guest_name

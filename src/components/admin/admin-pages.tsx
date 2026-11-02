@@ -7,6 +7,7 @@ import { AdminHistory } from "@/components/admin/admin-history";
 import { AdminHolidays } from "@/components/admin/admin-holidays";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { AdminOverview } from "@/components/admin/admin-overview";
+import { AdminSchedule } from "@/components/admin/admin-schedule";
 import { AdminTrainings } from "@/components/admin/admin-trainings";
 import { AdminUsersTable } from "@/components/admin/admin-users-table";
 import { buttonPrimary } from "@/components/ui/styles";
@@ -63,6 +64,18 @@ export function AdminHolidaysPage() {
       title="Prázdniny a volno"
     >
       <AdminHolidays />
+    </AdminLayout>
+  );
+}
+
+export function AdminSchedulePage() {
+  return (
+    <AdminLayout
+      description="Veřejný rozpis lekcí externího trenéra. Po zveřejnění ho na stránce Externí trenér uvidí všichni, i bez přihlášení."
+      section="schedule"
+      title="Rozpis externího trenéra"
+    >
+      <AdminSchedule />
     </AdminLayout>
   );
 }

@@ -34,17 +34,18 @@ export function AppHeader({
   session,
 }: {
   // "none": a page outside the tabs (the profile).
-  activeTab: "hall" | "admin" | "app" | "lessons" | "none";
+  activeTab: "hall" | "admin" | "app" | "lessons" | "schedule" | "none";
   onChangePassword?: () => void;
   onLogin?: () => void;
   onLogout: () => void;
   session: HeaderSession;
 }) {
   const canManage = session?.role === "admin" || session?.role === "manager";
+  const hasSchedule = useIsSchedulePublished() || activeTab === "schedule";
   // On phones the tabs form one compact switch (the active one is a white
   // pill); from 640px they are separate tabs.
   const tabClass = (isActive: boolean) =>
-    `inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition sm:h-9 sm:px-3.5 sm:text-sm ${
+    `inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition sm:h-9 sm:px-3.5 sm:text-sm ${
       isActive
         ? "bg-white text-header sm:bg-white/15 sm:text-white"
         : "text-header-ink hover:text-white sm:hover:bg-white/10"
@@ -52,12 +53,12 @@ export function AppHeader({
 
   return (
     <header className="app-header bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[var(--app-safe-top)] text-white">
-      <div className={`${pageContainer} flex h-14 items-center gap-2 sm:gap-3`}>
+      <div className={`${pageContainer} flex h-14 items-center gap-1.5 sm:gap-3`}>
         <Link className="flex shrink-0 items-center" href="/">
           {/* Phones get the sign alone, so the tabs and icons fit next to it. */}
           <Image
             alt="Koškovi"
-            className="h-7 w-auto sm:hidden"
+            className="h-6 w-auto sm:hidden"
             height={62}
             priority
             src="/brand/Koskovi_logo_znak_white.svg"
@@ -81,6 +82,13 @@ export function AppHeader({
           {session ? (
             <Link className={tabClass(activeTab === "lessons")} href="/lekce">
               Lekce
+            </Link>
+          ) : null}
+          {/* A visiting trainer's public schedule, only while one is published. */}
+          {hasSchedule ? (
+            <Link className={tabClass(activeTab === "schedule")} href="/rozpis">
+              <span className="sm:hidden">Rozpis</span>
+              <span className="max-sm:hidden">Externí trenér</span>
             </Link>
           ) : null}
           {/* Not needed inside the installed app. On phones a signed-in user
@@ -138,6 +146,48 @@ export function AppHeader({
       </div>
     </header>
   );
+}
+
+// Fired by the schedule editor after saving, so the tab appears or goes.
+export const scheduleChangeEvent = "koskovi-schedule-change";
+
+// Whether the public schedule (/rozpis) is published; asked once per page
+// load (and after each save) and shared by every header.
+let schedulePublished: Promise<boolean> | null = null;
+
+function useIsSchedulePublished() {
+  const [isPublished, setIsPublished] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    function load(refresh: boolean) {
+      if (refresh || !schedulePublished) {
+        schedulePublished = fetch("/api/rozpis", { cache: "no-store" })
+          .then((response) => (response.ok ? response.json() : { published: false }))
+          .then((data: { published?: boolean }) => data.published === true)
+          .catch(() => false);
+      }
+
+      void schedulePublished.then((value) => {
+        if (!isCancelled) {
+          setIsPublished(value);
+        }
+      });
+    }
+
+    const handleChange = () => load(true);
+
+    load(false);
+    window.addEventListener(scheduleChangeEvent, handleChange);
+
+    return () => {
+      isCancelled = true;
+      window.removeEventListener(scheduleChangeEvent, handleChange);
+    };
+  }, []);
+
+  return isPublished;
 }
 
 // Fired after the profile is saved, so the header shows the new name.
@@ -221,7 +271,7 @@ function AccountMenu({
     <div className="relative" ref={menuRef}>
       <button
         aria-expanded={isOpen}
-        className="inline-flex h-9 items-center gap-2 rounded-md px-2 text-sm font-semibold text-white transition hover:bg-white/10"
+        className="inline-flex h-9 items-center gap-2 rounded-md px-1 text-sm font-semibold text-white sm:px-2 transition hover:bg-white/10"
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
@@ -231,7 +281,8 @@ function AccountMenu({
         {/* Without a profile name this is the login, which the session
             carries in lower case. */}
         <span className="hidden max-w-36 truncate capitalize sm:inline">{shownName}</span>
-        <ChevronDown size={15} />
+        {/* Phones: the initial alone, so the tabs fit. */}
+        <ChevronDown className="max-sm:hidden" size={15} />
       </button>
       {isOpen ? (
         <div className="fade-enter absolute right-0 top-11 z-50 w-56 rounded-xl border border-line bg-surface p-1.5 shadow-xl">
