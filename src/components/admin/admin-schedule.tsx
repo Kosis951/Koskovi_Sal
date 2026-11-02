@@ -7,6 +7,7 @@ import { ScheduleView } from "@/components/schedule/schedule-view";
 import { scheduleChangeEvent } from "@/components/ui/app-header";
 import { buttonPrimary, buttonSecondary, noticeTone } from "@/components/ui/styles";
 import {
+  getScheduleBlocks,
   maxScheduleBodyLength,
   maxScheduleTitleLength,
   parseSchedule,
@@ -21,6 +22,8 @@ const placeholder = `5.11.
 6.11.
 9:15–10:00 – Štecha`;
 
+const blockDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "short" });
+
 function todayKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 }
@@ -31,28 +34,31 @@ export function AdminSchedule() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [published, setPublished] = useState(false);
+  const [cancelTrainings, setCancelTrainings] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tone: "error" | "success" | "warning" } | null>(null);
   const days = useMemo(() => parseSchedule(body, todayKey()), [body]);
   const unreadable = days.flatMap((day) => day.rows.filter((row) => row.kind === "note"));
+  const blocks = getScheduleBlocks(days).filter((block) => block.date >= todayKey());
 
   useEffect(() => {
     let isCancelled = false;
 
     void fetch("/api/rozpis", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: { body?: string; published?: boolean; title?: string }) => {
+      .then((data: { body?: string; cancelTrainings?: boolean; published?: boolean; title?: string }) => {
         if (!isCancelled) {
           setTitle(data.title ?? "");
           setBody(data.body ?? "");
           setPublished(data.published === true);
+          setCancelTrainings(data.cancelTrainings === true);
           setIsLoaded(true);
         }
       })
       .catch(() => {
         if (!isCancelled) {
-          setNotice({ ok: false, text: "Rozpis se nepodařilo načíst." });
+          setNotice({ text: "Rozpis se nepodařilo načíst.", tone: "error" });
         }
       });
 
@@ -68,13 +74,16 @@ export function AdminSchedule() {
 
     try {
       const response = await fetch("/api/rozpis", {
-        body: JSON.stringify({ body, published, title }),
+        body: JSON.stringify({ body, cancelTrainings, published, title }),
         headers: { "Content-Type": "application/json" },
         method: "PUT",
       });
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as { message?: string; skipped?: number };
 
-      setNotice({ ok: response.ok, text: data.message ?? (response.ok ? "Uloženo." : "Uložení se nepodařilo.") });
+      setNotice({
+        text: data.message ?? (response.ok ? "Uloženo." : "Uložení se nepodařilo."),
+        tone: !response.ok ? "error" : data.skipped ? "warning" : "success",
+      });
 
       if (response.ok) {
         window.dispatchEvent(new Event(scheduleChangeEvent));
@@ -140,8 +149,34 @@ export function AdminSchedule() {
             </span>
           </span>
         </label>
+        <div className="grid gap-2 rounded-lg border border-line p-3 text-sm">
+          <p className="font-semibold text-ink">Kalendář sálu</p>
+          <p className="text-xs text-ink-muted">
+            {blocks.length === 0
+              ? "Až bude rozpis zveřejněný, každý den se v kalendáři sálu ukáže jako obsazený od první do poslední lekce."
+              : `${published ? "V kalendáři sálu" : "Po zveřejnění v kalendáři sálu"}: ${blocks
+                  .map((block) => `${blockDay.format(new Date(`${block.date}T12:00:00`))} ${block.start}–${block.end}`)
+                  .join(" · ")}`}
+          </p>
+          <label className="mt-1 flex items-start gap-3 font-semibold text-ink">
+            <input
+              checked={cancelTrainings}
+              className="mt-0.5 h-4 w-4 accent-[var(--k-brand)]"
+              onChange={(event) => setCancelTrainings(event.target.checked)}
+              type="checkbox"
+            />
+            <span>
+              Zrušit pravidelné tréninky v té době
+              <span className="mt-0.5 block text-xs font-normal text-ink-muted">
+                {cancelTrainings
+                  ? "Tréninky, které spadnou do času trenéra, ten den odpadnou (jako u „Obsazeno“)."
+                  : "Tréninky ve stejném čase poběží dál a v kalendáři budou vedle bloku trenéra."}
+              </span>
+            </span>
+          </label>
+        </div>
         {notice ? (
-          <p className={`rounded-lg border px-3 py-2 text-sm font-semibold ${notice.ok ? noticeTone.success : noticeTone.error}`}>
+          <p className={`rounded-lg border px-3 py-2 text-sm font-semibold ${noticeTone[notice.tone]}`}>
             {notice.text}
           </p>
         ) : null}

@@ -2,7 +2,10 @@
 
 import {
   Bell,
+  CalendarDays,
   ChevronDown,
+  ClipboardList,
+  GraduationCap,
   KeyRound,
   LayoutDashboard,
   LogIn,
@@ -15,6 +18,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NavDropdown } from "@/components/ui/nav-dropdown";
 import { pageContainer } from "@/components/ui/styles";
 import { getAdminSession, type AdminRole } from "@/lib/admin-auth-client";
 
@@ -42,14 +46,27 @@ export function AppHeader({
 }) {
   const canManage = session?.role === "admin" || session?.role === "manager";
   const hasSchedule = useIsSchedulePublished() || activeTab === "schedule";
-  // On phones the tabs form one compact switch (the active one is a white
-  // pill); from 640px they are separate tabs.
+  // From 640px the sections are tabs; phones get them as a dropdown.
   const tabClass = (isActive: boolean) =>
-    `inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-semibold transition sm:h-9 sm:px-3.5 sm:text-sm ${
-      isActive
-        ? "bg-white text-header sm:bg-white/15 sm:text-white"
-        : "text-header-ink hover:text-white sm:hover:bg-white/10"
+    `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm font-semibold transition ${
+      isActive ? "bg-white/15 text-white" : "text-header-ink hover:bg-white/10 hover:text-white"
     }`;
+  const phoneSections = [
+    { active: activeTab === "hall", href: "/", icon: CalendarDays, label: "Kalendář sálu" },
+    ...(session ? [{ active: activeTab === "lessons", href: "/lekce", icon: GraduationCap, label: "Lekce" }] : []),
+    ...(hasSchedule
+      ? [{ active: activeTab === "schedule", href: "/rozpis", icon: ClipboardList, label: "Externí trenér" }]
+      : []),
+    {
+      active: activeTab === "app",
+      // Not needed inside the installed app.
+      className: "[@media(display-mode:standalone)]:hidden",
+      href: "/aplikace",
+      icon: Smartphone,
+      label: "Aplikace do telefonu",
+    },
+    ...(canManage ? [{ active: activeTab === "admin", href: "/admin", icon: LayoutDashboard, label: "Správa" }] : []),
+  ];
 
   return (
     <header className="app-header bg-brand-gradient sticky top-0 z-40 border-b border-black/10 bg-header pt-[var(--app-safe-top)] text-white">
@@ -73,10 +90,10 @@ export function AppHeader({
             width={369}
           />
         </Link>
-        <nav className="flex min-w-0 items-center overflow-x-auto rounded-full bg-white/10 p-0.5 sm:ml-2 sm:gap-1 sm:rounded-none sm:bg-transparent sm:p-0">
+        <NavDropdown className="ml-1 sm:hidden" items={phoneSections} tone="header" />
+        <nav className="ml-2 flex min-w-0 items-center gap-1 max-sm:hidden">
           <Link className={tabClass(activeTab === "hall")} href="/">
-            <span className="sm:hidden">Kalendář</span>
-            <span className="max-sm:hidden">Kalendář sálu</span>
+            Kalendář sálu
           </Link>
           {/* Trainers' lesson calendars are for signed-in people only. */}
           {session ? (
@@ -87,24 +104,18 @@ export function AppHeader({
           {/* A visiting trainer's public schedule, only while one is published. */}
           {hasSchedule ? (
             <Link className={tabClass(activeTab === "schedule")} href="/rozpis">
-              <span className="sm:hidden">Rozpis</span>
-              <span className="max-sm:hidden">Externí trenér</span>
+              Externí trenér
             </Link>
           ) : null}
-          {/* Not needed inside the installed app. On phones a signed-in user
-              finds it in the account menu instead, to keep the bar short. */}
+          {/* Not needed inside the installed app. */}
           <Link
-            className={`${tabClass(activeTab === "app")} ${session ? "max-sm:hidden" : ""} [@media(display-mode:standalone)]:hidden`}
+            className={`${tabClass(activeTab === "app")} [@media(display-mode:standalone)]:hidden`}
             href="/aplikace"
           >
             Aplikace
           </Link>
           {canManage ? (
-            // On phones the account menu links to administration instead.
-            <Link
-              className={`${tabClass(activeTab === "admin")} max-sm:hidden`}
-              href="/admin"
-            >
+            <Link className={tabClass(activeTab === "admin")} href="/admin">
               Správa
             </Link>
           ) : null}

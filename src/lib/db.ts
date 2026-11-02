@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 9;
+const schemaVersion = 10;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -109,8 +109,18 @@ function migrate(db: Database) {
       migrateToV9(db);
     }
 
+    if (version < 10) {
+      migrateToV10(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Whether the schedule's blocks in the hall calendar cancel the regular
+// trainings at that time (otherwise both are shown).
+function migrateToV10(db: Database) {
+  db.exec("ALTER TABLE public_schedule ADD COLUMN cancel_trainings INTEGER NOT NULL DEFAULT 0;");
 }
 
 // The public schedule of a visiting trainer: one row, plain text as entered.

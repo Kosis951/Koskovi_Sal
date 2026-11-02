@@ -709,8 +709,11 @@ function addRecurringBookings(
     (booking) =>
       !isRecurringBooking(booking) || booking.date <= lastHorizonDateKey,
   );
+  // A schedule block that does not cancel trainings runs next to them.
   const nonRecurringBookings = nextBookings.filter(
-    (booking) => !isRecurringBooking(booking),
+    (booking) =>
+      !isRecurringBooking(booking) &&
+      !(isScheduleBookingId(booking.id) && booking.status !== "maintenance"),
   );
 
   for (const recurringBooking of createRecurringBookings(recurringConfig)) {
@@ -1301,6 +1304,89 @@ function removeRecurringConflicts(
     }
 
     return !timeRangesOverlap(input.start, input.end, booking.start, booking.end);
+  });
+}
+
+// Blocks of the visiting trainer's public schedule (one per day, id
+// "rozpis-<date>"), kept in step with the schedule by syncScheduleBookings.
+export function isScheduleBookingId(id: string) {
+  return id.startsWith("rozpis-");
+}
+
+export type ScheduleBlock = { date: string; end: string; start: string };
+
+// Makes the hall calendar match the schedule: a booking per block from today
+// on, changed or removed when the schedule changes. A block that collides
+// with another one-off booking is left out (`skipped`). With
+// `cancelTrainings` the blocks are "Obsazeno" and replace the regular
+// trainings at that time; otherwise the trainings stay next to them.
+export async function syncScheduleBookings(input: {
+  actor: string;
+  blocks: ScheduleBlock[];
+  cancelTrainings: boolean;
+  title: string;
+}) {
+  return withDatabaseLock(async () => {
+    const bookings = await readBookings();
+    const today = getTodayPragueDateKey();
+    const now = new Date().toISOString();
+    const previous = bookings.filter((booking) => isScheduleBookingId(booking.id));
+    const others = bookings.filter((booking) => !isScheduleBookingId(booking.id));
+    const oneOff = others.filter((booking) => !isRecurringBooking(booking));
+    const next: Booking[] = [];
+    const skipped: Array<{ conflict: Booking; date: string }> = [];
+
+    for (const block of input.blocks) {
+      if (block.date < today) {
+        continue;
+      }
+
+      const id = `rozpis-${block.date}`;
+      const old = previous.find((booking) => booking.id === id);
+      const candidate: Booking = {
+        bookingKind: "hall",
+        createdAt: old?.createdAt ?? now,
+        createdBy: old?.createdBy ?? input.actor,
+        date: block.date,
+        end: block.end,
+        eventType: input.cancelTrainings ? "obsazeno" : "seminar",
+        id,
+        note: "Rozpis lekcí: záložka Externí trenér",
+        organizer: input.title,
+        start: block.start,
+        status: input.cancelTrainings ? "maintenance" : "confirmed",
+        title: input.title,
+        updatedAt: now,
+        updatedBy: input.actor,
+      };
+      const conflict = findBookingConflict(oneOff, candidate);
+
+      if (conflict) {
+        skipped.push({ conflict, date: block.date });
+        continue;
+      }
+
+      const isSame =
+        old &&
+        old.start === candidate.start &&
+        old.end === candidate.end &&
+        old.title === candidate.title &&
+        old.status === candidate.status;
+
+      next.push(isSame ? old : candidate);
+    }
+
+    const created = next.filter((booking) => !previous.some((old) => old.id === booking.id));
+    const updated = next.filter((booking) =>
+      previous.some((old) => old.id === booking.id && old !== booking),
+    );
+    const removed = previous.filter((old) => !next.some((booking) => booking.id === old.id));
+
+    if (created.length + updated.length + removed.length > 0) {
+      await writeBookings([...others, ...next]);
+    }
+
+    return { created, previous, removed, skipped, updated };
   });
 }
 

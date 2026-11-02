@@ -22,6 +22,7 @@ import {
 } from "react";
 import { LoginForm } from "@/components/dashboard/login-form";
 import { AppHeader } from "@/components/ui/app-header";
+import { NavDropdown } from "@/components/ui/nav-dropdown";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
 import {
@@ -175,7 +176,18 @@ export function AdminLayout({
         </div>
       ) : (
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6 lg:px-6 lg:py-6">
-          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:mx-0 lg:flex-col lg:self-start lg:px-0">
+          {/* Below 1024px the sections are a dropdown, next to it a sidebar. */}
+          <NavDropdown
+            className="lg:hidden"
+            items={visibleNavItems.map(({ href, icon, label, section: itemSection }) => ({
+              active: itemSection === section,
+              href,
+              icon,
+              label,
+            }))}
+            tone="surface"
+          />
+          <nav className="flex flex-col gap-1 max-lg:hidden lg:sticky lg:top-[calc(var(--app-header-h)+1rem)] lg:self-start">
             {visibleNavItems.map(({ href, icon: Icon, label, section: itemSection }) => {
               const isActive = itemSection === section;
 

@@ -80,6 +80,26 @@ export function parseSchedule(body: string, todayKey: string): ScheduleDay[] {
   return days.filter((day) => day.rows.length > 0 || day.dateKey);
 }
 
+// One block per dated day for the hall calendar: from the first lesson to the
+// end of the last one, breaks included.
+export function getScheduleBlocks(days: ScheduleDay[]) {
+  return days.flatMap((day) => {
+    const timed = day.rows.filter((row) => row.start && row.end);
+
+    if (!day.dateKey || timed.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        date: day.dateKey,
+        end: timed.map((row) => row.end as string).sort().at(-1) as string,
+        start: timed.map((row) => row.start as string).sort()[0],
+      },
+    ];
+  });
+}
+
 function isTime(hours: string, minutes: string) {
   return Number(hours) < 24 && Number(minutes) < 60;
 }

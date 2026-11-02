@@ -156,6 +156,12 @@ Radek s datem zacina den, radky „od–do jmeno“ jsou lekce (pomlcky libovoln
 pauza se zasedi, GROUP se zvyrazni, jine radky se ukazou jako poznamka. Rok se doplni sam
 (nejblizsi k dnesku). Vedle editoru je ziva ukazka.
 
+Zverejneny rozpis se propise do kalendare salu: kazdy den jako jeden blok od prvni do posledni lekce
+(vcetne obeda), takze si sal v tu dobu nikdo jiny nezabookuje. Volba „Zrusit pravidelne treninky
+v te dobe“ udela z bloku „Obsazeno“ (treninky ten den odpadnou); bez ni bezi treninky dal vedle
+bloku. Zmena rozpisu bloky upravi, zruseni zverejneni je smaze. Den, ktery koliduje s jinou akci,
+se do kalendare nedostane a editor to po ulozeni vypise.
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:
