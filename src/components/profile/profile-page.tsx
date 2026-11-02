@@ -9,6 +9,7 @@ import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { buttonPrimary, eyebrow, noticeTone, pageContainer } from "@/components/ui/styles";
 import { loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
 import type { UserProfile } from "@/lib/admin-users-db";
+import { formatPhone } from "@/lib/whatsapp";
 
 // /profil: the name shown instead of the login, the usual dance partner, and
 // the password.
@@ -74,6 +75,7 @@ export function ProfilePage({
 function ProfileForm({ initialProfile, isTrainer }: { initialProfile: UserProfile; isTrainer: boolean }) {
   const [displayName, setDisplayName] = useState(initialProfile.displayName ?? "");
   const [partnerName, setPartnerName] = useState(initialProfile.partnerName ?? "");
+  const [phone, setPhone] = useState(initialProfile.phone ? formatPhone(initialProfile.phone) : "");
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -84,11 +86,18 @@ function ProfileForm({ initialProfile, isTrainer }: { initialProfile: UserProfil
 
     try {
       const response = await fetch("/api/account/profile", {
-        body: JSON.stringify({ displayName, partnerName: isTrainer ? "" : partnerName }),
+        body: JSON.stringify({ displayName, partnerName: isTrainer ? "" : partnerName, phone }),
         headers: { "Content-Type": "application/json" },
         method: "PUT",
       });
-      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        profile?: UserProfile;
+      };
+
+      if (response.ok) {
+        setPhone(data.profile?.phone ? formatPhone(data.profile.phone) : "");
+      }
 
       setResult({
         ok: response.ok,
@@ -136,6 +145,24 @@ function ProfileForm({ initialProfile, isTrainer }: { initialProfile: UserProfil
           </span>
         </label>
       )}
+      <label className="field-label">
+        Telefon (nepovinné)
+        <input
+          autoComplete="tel"
+          className="field-input mt-1"
+          inputMode="tel"
+          maxLength={30}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="777 123 456"
+          type="tel"
+          value={phone}
+        />
+        <span className="mt-1 block text-xs font-normal text-ink-soft">
+          {isTrainer
+            ? "Jen pro tvůj profil, ostatní ho nevidí."
+            : "Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat na WhatsApp."}
+        </span>
+      </label>
       {result ? (
         <p className={`rounded-lg border px-3 py-2 text-sm ${result.ok ? noticeTone.success : noticeTone.error}`}>
           {result.text}

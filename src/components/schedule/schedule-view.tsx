@@ -1,8 +1,11 @@
 "use client";
 
-import { Coffee, Users, UtensilsCrossed } from "lucide-react";
+import { Coffee, Users, UtensilsCrossed, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useNow } from "@/components/dashboard/use-now";
-import type { ScheduleDay, ScheduleRow } from "@/lib/public-schedule";
+import { lessonKey, type ScheduleDay, type ScheduleRow } from "@/lib/public-schedule";
+
+export type ScheduleLesson = { date: string; end: string; lessonName: string; start: string };
 
 const dayFormatter = new Intl.DateTimeFormat("cs-CZ", {
   day: "numeric",
@@ -21,8 +24,18 @@ function toDateKey(date: Date) {
 }
 
 // The schedule as one table per day. Today's card is marked, and the row
-// that is on right now gets "Teď".
-export function ScheduleView({ days }: { days: ScheduleDay[] }) {
+// that is on right now gets "Teď". With `onRequest`, lessons still ahead
+// get a cross for asking to cancel or move them; `pendingKeys` (lessonKey)
+// are the ones already asked about.
+export function ScheduleView({
+  days,
+  onRequest,
+  pendingKeys,
+}: {
+  days: ScheduleDay[];
+  onRequest?: (lesson: ScheduleLesson) => void;
+  pendingKeys?: Set<string>;
+}) {
   const now = useNow();
   const todayKey = now ? toDateKey(now) : "";
   const nowMinutes = now ? now.getHours() * 60 + now.getMinutes() : -1;
@@ -31,6 +44,7 @@ export function ScheduleView({ days }: { days: ScheduleDay[] }) {
     <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
       {days.map((day, index) => {
         const isToday = Boolean(day.dateKey) && day.dateKey === todayKey;
+        const isPastDay = Boolean(day.dateKey && todayKey && day.dateKey < todayKey);
 
         return (
           <section
@@ -50,23 +64,50 @@ export function ScheduleView({ days }: { days: ScheduleDay[] }) {
                 <tr>
                   <th scope="col">Čas</th>
                   <th scope="col">Lekce</th>
+                  {onRequest ? <th scope="col">Žádost</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {day.rows.map((row, rowIndex) => (
-                  <Row
-                    isNow={
-                      isToday &&
-                      row.start !== undefined &&
-                      row.end !== undefined &&
-                      toMinutes(row.start) <= nowMinutes &&
-                      nowMinutes < toMinutes(row.end)
-                    }
-                    isPast={isToday && row.end !== undefined && toMinutes(row.end) <= nowMinutes}
-                    key={`${row.start ?? "note"}-${rowIndex}`}
-                    row={row}
-                  />
-                ))}
+                {day.rows.map((row, rowIndex) => {
+                  const isPast =
+                    isPastDay || (isToday && row.end !== undefined && toMinutes(row.end) <= nowMinutes);
+                  const lesson =
+                    day.dateKey && row.kind === "lesson" && row.text && row.start && row.end
+                      ? { date: day.dateKey, end: row.end, lessonName: row.text, start: row.start }
+                      : null;
+
+                  return (
+                    <Row
+                      action={
+                        !onRequest ? undefined : !lesson || isPast || !now ? null : pendingKeys?.has(lessonKey(lesson)) ? (
+                          <span className="whitespace-nowrap rounded-full bg-cleanup px-2 py-0.5 text-[11px] font-semibold text-cleanup-ink">
+                            žádost odeslána
+                          </span>
+                        ) : (
+                          <button
+                            aria-label={`Zrušit nebo přesunout lekci ${lesson.start}–${lesson.end} ${lesson.lessonName}`}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition hover:bg-busy hover:text-busy-ink"
+                            onClick={() => onRequest(lesson)}
+                            title="Zrušit nebo přesunout lekci"
+                            type="button"
+                          >
+                            <X size={16} />
+                          </button>
+                        )
+                      }
+                      isNow={
+                        isToday &&
+                        row.start !== undefined &&
+                        row.end !== undefined &&
+                        toMinutes(row.start) <= nowMinutes &&
+                        nowMinutes < toMinutes(row.end)
+                      }
+                      isPast={isPast}
+                      key={`${row.start ?? "note"}-${rowIndex}`}
+                      row={row}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </section>
@@ -76,11 +117,22 @@ export function ScheduleView({ days }: { days: ScheduleDay[] }) {
   );
 }
 
-function Row({ isNow, isPast, row }: { isNow: boolean; isPast: boolean; row: ScheduleRow }) {
+function Row({
+  action,
+  isNow,
+  isPast,
+  row,
+}: {
+  // The request cell: undefined = no such column, null = an empty cell.
+  action?: ReactNode;
+  isNow: boolean;
+  isPast: boolean;
+  row: ScheduleRow;
+}) {
   if (row.kind === "note") {
     return (
       <tr className="border-t border-line first:border-t-0">
-        <td className="px-4 py-2 text-ink-muted" colSpan={2}>
+        <td className="px-4 py-2 text-ink-muted" colSpan={action === undefined ? 2 : 3}>
           {row.text}
         </td>
       </tr>
@@ -120,6 +172,7 @@ function Row({ isNow, isPast, row }: { isNow: boolean; isPast: boolean; row: Sch
           ) : null}
         </span>
       </td>
+      {action === undefined ? null : <td className="w-px py-1 pr-2 text-right align-middle">{action}</td>}
     </tr>
   );
 }

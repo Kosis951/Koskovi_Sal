@@ -162,6 +162,22 @@ v te dobe“ udela z bloku „Obsazeno“ (treninky ten den odpadnou); bez ni be
 bloku. Zmena rozpisu bloky upravi, zruseni zverejneni je smaze. Den, ktery koliduje s jinou akci,
 se do kalendare nedostane a editor to po ulozeni vypise.
 
+## Zpravy pres WhatsApp a zadosti o zruseni
+
+Aplikace zpravy jen pripravi: tlacitko WhatsApp otevre WhatsApp s textem (a cislem, kdyz je zname),
+odeslat musi clovek sam. Zadne API ani poplatky, nic neodchazi ze serveru.
+
+- Rozpis externiho trenera (Sprava → Rozpis → Rozeslat pres WhatsApp): kazdy clovek z rozpisu se
+  svymi lekcemi; cislo se ke jmenu zapamatuje (tabulka `contact_phones`, vidi jen sprava salu).
+- Lekce u treneru: trener ma u potvrzenych lekci a v detailu lekce tlacitko WhatsApp. Cislo bere
+  z profilu tanecnika (Muj profil → Telefon, vidi ho jen trener, u ktereho ma lekci) nebo z lekce
+  zapsane pro hosta.
+- Bez cisla se WhatsApp otevre s textem a kontakt se vybere rucne.
+- Zadost o zruseni/presun: na strance Externi trener ma kazda nadchazejici lekce krizek. Kdokoli
+  (i neprihlaseny) posle zadost (zrusit / presunout, kdy by se hodilo, jmeno, telefon); u radku se
+  pak ukaze „zadost odeslana“. Nic se nemeni samo: zadosti jsou ve Sprave → Rozpis, odtud se
+  odpovi pres WhatsApp a oznaci „Vyrizeno“. Limit 10 zadosti za hodinu z jedne adresy.
+
 ## Push notifikace
 
 Zapinaji se na strance `/aplikace` (sekce Upozorneni, v hlavicce zvonecek). Posila se:

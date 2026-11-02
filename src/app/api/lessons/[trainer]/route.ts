@@ -8,6 +8,7 @@ import {
   maxPartnerNameLength,
   requestLesson,
 } from "@/lib/lessons-db";
+import { maxPhoneInputLength, normalizePhone } from "@/lib/whatsapp";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ message: "Konec musí být později než začátek." }, { status: 400 });
     }
 
+    const phoneInput = typeof payload.phone === "string" ? payload.phone : "";
+    const phone = phoneInput.length > maxPhoneInputLength ? null : normalizePhone(phoneInput);
+
+    if (phone === null) {
+      return NextResponse.json(
+        { message: "Telefon zadej jako číslo, např. 777 123 456 nebo +421 900 123 456." },
+        { status: 400 },
+      );
+    }
+
     const written = addGuestLesson({
       actor: auth.access.username,
       date: payload.date,
@@ -88,6 +99,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       guest,
       note,
       partner,
+      phone: phone || undefined,
       start: payload.start,
       trainer: auth.trainer,
     });

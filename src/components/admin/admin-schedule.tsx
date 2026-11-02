@@ -3,6 +3,7 @@
 import { ExternalLink, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ScheduleRequests, ScheduleWhatsApp } from "@/components/admin/admin-schedule-messages";
 import { ScheduleView } from "@/components/schedule/schedule-view";
 import { scheduleChangeEvent } from "@/components/ui/app-header";
 import { buttonPrimary, buttonSecondary, noticeTone } from "@/components/ui/styles";
@@ -98,6 +99,8 @@ export function AdminSchedule() {
   }
 
   return (
+    <div className="grid grid-cols-1 gap-5">
+    <ScheduleRequests />
     <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
       <form className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:p-5" onSubmit={save}>
         <label className="field-label">
@@ -205,6 +208,8 @@ export function AdminSchedule() {
           </p>
         )}
       </section>
+    </div>
+    <ScheduleWhatsApp days={days} published={published} title={title} />
     </div>
   );
 }

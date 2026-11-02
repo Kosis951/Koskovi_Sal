@@ -40,6 +40,9 @@ export type TrainerLesson = {
   note?: string;
   // Who comes along; empty for a solo lesson.
   partner?: string;
+  // Only for the trainer: where a WhatsApp message goes (the requester's
+  // profile, or the number written in with a guest).
+  phone?: string;
   requester: string;
   start: string;
   status: LessonStatus;
@@ -117,6 +120,7 @@ type LessonRow = {
   date: string;
   end: string;
   guest_name: string | null;
+  guest_phone: string | null;
   id: string;
   note: string | null;
   partner_name: string | null;
@@ -253,18 +257,31 @@ export function getTrainerCalendar(
 
   // Everything above compares account names; in what goes out they are
   // replaced by what people should read.
-  const named = (lesson: TrainerLesson) => ({ ...lesson, requester: label(lesson) });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- left out on purpose
+  const named = ({ phone, ...lesson }: TrainerLesson) => ({ ...lesson, requester: label(lesson) });
+  // The trainer also gets the phone number for a WhatsApp message.
+  const phones = new Map(
+    viewer.canManage
+      ? readStoredAdminUsersSync()
+          .filter((user) => !user.deleted && user.phone)
+          .map((user) => [normalizeUsername(user.username), user.phone as string])
+      : [],
+  );
+  const forTrainer = (lesson: TrainerLesson) => ({
+    ...named(lesson),
+    phone: lesson.guest ? lesson.phone : phones.get(normalizeUsername(lesson.requester)),
+  });
 
   return {
     canManage: viewer.canManage,
     dayLessons,
     swaps,
     lessons: viewer.canManage
-      ? upcoming.filter((lesson) => lesson.status === "confirmed").map(named)
+      ? upcoming.filter((lesson) => lesson.status === "confirmed").map(forTrainer)
       : [],
     mine: upcoming.filter((lesson) => isMine(lesson) && lesson.status !== "cancelled").map(named),
     requests: viewer.canManage
-      ? upcoming.filter((lesson) => lesson.status === "pending").map(named)
+      ? upcoming.filter((lesson) => lesson.status === "pending").map(forTrainer)
       : [],
     slots,
     trainer,
@@ -416,6 +433,7 @@ export function addGuestLesson(input: {
   guest: string;
   note?: string;
   partner?: string;
+  phone?: string;
   start: string;
   trainer: string;
 }) {
@@ -431,6 +449,7 @@ export function addGuestLesson(input: {
       id: randomUUID(),
       note: input.note || undefined,
       partner: input.partner || undefined,
+      phone: input.phone || undefined,
       requester: trainerKey,
       start: input.start,
       status: "confirmed",
@@ -448,8 +467,8 @@ export function addGuestLesson(input: {
 
     db.prepare(
       `INSERT INTO trainer_lessons
-         (id, trainer, date, start, "end", requester, note, partner_name, guest_name, status, created_at, decided_at, decided_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
+         (id, trainer, date, start, "end", requester, note, partner_name, guest_name, guest_phone, status, created_at, decided_at, decided_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
     ).run(
       lesson.id,
       trainerKey,
@@ -460,6 +479,7 @@ export function addGuestLesson(input: {
       lesson.note ?? null,
       lesson.partner ?? null,
       input.guest,
+      lesson.phone ?? null,
       createdAt,
       createdAt,
       input.actor,
@@ -481,7 +501,7 @@ export function changeLesson(input: {
 }) {
   const db = getDb();
   const lesson = db
-    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, guest_phone, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(input.id, normalizeUsername(input.trainer)) as LessonRow | undefined;
 
   if (!lesson) {
@@ -534,7 +554,7 @@ function readPendingSwaps(trainerKey: string) {
 
 function readLesson(trainerKey: string, id: string) {
   const row = getDb()
-    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
+    .prepare('SELECT id, date, start, "end", requester, note, partner_name, guest_name, guest_phone, status FROM trainer_lessons WHERE id = ? AND trainer = ?')
     .get(id, trainerKey) as LessonRow | undefined;
 
   return row ? rowToLesson(row) : null;
@@ -691,7 +711,7 @@ function readWindows(trainerKey: string): TrainerWindow[] {
 function readLessons(trainerKey: string, fromDate: string) {
   const rows = getDb()
     .prepare(
-      `SELECT id, date, start, "end", requester, note, partner_name, guest_name, status FROM trainer_lessons
+      `SELECT id, date, start, "end", requester, note, partner_name, guest_name, guest_phone, status FROM trainer_lessons
        WHERE trainer = ? AND date >= ? ORDER BY date, start`,
     )
     .all(trainerKey, fromDate) as LessonRow[];
@@ -707,6 +727,7 @@ function rowToLesson(row: LessonRow): TrainerLesson {
     id: row.id,
     note: row.note ?? undefined,
     partner: row.partner_name ?? undefined,
+    phone: row.guest_phone ?? undefined,
     requester: row.requester,
     start: row.start,
     status: row.status,

@@ -100,6 +100,16 @@ export function getScheduleBlocks(days: ScheduleDay[]) {
   });
 }
 
+// Names compare without case and extra spaces ("Novák" = "novák ").
+export function nameKey(name: string) {
+  return name.replace(/s+/g, " ").trim().toLowerCase();
+}
+
+// One lesson row of the schedule: day, start and name.
+export function lessonKey(lesson: { date: string; lessonName: string; start: string }) {
+  return `${lesson.date}|${lesson.start}|${nameKey(lesson.lessonName)}`;
+}
+
 function isTime(hours: string, minutes: string) {
   return Number(hours) < 24 && Number(minutes) < 60;
 }

@@ -8,6 +8,7 @@ import { LessonsWeekGrid, type GridBlock } from "@/components/lessons/lessons-we
 import { useRefreshHandler } from "@/components/pwa/pull-to-refresh";
 import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { Sheet } from "@/components/ui/sheet";
+import { WhatsAppButton } from "@/components/ui/whatsapp-button";
 import {
   buttonPrimary,
   buttonSecondary,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/styles";
 import { getAdminSession, loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
 import { lessonsTrainerCookie } from "@/lib/lessons-shared";
+import { formatPhone } from "@/lib/whatsapp";
 import type {
   LessonSlot,
   TrainerCalendar,
@@ -39,6 +41,13 @@ function formatDay(dateKey: string) {
 
 function formatLesson(lesson: { date: string; end: string; start: string }) {
   return `${formatDay(lesson.date)} · ${lesson.start}–${lesson.end}`;
+}
+
+// The trainer's WhatsApp message about a lesson (sent by hand).
+function lessonMessage(lesson: TrainerLesson, trainerName: string) {
+  return lesson.status === "pending"
+    ? `Ahoj, píšu k tvé žádosti o lekci ${formatLesson(lesson)}.`
+    : `Ahoj, připomínám lekci ${formatLesson(lesson)} u trenéra ${trainerName}.`;
 }
 
 type Notice = { ok: boolean; text: string } | null;
@@ -296,11 +305,14 @@ export function TrainerCalendarPage({
                   empty="Zatím žádná potvrzená lekce."
                   lessons={calendar.lessons}
                   renderActions={(lesson) => (
-                    <CancelButton
-                      isBusy={isBusy}
-                      onCancel={() => send(`/${lesson.id}`, "PATCH", { action: "cancel" })}
-                      question={`Zrušit lekci ${formatLesson(lesson)} (${lesson.requester})?`}
-                    />
+                    <>
+                      <WhatsAppButton phone={lesson.phone} text={lessonMessage(lesson, calendar.trainerName)} />
+                      <CancelButton
+                        isBusy={isBusy}
+                        onCancel={() => send(`/${lesson.id}`, "PATCH", { action: "cancel" })}
+                        question={`Zrušit lekci ${formatLesson(lesson)} (${lesson.requester})?`}
+                      />
+                    </>
                   )}
                   showRequester
                 />
@@ -478,6 +490,21 @@ export function TrainerCalendarPage({
               </p>
               {openLesson.note ? <p className="mt-1.5 text-sm text-ink">{openLesson.note}</p> : null}
             </div>
+            {calendar.canManage ? (
+              <div className="grid gap-1.5">
+                <WhatsAppButton
+                  label="Napsat na WhatsApp"
+                  phone={openLesson.phone}
+                  size="large"
+                  text={lessonMessage(openLesson, calendar.trainerName)}
+                />
+                <p className="text-center text-xs text-ink-soft">
+                  {openLesson.phone
+                    ? `Na číslo ${formatPhone(openLesson.phone)}, zprávu ještě odešleš ty.`
+                    : "Číslo neznáme: kontakt vybereš ve WhatsAppu. Tanečník si ho může přidat v profilu."}
+                </p>
+              </div>
+            ) : null}
             <span className={`justify-self-start rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadge[openLesson.status].className}`}>
               {statusBadge[openLesson.status].label}
             </span>
@@ -846,7 +873,7 @@ function GuestLessonForm({
   onSubmit,
 }: {
   initial: SlotTime;
-  onSubmit: (input: SlotTime & { guest: string; note: string; partner: string }) => Promise<void>;
+  onSubmit: (input: SlotTime & { guest: string; note: string; partner: string; phone: string }) => Promise<void>;
 }) {
   const [date, setDate] = useState(initial.date);
   const [start, setStart] = useState(initial.start);
@@ -855,6 +882,7 @@ function GuestLessonForm({
   const [isCouple, setIsCouple] = useState(false);
   const [partner, setPartner] = useState("");
   const [note, setNote] = useState("");
+  const [phone, setPhone] = useState("");
   const [isSending, setIsSending] = useState(false);
   const error =
     start && end && start >= end
@@ -878,6 +906,7 @@ function GuestLessonForm({
             guest: guest.trim(),
             note: note.trim(),
             partner: isCouple ? partner.trim() : "",
+            phone: phone.trim(),
             start,
           });
         } finally {
@@ -933,6 +962,19 @@ function GuestLessonForm({
           />
         </label>
       ) : null}
+      <label className="field-label">
+        Telefon pro WhatsApp (nepovinné)
+        <input
+          autoComplete="off"
+          className="field-input mt-1"
+          inputMode="tel"
+          maxLength={30}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="777 123 456"
+          type="tel"
+          value={phone}
+        />
+      </label>
       <label className="field-label">
         Poznámka (nepovinné)
         <textarea

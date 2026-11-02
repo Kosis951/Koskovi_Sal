@@ -55,6 +55,7 @@ export async function upsertAdminUserPassword(input: {
       deleted: false,
       displayName: previousUser?.displayName,
       partnerName: previousUser?.partnerName,
+      phone: previousUser?.phone,
       lessonFilter: previousUser?.lessonFilter,
       passwordHash: await hashPassword(input.password),
       role: isRestored ? undefined : previousUser?.role,
@@ -81,6 +82,7 @@ export async function upsertAdminUserPassword(input: {
 export type UserProfile = {
   displayName?: string;
   partnerName?: string;
+  phone?: string;
 };
 
 export function getUserProfile(username: string): UserProfile {
@@ -89,7 +91,7 @@ export function getUserProfile(username: string): UserProfile {
     (item) => !item.deleted && normalizeUsername(item.username) === key,
   );
 
-  return { displayName: user?.displayName, partnerName: user?.partnerName };
+  return { displayName: user?.displayName, partnerName: user?.partnerName, phone: user?.phone };
 }
 
 // The account's own profile. Works for accounts from the server
@@ -110,6 +112,7 @@ export async function updateUserProfile(username: string, profile: UserProfile) 
         createdBy: previousUser?.createdBy ?? username,
         displayName: profile.displayName,
         partnerName: profile.partnerName,
+        phone: profile.phone,
         updatedAt: now,
         updatedBy: username,
         username: previousUser?.username ?? username,
@@ -244,13 +247,13 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const db = getDb();
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
-      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
       deleted = excluded.deleted, display_name = excluded.display_name,
-      partner_name = excluded.partner_name,
+      partner_name = excluded.partner_name, phone = excluded.phone,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -270,6 +273,7 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.updatedBy ?? null,
         user.displayName ?? null,
         user.partnerName ?? null,
+        user.phone ?? null,
       );
     }
   })();

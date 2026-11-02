@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 10;
+const schemaVersion = 11;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -113,8 +113,47 @@ function migrate(db: Database) {
       migrateToV10(db);
     }
 
+    if (version < 11) {
+      migrateToV11(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Phone numbers for WhatsApp messages (only prepared, sent by hand): the
+// account's own in its profile, one for a lesson written in for a guest, and
+// the people in the visiting trainer's schedule by name (seen by managers).
+// schedule_requests: requests from the public schedule to cancel or move a
+// lesson; managers deal with them by hand.
+function migrateToV11(db: Database) {
+  db.exec(`
+    ALTER TABLE admin_users ADD COLUMN phone TEXT;
+    ALTER TABLE trainer_lessons ADD COLUMN guest_phone TEXT;
+    CREATE TABLE contact_phones (
+      name_key TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      updated_at TEXT,
+      updated_by TEXT
+    );
+    CREATE TABLE schedule_requests (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      start TEXT NOT NULL,
+      "end" TEXT NOT NULL,
+      lesson_name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('cancel', 'move')),
+      preferred TEXT,
+      requester_name TEXT NOT NULL,
+      phone TEXT,
+      note TEXT,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'done')),
+      created_at TEXT NOT NULL,
+      done_at TEXT,
+      done_by TEXT
+    );
+  `);
 }
 
 // Whether the schedule's blocks in the hall calendar cancel the regular
