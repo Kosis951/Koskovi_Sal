@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireManager } from "@/lib/api-auth";
 import { getClientIp } from "@/lib/login-rate-limit";
-import { nameKey, parseSchedule } from "@/lib/public-schedule";
+import { nameKey, parseSchedule, scheduleRequestDeadline } from "@/lib/public-schedule";
 import { getPublicSchedule } from "@/lib/public-schedule-db";
 import { addScheduleRequest, getScheduleRequests } from "@/lib/schedule-requests-db";
 import { isRateLimited } from "@/lib/simple-rate-limit";
@@ -38,7 +38,8 @@ export async function GET() {
 
 // From the public schedule, without signing in: { date, start, lessonName,
 // kind: "cancel" | "move", preferred?, requesterName, phone?, note? }. Only for
-// a lesson that is in the published schedule and still ahead.
+// a lesson that is in the published schedule and still ahead, and only within
+// a day of publishing.
 export async function POST(request: NextRequest) {
   if (isRateLimited(`schedule-request:${getClientIp(request.headers)}`, 10, 60 * 60 * 1000)) {
     return NextResponse.json(
@@ -81,6 +82,15 @@ export async function POST(request: NextRequest) {
 
   // The lesson has to be in the published schedule and not over yet.
   const schedule = getPublicSchedule();
+  const deadline = scheduleRequestDeadline(schedule.publishedAt);
+
+  if (!schedule.published || !deadline || Date.now() > deadline.getTime()) {
+    return NextResponse.json(
+      { message: "Zrušit nebo přesunout lekci šlo jen den od zveřejnění rozpisu. Ozvi se přímo správcům." },
+      { status: 403 },
+    );
+  }
+
   const parts = Object.fromEntries(pragueNow.formatToParts(new Date()).map((part) => [part.type, part.value]));
   const todayKey = `${parts.year}-${parts.month}-${parts.day}`;
   const nowTime = `${parts.hour}:${parts.minute}`;

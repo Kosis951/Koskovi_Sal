@@ -12,6 +12,7 @@ import {
   maxScheduleBodyLength,
   maxScheduleTitleLength,
   parseSchedule,
+  scheduleRequestDeadline,
 } from "@/lib/public-schedule";
 
 const placeholder = `5.11.
@@ -25,6 +26,27 @@ const placeholder = `5.11.
 
 const blockDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "short" });
 
+const deadlineFormatter = new Intl.DateTimeFormat("cs-CZ", {
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  month: "numeric",
+  weekday: "short",
+});
+
+// The request window as the editor shows it.
+function requestInfo(publishedAt?: string) {
+  const deadline = scheduleRequestDeadline(publishedAt);
+
+  if (!deadline) {
+    return "Den od zveřejnění si lidé můžou požádat o zrušení nebo přesun lekce.";
+  }
+
+  return deadline.getTime() > Date.now()
+    ? `Žádosti o zrušení nebo přesun jdou poslat do ${deadlineFormatter.format(deadline)}.`
+    : `Žádosti o zrušení nebo přesun šlo poslat do ${deadlineFormatter.format(deadline)}. Novou lhůtu spustí zrušení a nové zveřejnění.`;
+}
+
 function todayKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 }
@@ -36,6 +58,8 @@ export function AdminSchedule() {
   const [body, setBody] = useState("");
   const [published, setPublished] = useState(false);
   const [cancelTrainings, setCancelTrainings] = useState(false);
+  // When the saved schedule was published (starts the request window).
+  const [publishedAt, setPublishedAt] = useState<string | undefined>(undefined);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ text: string; tone: "error" | "success" | "warning" } | null>(null);
@@ -48,12 +72,13 @@ export function AdminSchedule() {
 
     void fetch("/api/rozpis", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: { body?: string; cancelTrainings?: boolean; published?: boolean; title?: string }) => {
+      .then((data: { body?: string; cancelTrainings?: boolean; published?: boolean; publishedAt?: string; title?: string }) => {
         if (!isCancelled) {
           setTitle(data.title ?? "");
           setBody(data.body ?? "");
           setPublished(data.published === true);
           setCancelTrainings(data.cancelTrainings === true);
+          setPublishedAt(data.publishedAt);
           setIsLoaded(true);
         }
       })
@@ -79,7 +104,15 @@ export function AdminSchedule() {
         headers: { "Content-Type": "application/json" },
         method: "PUT",
       });
-      const data = (await response.json().catch(() => ({}))) as { message?: string; skipped?: number };
+      const data = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        schedule?: { publishedAt?: string };
+        skipped?: number;
+      };
+
+      if (response.ok) {
+        setPublishedAt(data.schedule?.publishedAt);
+      }
 
       setNotice({
         text: data.message ?? (response.ok ? "Uloženo." : "Uložení se nepodařilo."),
@@ -148,7 +181,8 @@ export function AdminSchedule() {
           <span>
             Zveřejnit
             <span className="mt-0.5 block text-xs font-normal text-ink-muted">
-              Rozpis uvidí všichni i bez přihlášení a v hlavičce se objeví „Externí trenér“.
+              Rozpis uvidí všichni i bez přihlášení a v hlavičce se objeví „Externí trenér“.{" "}
+              {requestInfo(publishedAt)}
             </span>
           </span>
         </label>

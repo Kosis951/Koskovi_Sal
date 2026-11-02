@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { PublicSchedulePage } from "@/components/schedule/public-schedule-page";
 import { canManageBookings, getAdminAccess } from "@/lib/auth";
-import { parseSchedule } from "@/lib/public-schedule";
+import { parseSchedule, scheduleRequestDeadline } from "@/lib/public-schedule";
 import { getPublicSchedule } from "@/lib/public-schedule-db";
 import { getPendingLessonKeys } from "@/lib/schedule-requests-db";
 
@@ -31,6 +31,9 @@ export default async function RozpisPage() {
       initialSession={access ? { role: access.role, username: access.username } : null}
       isDraft={canEdit && !schedule.published && Boolean(schedule.body)}
       pendingKeys={schedule.published ? getPendingLessonKeys() : []}
+      requestsUntil={
+        schedule.published ? scheduleRequestDeadline(schedule.publishedAt)?.toISOString() ?? null : null
+      }
       title={isVisible ? schedule.title : "Externí trenér"}
     />
   );

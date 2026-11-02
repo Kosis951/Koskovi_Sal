@@ -177,6 +177,8 @@ odeslat musi clovek sam. Zadne API ani poplatky, nic neodchazi ze serveru.
   (i neprihlaseny) posle zadost (zrusit / presunout, kdy by se hodilo, jmeno, telefon); u radku se
   pak ukaze „zadost odeslana“. Nic se nemeni samo: zadosti jsou ve Sprave → Rozpis, odtud se
   odpovi pres WhatsApp a oznaci „Vyrizeno“. Limit 10 zadosti za hodinu z jedne adresy.
+  Zadosti jdou poslat jen 24 hodin od zverejneni rozpisu (pak krizky zmizi a server dalsi
+  odmitne). Uprava zverejneneho rozpisu lhutu neposouva; novou spusti zruseni a nove zverejneni.
 
 ## Push notifikace
 

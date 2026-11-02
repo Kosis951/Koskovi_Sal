@@ -3,6 +3,7 @@
 import { CalendarX2, Clock3, Pencil, Send } from "lucide-react";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { useNow } from "@/components/dashboard/use-now";
 import { ScheduleView, type ScheduleLesson } from "@/components/schedule/schedule-view";
 import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { Sheet } from "@/components/ui/sheet";
@@ -11,6 +12,13 @@ import { logoutAdmin } from "@/lib/admin-auth-client";
 import { lessonKey, type ScheduleDay } from "@/lib/public-schedule";
 
 const lessonDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "long" });
+const deadlineFormatter = new Intl.DateTimeFormat("cs-CZ", {
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  month: "numeric",
+  weekday: "short",
+});
 
 // /rozpis: a visiting trainer's lessons for everyone, without signing in.
 export function PublicSchedulePage({
@@ -19,6 +27,7 @@ export function PublicSchedulePage({
   initialSession,
   isDraft,
   pendingKeys: initialPendingKeys,
+  requestsUntil,
   title,
 }: {
   canEdit: boolean;
@@ -28,6 +37,9 @@ export function PublicSchedulePage({
   isDraft: boolean;
   // Lessons someone already asked to cancel or move (lessonKey).
   pendingKeys: string[];
+  // Until when lessons can be asked to be cancelled or moved (a day from
+  // publishing); null when not at all.
+  requestsUntil: string | null;
   title: string;
 }) {
   const [session, setSession] = useState(initialSession);
@@ -35,6 +47,9 @@ export function PublicSchedulePage({
   // The lesson the request form is open for.
   const [requestLesson, setRequestLesson] = useState<ScheduleLesson | null>(null);
   const [notice, setNotice] = useState("");
+  const now = useNow();
+  const deadline = requestsUntil ? new Date(requestsUntil) : null;
+  const canRequest = !isDraft && Boolean(now && deadline && now < deadline);
 
   async function logout() {
     await logoutAdmin();
@@ -81,12 +96,14 @@ export function PublicSchedulePage({
               ) : null}
               <ScheduleView
                 days={days}
-                onRequest={isDraft ? undefined : setRequestLesson}
+                onRequest={canRequest ? setRequestLesson : undefined}
                 pendingKeys={pendingKeys}
               />
-              {isDraft ? null : (
+              {isDraft || !now || !deadline ? null : (
                 <p className="text-xs text-ink-soft">
-                  Nemůžeš na lekci? Klikni na křížek u svého řádku a pošli žádost o zrušení nebo přesun.
+                  {canRequest
+                    ? `Nemůžeš na lekci? Klikni na křížek u svého řádku a pošli žádost o zrušení nebo přesun – jde to do ${deadlineFormatter.format(deadline)}.`
+                    : "Zrušit nebo přesunout lekci šlo den od zveřejnění rozpisu. Teď se ozvi přímo správcům."}
                 </p>
               )}
             </>

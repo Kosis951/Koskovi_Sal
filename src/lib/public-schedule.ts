@@ -26,6 +26,16 @@ export type ScheduleDay = {
 export const maxScheduleTitleLength = 80;
 export const maxScheduleBodyLength = 8000;
 
+// Requests to cancel or move a lesson are accepted this long after the
+// schedule is published.
+export const scheduleRequestWindowMs = 24 * 60 * 60 * 1000;
+
+export function scheduleRequestDeadline(publishedAt?: string) {
+  const published = publishedAt ? Date.parse(publishedAt) : Number.NaN;
+
+  return Number.isNaN(published) ? null : new Date(published + scheduleRequestWindowMs);
+}
+
 const dateLine =
   /^\s*(?:[\p{L}]+\s+)?(\d{1,2})\.\s*(\d{1,2})\.?(?:\s*(\d{4}))?\s*:?\s*$/u;
 const timeLine =
