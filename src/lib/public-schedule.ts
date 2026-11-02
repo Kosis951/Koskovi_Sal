@@ -41,7 +41,8 @@ const dateLine =
 const timeLine =
   /^\s*(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})\s*(?:[-–—:]\s*)?(.*)$/;
 const breakWords = /oběd|obed|coffee|káva|kafe|pauza|přestávka|prestavka|break|svačina/i;
-const groupWords = /group|skupin/i;
+// A lesson for everybody ("GROUP", "Seminář LAT"…), not one person's.
+const groupWords = /group|skupin|semin[aá][rř]/i;
 
 // `todayKey` (YYYY-MM-DD) picks the year for dates written without one: the
 // one that puts the date closest to today.
@@ -118,6 +119,11 @@ export function nameKey(name: string) {
 // One lesson row of the schedule: day, start and name.
 export function lessonKey(lesson: { date: string; lessonName: string; start: string }) {
   return `${lesson.date}|${lesson.start}|${nameKey(lesson.lessonName)}`;
+}
+
+// What a row shows: a bare "GROUP" is called a seminar.
+export function rowLabel(row: ScheduleRow) {
+  return row.kind === "group" && /^group$/i.test(row.text) ? "Seminář" : row.text;
 }
 
 function isTime(hours: string, minutes: string) {

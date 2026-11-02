@@ -153,7 +153,7 @@ vlozi tak, jak ho trener posle:
 ```
 
 Radek s datem zacina den, radky „od–do jmeno“ jsou lekce (pomlcky libovolne). Obed, coffee break,
-pauza se zasedi, GROUP se zvyrazni, jine radky se ukazou jako poznamka. Rok se doplni sam
+pauza se zasedi, GROUP i Seminar se zvyrazni jako spolecna lekce (samotne GROUP se ukaze jako „Seminar“), jine radky se ukazou jako poznamka. Rok se doplni sam
 (nejblizsi k dnesku). Vedle editoru je ziva ukazka.
 
 Zverejneny rozpis se propise do kalendare salu: kazdy den jako jeden blok od prvni do posledni lekce

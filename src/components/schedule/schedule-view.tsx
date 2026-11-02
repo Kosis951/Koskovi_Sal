@@ -3,7 +3,7 @@
 import { Coffee, Users, UtensilsCrossed, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useNow } from "@/components/dashboard/use-now";
-import { lessonKey, type ScheduleDay, type ScheduleRow } from "@/lib/public-schedule";
+import { lessonKey, rowLabel, type ScheduleDay, type ScheduleRow } from "@/lib/public-schedule";
 
 export type ScheduleLesson = { date: string; end: string; lessonName: string; start: string };
 
@@ -166,7 +166,7 @@ function Row({
             )
           ) : null}
           {row.kind === "group" ? <Users aria-hidden="true" className="shrink-0" size={15} /> : null}
-          <span className={row.kind === "break" ? "italic" : "font-semibold"}>{row.text || "–"}</span>
+          <span className={row.kind === "break" ? "italic" : "font-semibold"}>{rowLabel(row) || "–"}</span>
           {isNow ? (
             <span className="rounded-full bg-accent px-2 py-px text-[11px] font-semibold not-italic text-white">Teď</span>
           ) : null}
