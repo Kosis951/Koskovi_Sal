@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { buttonPrimary, buttonSecondary, noticeTone } from "@/components/ui/styles";
 
 // A small centred yes/no question. Closes on Escape or a click on the
@@ -26,6 +26,14 @@ export function ConfirmDialog({
   open: boolean;
   title: string;
 }) {
+  // The latest onCancel, so the effect below runs only on open and close
+  // (rerunning it would move the focus back to where it was before).
+  const onCancelRef = useRef(onCancel);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
   useEffect(() => {
     if (!open) {
       return undefined;
@@ -35,7 +43,7 @@ export function ConfirmDialog({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onCancel();
+        onCancelRef.current();
       }
     }
 
@@ -45,7 +53,7 @@ export function ConfirmDialog({
       document.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus?.({ preventScroll: true });
     };
-  }, [onCancel, open]);
+  }, [open]);
 
   if (!open) {
     return null;

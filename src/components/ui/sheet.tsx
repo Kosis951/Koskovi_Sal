@@ -50,6 +50,17 @@ export function Sheet({
     }, closeDurationMs);
   }, [onClose]);
 
+  // Pages pass a new onClose on every render; the effect below must not
+  // rerun for that, so it reads the latest one from here.
+  const requestCloseRef = useRef(requestClose);
+
+  useEffect(() => {
+    requestCloseRef.current = requestClose;
+  }, [requestClose]);
+
+  // Only when the sheet opens and closes: rerunning it while open would move
+  // the focus back to whatever had it before (on phones, typing a letter
+  // would jump to the time field and pop up its picker).
   useEffect(() => {
     if (!open) {
       return undefined;
@@ -60,7 +71,7 @@ export function Sheet({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        requestClose();
+        requestCloseRef.current();
       }
     }
 
@@ -72,7 +83,7 @@ export function Sheet({
       document.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus?.({ preventScroll: true });
     };
-  }, [open, requestClose]);
+  }, [open]);
 
   useEffect(
     () => () => {
