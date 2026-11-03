@@ -1,5 +1,6 @@
 import { bookingToRow, getDb } from "@/lib/db";
 import type { Booking } from "@/lib/schedule";
+import type { ScheduleBlock } from "@/lib/public-schedule";
 
 const recurringHorizonDays = 28;
 const alternationBaseMonday = "2026-05-18";
@@ -1307,13 +1308,12 @@ function removeRecurringConflicts(
   });
 }
 
-// Blocks of the visiting trainer's public schedule (one per day, id
-// "rozpis-<date>"), kept in step with the schedule by syncScheduleBookings.
+// Blocks of the visiting trainer's public schedule (id "rozpis-<block key>":
+// the trainer's time and each seminar), kept in step with the schedule by
+// syncScheduleBookings.
 export function isScheduleBookingId(id: string) {
   return id.startsWith("rozpis-");
 }
-
-export type ScheduleBlock = { date: string; end: string; start: string };
 
 // Makes the hall calendar match the schedule: a booking per block from today
 // on, changed or removed when the schedule changes. A block that collides
@@ -1341,7 +1341,7 @@ export async function syncScheduleBookings(input: {
         continue;
       }
 
-      const id = `rozpis-${block.date}`;
+      const id = `rozpis-${block.key}`;
       const old = previous.find((booking) => booking.id === id);
       const candidate: Booking = {
         bookingKind: "hall",
@@ -1355,7 +1355,7 @@ export async function syncScheduleBookings(input: {
         organizer: input.title,
         start: block.start,
         status: input.cancelTrainings ? "maintenance" : "confirmed",
-        title: input.title,
+        title: block.title ?? input.title,
         updatedAt: now,
         updatedBy: input.actor,
       };

@@ -157,7 +157,8 @@ pauza se zasedi, GROUP i Seminar se zvyrazni jako spolecna lekce (samotne GROUP 
 (nejblizsi k dnesku). Vedle editoru je ziva ukazka.
 
 Zverejneny rozpis se propise do kalendare salu: kazdy den jako jeden blok od prvni do posledni lekce
-(vcetne obeda), takze si sal v tu dobu nikdo jiny nezabookuje. Volba „Zrusit pravidelne treninky
+(vcetne obeda), takze si sal v tu dobu nikdo jiny nezabookuje. Seminar (GROUP) je v kalendari
+samostatna akce „Seminar“ a blok trenera se kolem nej rozdeli. Volba „Zrusit pravidelne treninky
 v te dobe“ udela z bloku „Obsazeno“ (treninky ten den odpadnou); bez ni bezi treninky dal vedle
 bloku. Zmena rozpisu bloky upravi, zruseni zverejneni je smaze. Den, ktery koliduje s jinou akci,
 se do kalendare nedostane a editor to po ulozeni vypise.

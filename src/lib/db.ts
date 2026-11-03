@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 12;
+const schemaVersion = 13;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -121,15 +121,31 @@ function migrate(db: Database) {
       migrateToV12(db);
     }
 
+    if (version < 13) {
+      migrateToV13(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
 }
 
-// Phone numbers for WhatsApp messages (only prepared, sent by hand): the
-// account's own in its profile, one for a lesson written in for a guest, and
-// the people in the visiting trainer's schedule by name (seen by managers).
-// schedule_requests: requests from the public schedule to cancel or move a
-// lesson; managers deal with them by hand.
+// Saved phone numbers of schedule people were keyed by a broken name key;
+// key them again by the name (case and spaces ignored), the newest wins.
+function migrateToV13(db: Database) {
+  const rows = db
+    .prepare("SELECT name_key, name, updated_at FROM contact_phones ORDER BY updated_at")
+    .all() as Array<{ name: string; name_key: string; updated_at: string | null }>;
+
+  for (const row of rows) {
+    const key = row.name.replace(/\s+/g, " ").trim().toLowerCase();
+
+    if (key !== row.name_key) {
+      db.prepare("DELETE FROM contact_phones WHERE name_key = ?").run(key);
+      db.prepare("UPDATE contact_phones SET name_key = ? WHERE name_key = ?").run(key, row.name_key);
+    }
+  }
+}
+
 // When the public schedule was published: requests to cancel or move a
 // lesson are accepted for a day from then. A schedule published before gets
 // its last save as the time.
@@ -140,6 +156,11 @@ function migrateToV12(db: Database) {
   `);
 }
 
+// Phone numbers for WhatsApp messages (only prepared, sent by hand): the
+// account's own in its profile, one for a lesson written in for a guest, and
+// the people in the visiting trainer's schedule by name (seen by managers).
+// schedule_requests: requests from the public schedule to cancel or move a
+// lesson; managers deal with them by hand.
 function migrateToV11(db: Database) {
   db.exec(`
     ALTER TABLE admin_users ADD COLUMN phone TEXT;

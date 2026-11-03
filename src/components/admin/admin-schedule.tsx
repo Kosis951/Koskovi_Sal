@@ -190,9 +190,12 @@ export function AdminSchedule() {
           <p className="font-semibold text-ink">Kalendář sálu</p>
           <p className="text-xs text-ink-muted">
             {blocks.length === 0
-              ? "Až bude rozpis zveřejněný, každý den se v kalendáři sálu ukáže jako obsazený od první do poslední lekce."
+              ? "Až bude rozpis zveřejněný, každý den se v kalendáři sálu ukáže jako obsazený od první do poslední lekce a seminář (GROUP) jako samostatná akce."
               : `${published ? "V kalendáři sálu" : "Po zveřejnění v kalendáři sálu"}: ${blocks
-                  .map((block) => `${blockDay.format(new Date(`${block.date}T12:00:00`))} ${block.start}–${block.end}`)
+                  .map(
+                    (block) =>
+                      `${blockDay.format(new Date(`${block.date}T12:00:00`))} ${block.title ? `${block.title} ` : ""}${block.start}–${block.end}`,
+                  )
                   .join(" · ")}`}
           </p>
           <label className="mt-1 flex items-start gap-3 font-semibold text-ink">
