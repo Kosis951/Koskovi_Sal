@@ -21,8 +21,8 @@ Po dobu presunu (asi 10 minut) web nepujde.
 2. **NAS, slozka**: `/volume1/docker/koskovi-web` se souborem `compose.yaml` a prazdnou slozkou
    `data`.
 3. **Tajne udaje**: z VPS zkopiruj `.env.local` a na NAS ho uloz jako
-   `/volume1/docker/koskovi-web/.env` (`DATABASE_PATH`, `PORT` a `PUSH_RELAY_URL` v nem prebije
-   `compose.yaml`, ostatni, vcetne `PUSH_RELAY_SECRET`, zustava).
+   `/volume1/docker/koskovi-web/.env`. `DATABASE_PATH`, `PORT`, `PUSH_RELAY_URL` a `APP_URL` nastavi
+   `compose.yaml` sam (maji prednost pred `.env`), ostatni vcetne `PUSH_RELAY_SECRET` se pouzije.
 4. **Zastaveni webu na VPS** (aby se uz nic nezapisovalo):
 
    ```bash
