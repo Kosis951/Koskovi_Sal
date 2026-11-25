@@ -6,7 +6,10 @@ struct CalendarScreen: View {
     // In the screenshot demo: Wednesday of this week, the day with the most going on.
     @State private var selectedDay = Demo.isOn ? Dates.addDays(2, to: Dates.weekStart(Dates.todayKey())) : Dates.todayKey()
     @State private var openBooking: Booking?
+    @State private var openCancellation: CancellationNotice?
     @State private var isAdding = false
+    @State private var notice: String?
+    @State private var cleaningId: String?
 
     private var weekDays: [String] {
         let start = Dates.weekStart(selectedDay)
@@ -15,135 +18,281 @@ struct CalendarScreen: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    WeekStrip(
-                        days: weekDays,
-                        selectedDay: $selectedDay,
-                        count: { model.bookings(on: $0).count }
-                    )
-                    .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-                }
-
-                Section {
+            ScrollView {
+                VStack(spacing: 14) {
+                    if let notice {
+                        NoticeBanner(text: notice)
+                    }
                     if let error = model.error {
                         ErrorBanner(text: error)
                     }
 
-                    if !model.hasLoaded && model.isLoading {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else if model.hours(on: selectedDay) == nil && model.bookings(on: selectedDay).isEmpty {
-                        Text("Sál je zavřený.").foregroundStyle(.secondary)
-                    } else {
-                        ForEach(model.items(on: selectedDay)) { item in
-                            DayItemRow(item: item) {
-                                if case .booking(let booking) = item {
-                                    openBooking = booking
-                                }
-                            }
-                        }
+                    if model.hasLoaded {
+                        HallStatusCard(
+                            status: model.status(),
+                            hours: model.hours(on: Dates.todayKey()),
+                            freeHours: model.freeHours(on: Dates.todayKey()),
+                            isCleaning: cleaningId != nil,
+                            onCleaned: { booking in Task { await clean(booking) } }
+                        )
                     }
-                } header: {
-                    HStack {
-                        Text(Dates.dayTitle(selectedDay))
-                        Spacer()
-                        if let hours = model.hours(on: selectedDay) {
-                            Text("otevřeno \(hours.start)–\(hours.end)")
-                        }
-                    }
+
+                    WeekCard(
+                        days: weekDays,
+                        selectedDay: $selectedDay,
+                        count: { model.bookings(on: $0).count }
+                    )
+
+                    dayCard
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle(Dates.monthTitle(selectedDay))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if selectedDay != Dates.todayKey() {
-                        Button("Dnes") { selectedDay = Dates.todayKey() }
-                    }
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        selectedDay = Dates.addDays(-7, to: selectedDay)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel("Předchozí týden")
-
-                    Button {
-                        selectedDay = Dates.addDays(7, to: selectedDay)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .accessibilityLabel("Další týden")
-
+            .pageBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                BrandHeader(title: "Kalendář sálu", subtitle: Dates.monthTitle(selectedDay)) {
                     if session.role?.canAddBookings == true {
-                        Button {
-                            isAdding = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Přidat akci")
+                        HeaderButton(systemImage: "plus", label: "Přidat akci") { isAdding = true }
                     }
                 }
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 40).onEnded { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) * 2 else { return }
-                    selectedDay = Dates.addDays(value.translation.width < 0 ? 1 : -1, to: selectedDay)
-                }
-            )
+            .toolbar(.hidden, for: .navigationBar)
             .refreshable { await model.load() }
             .task { await model.load() }
             .onChange(of: session.isSignedIn) {
                 Task { await model.load() }
             }
             .sheet(item: $openBooking) { booking in
-                BookingDetailView(booking: booking, model: model, canEdit: session.canEdit(booking))
+                BookingDetailView(booking: booking, model: model, canEdit: session.canEdit(booking)) { message in
+                    notice = message
+                }
+            }
+            .sheet(item: $openCancellation) { cancellation in
+                CancellationDetailView(notice: cancellation, model: model, canReinstate: session.role?.canManageBookings == true)
             }
             .sheet(isPresented: $isAdding) {
                 AddBookingView(model: model, date: selectedDay)
             }
         }
     }
+
+    private var dayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(Dates.dayTitle(selectedDay).capitalized(with: Dates.czech))
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                if let hours = model.hours(on: selectedDay) {
+                    Label("\(hours.start)–\(hours.end)", systemImage: "clock")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.inkMuted)
+                }
+            }
+
+            if !model.hasLoaded && model.isLoading {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+            } else if model.hours(on: selectedDay) == nil && model.bookings(on: selectedDay).isEmpty {
+                ClosedDayView()
+            } else {
+                let items = model.items(on: selectedDay)
+
+                if items.isEmpty {
+                    Text("Žádné akce.").foregroundStyle(Theme.inkMuted)
+                }
+
+                ForEach(items) { item in
+                    DayItemRow(item: item) {
+                        switch item {
+                        case .booking(let booking): openBooking = booking
+                        case .cancelled(let notice): openCancellation = notice
+                        case .free: break
+                        }
+                    }
+                }
+            }
+        }
+        .card()
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 40).onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) * 2 else { return }
+                withAnimation(.snappy) {
+                    selectedDay = Dates.addDays(value.translation.width < 0 ? 1 : -1, to: selectedDay)
+                }
+            }
+        )
+    }
+
+    private func clean(_ booking: Booking) async {
+        cleaningId = booking.id
+        defer { cleaningId = nil }
+
+        do {
+            notice = try await model.markCleaned(booking)
+        } catch {
+            model.error = error.localizedDescription
+        }
+    }
 }
 
-struct WeekStrip: View {
+// The answer to "can I use the hall right now?".
+struct HallStatusCard: View {
+    let status: HallStatus
+    let hours: OpeningHours?
+    let freeHours: Double
+    let isCleaning: Bool
+    let onCleaned: (Booking) -> Void
+    @State private var pulse = false
+
+    private var style: KindStyle {
+        switch status.tone {
+        case .free: return Theme.free
+        case .busy: return Theme.busy
+        case .cleanup: return Theme.cleanup
+        case .closed: return Theme.closed
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(style.ink)
+                    .frame(width: 12, height: 12)
+                    .opacity(status.tone == .free && pulse ? 0.35 : 1)
+                    .padding(.top, 6)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(status.title)
+                        .font(.headline)
+                    Text(status.detail)
+                        .font(.subheadline)
+                        .opacity(0.85)
+                }
+            }
+
+            HStack(spacing: 14) {
+                if let hours {
+                    Label("Dnes \(hours.start)–\(hours.end)", systemImage: "clock")
+                }
+                if hours != nil {
+                    Label("Volno \(freeHours.formatted(.number.precision(.fractionLength(0...1)).locale(Dates.czech))) h", systemImage: "checkmark.circle")
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .opacity(0.9)
+
+            if let booking = status.cleanupBooking {
+                Button {
+                    onCleaned(booking)
+                } label: {
+                    if isCleaning {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("Uklidil jsem sál", systemImage: "checkmark")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isCleaning)
+            }
+        }
+        .foregroundStyle(style.ink)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(style.background))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(style.line, lineWidth: 1))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1).repeatForever()) { pulse = true }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct WeekCard: View {
     let days: [String]
     @Binding var selectedDay: String
     let count: (String) -> Int
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(days, id: \.self) { day in
-                let isSelected = day == selectedDay
-                let isToday = day == Dates.todayKey()
+        VStack(spacing: 10) {
+            HStack {
+                Button {
+                    withAnimation(.snappy) { selectedDay = Dates.addDays(-7, to: selectedDay) }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 34, height: 34)
+                }
+                .accessibilityLabel("Předchozí týden")
+
+                Spacer()
+                Text("\(Dates.dayNumber(days.first ?? "")). – \(Dates.dayTitle(days.last ?? "").split(separator: " ").dropFirst().joined(separator: " "))")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+
+                if !days.contains(Dates.todayKey()) {
+                    Button("Dnes") {
+                        withAnimation(.snappy) { selectedDay = Dates.todayKey() }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
 
                 Button {
-                    selectedDay = day
+                    withAnimation(.snappy) { selectedDay = Dates.addDays(7, to: selectedDay) }
                 } label: {
-                    VStack(spacing: 4) {
-                        Text(Dates.shortWeekday(day))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
-                        Text(Dates.dayNumber(day))
-                            .font(.headline)
-                            .foregroundStyle(isSelected ? .white : (isToday ? Theme.accent : .primary))
-                        Circle()
-                            .fill(count(day) > 0 ? (isSelected ? Color.white : Theme.accent) : .clear)
-                            .frame(width: 5, height: 5)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Color.clear))
-                    )
+                    Image(systemName: "chevron.right")
+                        .frame(width: 34, height: 34)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Dates.dayTitle(day))
+                .accessibilityLabel("Další týden")
+            }
+            .foregroundStyle(Theme.accent)
+
+            HStack(spacing: 4) {
+                ForEach(days, id: \.self) { day in
+                    let isSelected = day == selectedDay
+                    let isToday = day == Dates.todayKey()
+
+                    Button {
+                        withAnimation(.snappy) { selectedDay = day }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text(Dates.shortWeekday(day))
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Theme.inkSoft)
+                            Text(Dates.dayNumber(day))
+                                .font(.headline)
+                                .foregroundStyle(isSelected ? Color.white : (isToday ? Theme.accent : Theme.ink))
+                            Text(count(day) > 0 ? "\(count(day))" : " ")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Theme.inkMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(isToday ? Theme.subtle : Color.clear))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Dates.dayTitle(day))
+                }
             }
         }
+        .card(padding: 12)
+    }
+}
+
+struct ClosedDayView: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.title2)
+            Text("Sál je tento den zavřený.")
+                .font(.subheadline.weight(.semibold))
+        }
+        .foregroundStyle(Theme.closed.ink)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Theme.closed.background))
     }
 }
 
@@ -154,57 +303,88 @@ struct DayItemRow: View {
     var body: some View {
         switch item {
         case .booking(let booking):
+            let style = Theme.style(for: booking)
+
             Button(action: onOpen) {
                 HStack(spacing: 12) {
-                    KindBar(color: Theme.color(for: booking))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(booking.start)–\(booking.end)")
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                        Text(booking.start).font(.subheadline.weight(.bold).monospacedDigit())
+                        Text(booking.end).font(.caption.monospacedDigit()).opacity(0.75)
+                    }
+                    .frame(width: 50, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(booking.title)
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
                         HStack(spacing: 6) {
                             Text(booking.kindLabel)
-                            if booking.waitsForCleanup {
-                                Label("čeká na úklid", systemImage: "sparkles")
-                                    .foregroundStyle(Theme.cleanup)
+                            if let trainer = booking.trainer, !trainer.isEmpty {
+                                Text("· \(trainer)")
                             }
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.medium))
+                        .opacity(0.8)
+                        if booking.waitsForCleanup {
+                            Badge(text: "Čeká na úklid", style: Theme.cleanup)
+                        }
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).opacity(0.5)
                 }
-                .padding(.vertical, 2)
+                .foregroundStyle(style.ink)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(style.background))
+                .overlay(alignment: .leading) {
+                    UnevenRoundedRectangle(topLeadingRadius: 14, bottomLeadingRadius: 14)
+                        .fill(style.line)
+                        .frame(width: 5)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
 
         case .cancelled(let notice):
-            HStack(spacing: 12) {
-                KindBar(color: .secondary.opacity(0.4))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(notice.start)–\(notice.end)")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(notice.title)
-                        .strikethrough()
-                        .foregroundStyle(.secondary)
-                    Text("Trénink zrušen").font(.caption).foregroundStyle(.secondary)
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    Text(notice.start)
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .frame(width: 50, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(notice.title).strikethrough().font(.body.weight(.semibold))
+                        Text("Trénink zrušen · \(notice.start)–\(notice.end)").font(.caption)
+                    }
+                    Spacer()
                 }
+                .foregroundStyle(Theme.inkSoft)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                )
             }
+            .buttonStyle(.plain)
 
         case .free(let start, let end):
             HStack(spacing: 12) {
-                KindBar(color: Theme.free.opacity(0.6))
-                Text("\(start)–\(end)")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text("Volno").foregroundStyle(Theme.free)
+                Text(start)
+                    .font(.subheadline.weight(.bold).monospacedDigit())
+                    .frame(width: 50, alignment: .leading)
+                Label("Volno do \(end)", systemImage: "checkmark.circle")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
             }
+            .foregroundStyle(Theme.free.ink)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Theme.free.background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Theme.free.line, style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            )
         }
     }
 }
