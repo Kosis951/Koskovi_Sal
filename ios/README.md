@@ -47,12 +47,31 @@ zapnout → „Poslat zkusebni upozorneni“.
 Zarizeni se ukladaji do tabulky `native_push_devices` (API `/api/push/native`); posilaji se
 stejna upozorneni jako do prohlizecu.
 
-## Vyvoj na Macu
+## Sestaveni na Macu (Xcode 27 / iOS 27 SDK)
+
+Od dubna 2027 Apple bere jen buildy s iOS 27 SDK (Xcode 27). Na Macu s macOS 26:
 
 ```bash
 brew install xcodegen
-cd ios && xcodegen generate && open KoskoviSal.xcodeproj
+git clone https://github.com/Kosis951/Koskovi_Sal.git
+cd Koskovi_Sal/ios && xcodegen generate && open KoskoviSal.xcodeproj
 ```
+
+1. Xcode → Settings → Accounts → pridat Apple ID vyvojarskeho uctu.
+2. Target KoskoviSal → Signing & Capabilities: Team `44HJR678JA`, Automatically manage signing.
+3. Target → General → Build: cislo vetsi nez posledni na TestFlightu (napr. `1000`).
+4. Nahore zvolit zarizeni „Any iOS Device (arm64)“ → Product → Archive.
+5. Organizer → Distribute App → App Store Connect → Upload.
+
+### Xcode Cloud (stavi Apple po kazdem pushi, vzdy s nejnovejsim Xcode)
+
+Jednou na Macu: Product → Xcode Cloud → Create Workflow → pripojit GitHub repozitar
+`Kosis951/Koskovi_Sal` → akce Archive (iOS) → Post-Actions: TestFlight (Internal Testing,
+skupina „Interni testeri“). Projekt si Xcode Cloud vygeneruje sam (`ci_scripts/ci_post_clone.sh`),
+cisla buildu jsou 1000 + cislo buildu Xcode Cloud. Zdarma je 25 hodin mesicne. Pak lze nahravani
+z GitHubu vypnout (secrets `ASC_*` smazat) a GitHub bude jen kontrolovat, ze se kod prelozi.
+
+## Vyvoj na Macu
 
 Adresa webu je v `project.yml` (`KOSKOVI_HOST`). Pri spusteni primo z Xcode je potreba
 na NAS `APNS_SANDBOX=true`, jinak upozorneni nedojdou (TestFlight a App Store pouzivaji produkcni APNs).
