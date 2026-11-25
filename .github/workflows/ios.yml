@@ -1,0 +1,169 @@
+# The iPhone app (ios/): built on GitHub's Macs; with the App Store Connect
+# secrets set it also goes to TestFlight. See ios/README.md.
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: "Nahrát na TestFlight"
+        type: boolean
+        default: true
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Sestavení (simulátor)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
+          xcodebuild -version
+
+      - name: Projekt
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Sestavení
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project KoskoviSal.xcodeproj \
+            -scheme KoskoviSal \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning: .*\.swift|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      # Compiler errors as annotations, readable without signing in.
+      - name: Chyby překladu
+        if: failure()
+        working-directory: ios
+        run: |
+          grep -E "^/.+:[0-9]+:[0-9]+: error: " build.log | sort -u | head -40 | while IFS= read -r line; do
+            file=$(echo "$line" | cut -d: -f1 | sed "s|^$GITHUB_WORKSPACE/||")
+            row=$(echo "$line" | cut -d: -f2)
+            col=$(echo "$line" | cut -d: -f3)
+            message=$(echo "$line" | cut -d: -f5- | sed 's/^ //')
+            echo "::error file=$file,line=$row,col=$col::$message"
+          done
+          grep -E "error:" build.log | grep -vE "^/.+:[0-9]+:[0-9]+: error: " | sort -u | head -10 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+
+  testflight:
+    name: TestFlight
+    needs: build
+    if: github.event_name == 'push' || inputs.testflight
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      KOSKOVI_HOST: ${{ vars.KOSKOVI_HOST }}
+    steps:
+      - name: Nastavení
+        id: setup
+        run: |
+          missing=""
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID KOSKOVI_HOST; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::TestFlight přeskočen, v GitHubu chybí:$missing (návod v ios/README.md)"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.setup.outputs.ready == 'true'
+
+      - name: Xcode a projekt
+        if: steps.setup.outputs.ready == 'true'
+        working-directory: ios
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Archiv
+        if: steps.setup.outputs.ready == 'true'
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project KoskoviSal.xcodeproj \
+            -scheme KoskoviSal \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/KoskoviSal.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}.${{ github.run_attempt }}" \
+            KOSKOVI_HOST="$KOSKOVI_HOST" 2>&1 | tee archive.log | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)" || true
+          grep -q "ARCHIVE SUCCEEDED" archive.log
+
+      - name: Nahrání na TestFlight
+        if: steps.setup.outputs.ready == 'true'
+        working-directory: ios
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/KoskoviSal.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee export.log | grep -E "error|Upload|EXPORT (SUCCEEDED|FAILED)" || true
+          grep -q "EXPORT SUCCEEDED" export.log
+
+      - name: Chyby
+        if: failure()
+        working-directory: ios
+        run: |
+          cat archive.log export.log 2>/dev/null | grep -E "error:|error |Error Domain" | sort -u | head -15 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+
+      - name: Úklid klíče
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8

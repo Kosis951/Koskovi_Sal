@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { getApnsConfig, sendApns } from "@/lib/apns";
 import { getDb } from "@/lib/db";
 
 // What a device can subscribe to: "hall" = the hall is taken today (other
@@ -161,17 +162,96 @@ export function getSubscriptionTopics(endpoint: string): PushTopic[] | null {
 }
 
 export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
-  if (!isPushConfigured()) {
-    return 0;
-  }
-
-  const rows = (
-    getDb().prepare("SELECT * FROM push_subscriptions").all() as SubscriptionRow[]
-  ).filter((row) => row.topics.split(",").includes(topic));
-  const delivered = await sendToRows(rows, payload);
+  const rows = isPushConfigured()
+    ? (getDb().prepare("SELECT * FROM push_subscriptions").all() as SubscriptionRow[]).filter((row) =>
+        row.topics.split(",").includes(topic),
+      )
+    : [];
+  const devices = getApnsConfig()
+    ? (getDb().prepare("SELECT * FROM native_push_devices").all() as NativeDeviceRow[]).filter((row) =>
+        row.topics.split(",").includes(topic),
+      )
+    : [];
+  const delivered = (await sendToRows(rows, payload)) + (await sendToNativeDevices(devices, payload));
 
   // Visible in `pm2 logs`, e.g. "[push] hall: Dnes je sál obsazený → 12/12".
-  console.info(`[push] ${topic}: ${payload.title} → ${delivered}/${rows.length}`);
+  if (rows.length + devices.length > 0) {
+    console.info(`[push] ${topic}: ${payload.title} → ${delivered}/${rows.length + devices.length}`);
+  }
+
+  return delivered;
+}
+
+// --- Devices with the native app (iPhone: APNs token) ---
+
+type NativeDeviceRow = { failures: number; platform: string; token: string; topics: string };
+
+// Returns false when the device limit is reached.
+export function saveNativeDevice(token: string, platform: "ios", topics: PushTopic[]) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const exists = db.prepare("SELECT 1 FROM native_push_devices WHERE token = ?").get(token);
+
+  if (!exists) {
+    const { count } = db.prepare("SELECT COUNT(*) AS count FROM native_push_devices").get() as {
+      count: number;
+    };
+
+    if (count >= maxSubscriptions) {
+      return false;
+    }
+  }
+
+  db.prepare(
+    `INSERT INTO native_push_devices (token, platform, topics, failures, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?)
+     ON CONFLICT(token) DO UPDATE SET platform = excluded.platform, topics = excluded.topics,
+       failures = 0, updated_at = excluded.updated_at`,
+  ).run(token, platform, topics.join(","), now, now);
+
+  return true;
+}
+
+export function deleteNativeDevice(token: string) {
+  getDb().prepare("DELETE FROM native_push_devices WHERE token = ?").run(token);
+}
+
+export function getNativeDeviceTopics(token: string): PushTopic[] | null {
+  const row = getDb()
+    .prepare("SELECT topics FROM native_push_devices WHERE token = ?")
+    .get(token) as { topics: string } | undefined;
+
+  return row ? parseTopics(row.topics.split(",")) : null;
+}
+
+export async function sendToNativeDevice(token: string, payload: PushPayload) {
+  const rows = getDb()
+    .prepare("SELECT * FROM native_push_devices WHERE token = ?")
+    .all(token) as NativeDeviceRow[];
+
+  return sendToNativeDevices(rows, payload);
+}
+
+async function sendToNativeDevices(rows: NativeDeviceRow[], payload: PushPayload) {
+  const results = await sendApns(
+    rows.filter((row) => row.platform === "ios").map((row) => row.token),
+    payload,
+  );
+  let delivered = 0;
+
+  for (const row of rows) {
+    const result = results.get(row.token);
+
+    if (result === "delivered") {
+      delivered += 1;
+    } else if (result === "gone" || row.failures + 1 >= maxFailures) {
+      deleteNativeDevice(row.token);
+    } else {
+      getDb()
+        .prepare("UPDATE native_push_devices SET failures = failures + 1 WHERE token = ?")
+        .run(row.token);
+    }
+  }
 
   return delivered;
 }

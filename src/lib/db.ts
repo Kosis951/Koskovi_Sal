@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 13;
+const schemaVersion = 14;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -125,8 +125,27 @@ function migrate(db: Database) {
       migrateToV13(db);
     }
 
+    if (version < 14) {
+      migrateToV14(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
+}
+
+// Devices with the native app that receive notifications: for now iPhones
+// by their APNs token (platform "ios"), topics as in push_subscriptions.
+function migrateToV14(db: Database) {
+  db.exec(`
+    CREATE TABLE native_push_devices (
+      token TEXT PRIMARY KEY,
+      platform TEXT NOT NULL,
+      topics TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 // Saved phone numbers of schedule people were keyed by a broken name key;

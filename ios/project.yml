@@ -1,0 +1,51 @@
+# The Xcode project is generated from this file (`xcodegen generate`), so it
+# can be built on GitHub's Macs without keeping a .xcodeproj in git.
+name: KoskoviSal
+options:
+  bundleIdPrefix: cz.tkkoskovi
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: cs
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    # Where the app talks to: the web's host name, without https://.
+    KOSKOVI_HOST: sal.example.cz
+targets:
+  KoskoviSal:
+    type: application
+    platform: iOS
+    sources:
+      - KoskoviSal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cz.tkkoskovi.sal
+        PRODUCT_NAME: KoskoviSal
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: KoskoviSal/KoskoviSal.entitlements
+        ENABLE_PREVIEWS: YES
+    entitlements:
+      path: KoskoviSal/KoskoviSal.entitlements
+      properties:
+        aps-environment: production
+    info:
+      path: KoskoviSal/Info.plist
+      properties:
+        CFBundleDisplayName: Koškovi sál
+        CFBundleDevelopmentRegion: cs
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        KoskoviHost: $(KOSKOVI_HOST)
+        ITSAppUsesNonExemptEncryption: false
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
