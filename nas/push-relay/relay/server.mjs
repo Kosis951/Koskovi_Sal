@@ -5,7 +5,8 @@
 //                          "delivered" | "failed" | "gone". iPhones go to Apple
 //                          (APNs, the key stays here), Android phones to ntfy.
 //   GET  /relay/health   – what is set up.
-//   GET  /app/<name>.apk – the Android app to download (./downloads).
+//   GET  /app/<name>.apk – the Android app to download (./downloads, else
+//                          the GitHub release "android-latest").
 //   GET  /, /privacy, /support – the apps' web pages (./site), also for
 //                          app.tkkoskovi.cz.
 //   anything else        – passed on to ntfy (the Android phones' ntfy app
@@ -16,6 +17,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import net from "node:net";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 const env = process.env;
 const port = Number(env.PORT || 8080);
@@ -23,6 +25,9 @@ const port = Number(env.PORT || 8080);
 const secret = (env.RELAY_SECRET || readSecretFile(env.RELAY_SECRET_FILE || "/secrets/relay-secret.txt")).trim();
 const ntfy = new URL(env.NTFY_INTERNAL_URL || "http://ntfy:80");
 const downloads = env.DOWNLOADS_DIR || "/downloads";
+// Where the APK comes from when ./downloads does not have it (built by the
+// repository's Android workflow).
+const releaseDownloads = (env.APK_RELEASE_URL || "https://github.com/Kosis951/Koskovi_Sal/releases/download/android-latest").replace(/\/$/, "");
 const site = env.SITE_DIR || "/site";
 // The pages and what they are served as.
 const sitePages = {
@@ -357,7 +362,45 @@ function handleDownload(request, response, name) {
       createReadStream(file).pipe(response);
     }
   } catch {
-    json(response, 404, { message: "Soubor nenalezen." });
+    downloadFromRelease(request, response, name);
+  }
+}
+
+async function downloadFromRelease(request, response, name) {
+  try {
+    const upstream = await fetch(`${releaseDownloads}/${name}`, {
+      method: request.method === "HEAD" ? "HEAD" : "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!upstream.ok) {
+      json(response, 404, { message: "Soubor nenalezen." });
+      return;
+    }
+
+    const headers = {
+      "cache-control": "no-cache",
+      "content-disposition": `attachment; filename="${name}"`,
+      "content-type": "application/vnd.android.package-archive",
+    };
+    const length = upstream.headers.get("content-length");
+    const modified = upstream.headers.get("last-modified");
+    if (length) headers["content-length"] = length;
+    if (modified) headers["last-modified"] = modified;
+    response.writeHead(200, headers);
+
+    if (request.method === "HEAD" || !upstream.body) {
+      response.end();
+    } else {
+      Readable.fromWeb(upstream.body).on("error", () => response.destroy()).pipe(response);
+    }
+  } catch {
+    if (response.headersSent) {
+      response.destroy();
+    } else {
+      json(response, 502, { message: "Aplikaci se teď nepodařilo stáhnout, zkus to za chvíli." });
+    }
   }
 }
 

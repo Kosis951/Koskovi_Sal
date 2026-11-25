@@ -1,0 +1,89 @@
+# The Android app (android/): builds the APK and publishes it as the release
+# "android-latest", from which app.tkkoskovi.cz/app/koskovi-sal.apk serves it.
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      # The release key from the secrets; without it the APK is signed with
+      # the runner's debug key.
+      - name: Podpisový klíč
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "Podepisuji vydávacím klíčem."
+          else
+            echo "::warning::Chybí secret ANDROID_KEYSTORE_B64 – APK je podepsané ladicím klíčem (aktualizace bude chtít přeinstalovat)."
+          fi
+
+      - name: Sestavení
+        working-directory: android
+        env:
+          KOSKOVI_HOST: ${{ vars.KOSKOVI_HOST || 'sal.tkkoskovi.cz' }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: "1.0.${{ github.run_number }}"
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      # Kotlin errors as annotations on the run page.
+      - name: Chyby překladu
+        if: failure()
+        run: |
+          grep -E '^e: ' "$RUNNER_TEMP/build.log" | head -40 | while IFS= read -r line; do
+            echo "::error::${line#e: }"
+          done || true
+
+      - name: Vydání
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk koskovi-sal.apk
+          ls -l koskovi-sal.apk
+          if ! gh release view android-latest >/dev/null 2>&1; then
+            gh release create android-latest --title "Android – poslední verze" \
+              --notes "Aplikace TK Koškovi pro Android. Ke stažení i na https://app.tkkoskovi.cz" \
+              --latest=false
+          fi
+          gh release edit android-latest --target "$GITHUB_SHA" \
+            --notes "Aplikace TK Koškovi pro Android, verze 1.0.${{ github.run_number }}. Ke stažení i na https://app.tkkoskovi.cz"
+          gh release upload android-latest koskovi-sal.apk --clobber
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: koskovi-sal-apk
+          path: koskovi-sal.apk
