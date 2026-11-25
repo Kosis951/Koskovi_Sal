@@ -226,45 +226,51 @@ struct ScheduleRequestView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    LabeledContent("Lekce", value: row.text)
-                    LabeledContent("Kdy", value: "\(Dates.dayTitle(date)) \(row.start ?? "")–\(row.end ?? "")")
-                }
-                Section {
-                    Picker("Žádost", selection: $kind) {
-                        Text("Zrušit").tag("cancel")
-                        Text("Přesunout").tag("move")
+        BrandSheet(
+            title: "Zrušit nebo přesunout",
+            subtitle: row.text,
+            primaryTitle: "Odeslat žádost",
+            primaryDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+            isWorking: isSending,
+            onPrimary: { Task { await send() } }
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                Badge(text: "Lekce", style: Theme.training)
+                Text("\(row.start ?? "")–\(row.end ?? "")").font(.largeTitle.weight(.heavy).monospacedDigit())
+                Text("\(Dates.dayTitle(date).capitalized(with: Dates.czech)) · \(row.text)")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(Theme.training.ink)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.training.background))
+
+            VStack(spacing: 14) {
+                ChoicePills(options: [("cancel", "Zrušit"), ("move", "Přesunout")], selection: $kind)
+                if kind == "move" {
+                    FieldBox(label: "Kdy by ti to šlo") {
+                        TextField("např. odpoledne po 15:00", text: $preferred)
                     }
-                    .pickerStyle(.segmented)
-                    if kind == "move" {
-                        TextField("Kdy by ti to šlo", text: $preferred)
-                    }
-                }
-                Section {
-                    TextField("Tvoje jméno", text: $name)
-                    TextField("Telefon (nepovinné)", text: $phone)
-                        .keyboardType(.phonePad)
-                    TextField("Poznámka", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
-                } footer: {
-                    Text("Lekce platí, dokud ti zrušení nebo přesun nepotvrdíme.")
-                }
-                if let error {
-                    Section { ErrorBanner(text: error) }
                 }
             }
-            .navigationTitle("Zrušit nebo přesunout")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") { dismiss() }
+            .card()
+
+            VStack(spacing: 14) {
+                FieldBox(label: "Tvoje jméno") {
+                    TextField("jméno", text: $name)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Odeslat") { Task { await send() } }
-                        .disabled(isSending || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                FieldBox(label: "Telefon (nepovinné)") {
+                    TextField("abychom se ozvali", text: $phone)
+                        .keyboardType(.phonePad)
                 }
+                NoteField(label: "Poznámka", placeholder: "nepovinné", text: $note)
+            }
+            .card()
+
+            FieldNote(text: "Lekce platí, dokud ti zrušení nebo přesun nepotvrdíme.")
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
     }

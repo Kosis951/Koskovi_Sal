@@ -21,77 +21,57 @@ struct RegisterView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    VStack(spacing: 6) {
-                        Text("Nový účet")
-                            .font(.title.weight(.heavy))
-                            .foregroundStyle(Theme.ink)
-                        Text("Po registraci můžeš hned objednávat lekce u trenérů.")
-                            .font(.callout)
-                            .foregroundStyle(Theme.inkMuted)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 8)
-
-                    VStack(spacing: 14) {
-                        FieldBox(label: "Jméno a příjmení") {
-                            TextField("Jana Nováková", text: $displayName)
-                                .textContentType(.name)
-                        }
-                        FieldBox(label: "E-mail") {
-                            TextField("jana@seznam.cz", text: $email)
-                                .textContentType(.emailAddress)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                        FieldBox(label: "Přihlašovací jméno") {
-                            TextField("jana", text: $username)
-                                .textContentType(.username)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                        FieldBox(label: "Heslo (aspoň 8 znaků)") {
-                            SecureField("heslo", text: $password)
-                                .textContentType(.newPassword)
-                        }
-                        FieldBox(label: "Heslo znovu") {
-                            SecureField("heslo", text: $passwordAgain)
-                                .textContentType(.newPassword)
-                        }
-                    }
-                    .card()
-
-                    if let error {
-                        ErrorBanner(text: error)
-                    }
-
-                    Button {
-                        Task { await register() }
-                    } label: {
-                        if isSaving { ProgressView().tint(.white) } else { Text("Zaregistrovat se") }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isSaving || !isComplete)
-
-                    Text("Registrací souhlasíš se zpracováním údajů podle zásad ochrany soukromí.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkMuted)
-                        .multilineTextAlignment(.center)
-                    Link("Zásady ochrany soukromí", destination: URL(string: "https://app.tkkoskovi.cz/privacy")!)
-                        .font(.footnote.weight(.semibold))
+        BrandSheet(
+            title: "Nový účet",
+            subtitle: "Po registraci můžeš hned objednávat lekce",
+            primaryTitle: "Zaregistrovat se",
+            primaryDisabled: !isComplete,
+            isWorking: isSaving,
+            onPrimary: { Task { await register() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Jméno a příjmení") {
+                    TextField("Jana Nováková", text: $displayName)
+                        .textContentType(.name)
                 }
-                .padding(16)
+                FieldBox(label: "E-mail") {
+                    TextField("jana@seznam.cz", text: $email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
             }
-            .pageBackground()
-            .navigationTitle("Registrace")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") { dismiss() }
+            .card()
+
+            VStack(spacing: 14) {
+                FieldBox(label: "Přihlašovací jméno") {
+                    TextField("jana", text: $username)
+                        .textContentType(.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
+                FieldBox(label: "Heslo (aspoň 8 znaků)") {
+                    SecureField("heslo", text: $password)
+                        .textContentType(.newPassword)
+                }
+                FieldBox(label: "Heslo znovu") {
+                    SecureField("pro kontrolu", text: $passwordAgain)
+                        .textContentType(.newPassword)
+                }
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+
+            VStack(spacing: 6) {
+                FieldNote(text: "Registrací souhlasíš se zpracováním údajů podle zásad ochrany soukromí.")
+                Link("Zásady ochrany soukromí", destination: URL(string: "https://app.tkkoskovi.cz/privacy")!)
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
             }
         }
     }

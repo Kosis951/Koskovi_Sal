@@ -420,57 +420,37 @@ struct LessonRequestView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Badge(text: "Volný termín", style: Theme.free)
-                        Text("\(slot.start)–\(slot.end)").font(.largeTitle.weight(.heavy))
-                        Text("\(Dates.dayTitle(slot.date).capitalized(with: Dates.czech)) · \(calendar?.trainerName ?? "")")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .foregroundStyle(Theme.free.ink)
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.free.background))
-
-                    VStack(spacing: 14) {
-                        FieldBox(label: "Partner/ka (prázdné = sólo)") {
-                            TextField("jméno", text: $partner)
-                        }
-                        FieldBox(label: "Poznámka pro trenéra") {
-                            TextField("na čem chcete pracovat", text: $note, axis: .vertical)
-                                .lineLimit(1...4)
-                                .padding(.vertical, 12)
-                        }
-                    }
-                    .card()
-
-                    if let error {
-                        ErrorBanner(text: error)
-                    }
-
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        if isSending { ProgressView().tint(.white) } else { Text("Objednat lekci") }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isSending)
-
-                    Text("Lekce platí, až ji trenér potvrdí.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkMuted)
-                }
-                .padding(16)
+        BrandSheet(
+            title: "Objednat lekci",
+            subtitle: calendar?.trainerName,
+            primaryTitle: "Objednat lekci",
+            isWorking: isSending,
+            onPrimary: { Task { await send() } }
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                Badge(text: "Volný termín", style: Theme.free)
+                Text("\(slot.start)–\(slot.end)").font(.largeTitle.weight(.heavy).monospacedDigit())
+                Text(Dates.dayTitle(slot.date).capitalized(with: Dates.czech))
+                    .font(.subheadline.weight(.semibold))
             }
-            .pageBackground()
-            .navigationTitle("Objednat lekci")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zavřít") { dismiss() }
+            .foregroundStyle(Theme.free.ink)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.free.background))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.free.line, lineWidth: 1))
+
+            VStack(spacing: 14) {
+                FieldBox(label: "Partner/ka (prázdné = sólo)") {
+                    TextField("jméno", text: $partner)
                 }
+                NoteField(label: "Poznámka pro trenéra", placeholder: "na čem chcete pracovat", text: $note)
+            }
+            .card()
+
+            FieldNote(text: "Lekce platí, až ji trenér potvrdí.")
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
         .presentationDetents([.large])
@@ -520,48 +500,45 @@ struct GuestLessonView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Kdo") {
-                    TextField("Jméno", text: $guest)
-                    TextField("Partner/ka (nepovinné)", text: $partner)
-                    TextField("Telefon (nepovinné)", text: $phone)
+        BrandSheet(
+            title: "Zapsat lekci",
+            subtitle: "Pro hosta bez účtu",
+            primaryTitle: "Zapsat lekci",
+            primaryDisabled: guest.trimmingCharacters(in: .whitespaces).isEmpty,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Jméno") {
+                    TextField("kdo přijde", text: $guest)
+                }
+                FieldBox(label: "Partner/ka (nepovinné)") {
+                    TextField("jméno", text: $partner)
+                }
+                FieldBox(label: "Telefon (nepovinné)") {
+                    TextField("pro WhatsApp", text: $phone)
                         .keyboardType(.phonePad)
                 }
-                Section("Kdy") {
-                    DatePicker("Den", selection: $day, in: Date()..., displayedComponents: .date)
-                        .environment(\.locale, Dates.czech)
-                        .environment(\.timeZone, Dates.prague)
-                    Picker("Od", selection: $start) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
-                    Picker("Do", selection: $end) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
-                }
-                Section {
-                    TextField("Poznámka", text: $note, axis: .vertical)
-                        .lineLimit(1...4)
-                }
-                if let error {
-                    Section { ErrorBanner(text: error) }
-                }
             }
-            .navigationTitle("Zapsat lekci")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
+            .card()
+
+            VStack(spacing: 14) {
+                DateField(label: "Den", date: $day, from: Date())
+                HStack(spacing: 12) {
+                    TimeField(label: "Od", selection: $start)
+                    TimeField(label: "Do", selection: $end)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || guest.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+                NoteField(label: "Poznámka", placeholder: "nepovinné", text: $note)
             }
-            .onChange(of: start) {
-                if end <= start {
-                    end = Dates.time(min(Dates.minutes(start) + 45, 24 * 60 - 15))
-                }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+        }
+        .onChange(of: start) {
+            if end <= start {
+                end = Dates.time(min(Dates.minutes(start) + 45, 24 * 60 - 15))
             }
         }
     }

@@ -122,77 +122,93 @@ struct TrainingEditView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Název", text: $title)
-                    TextField("Střídavý název (každý druhý týden)", text: $alternateTitle)
-                    TextField("Trenér", text: $trainer)
+        BrandSheet(
+            title: training == nil ? "Nový trénink" : "Upravit trénink",
+            subtitle: training?.title,
+            primaryTitle: "Uložit",
+            primaryDisabled: title.trimmingCharacters(in: .whitespaces).isEmpty,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Název") {
+                    TextField("např. Junioři", text: $title)
                 }
-                Section("Kdy") {
-                    Picker("Den", selection: $weekday) {
-                        ForEach(1...7, id: \.self) { Text(weekdayNames[$0]).tag($0) }
-                    }
-                    Picker("Od", selection: $start) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
-                    Picker("Do", selection: $end) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
+                FieldBox(label: "Střídavý název (každý druhý týden)") {
+                    TextField("nepovinné", text: $alternateTitle)
                 }
-                Section {
-                    Toggle("Jen v určitém období", isOn: $hasPeriod)
-                    if hasPeriod || isCourse {
-                        DatePicker("Od", selection: $validFrom, displayedComponents: .date)
-                    }
-                    if hasPeriod && !isCourse {
-                        DatePicker("Do", selection: $validUntil, displayedComponents: .date)
-                    }
-                    Toggle("Kurz na počet lekcí", isOn: $isCourse)
-                    if isCourse {
-                        Stepper("Lekcí: \(lessonCount)", value: $lessonCount, in: 1...200)
-                    }
-                } footer: {
-                    if let status = training?.status {
-                        Text(statusText(status))
-                    }
-                }
-                Section {
-                    Toggle("Pozastavit", isOn: $isPaused)
-                    if isPaused {
-                        DatePicker("Od", selection: $pausedFrom, displayedComponents: .date)
-                        DatePicker("Do", selection: $pausedUntil, displayedComponents: .date)
-                    }
-                }
-                if let error {
-                    Section { ErrorBanner(text: error) }
-                }
-                if training != nil {
-                    Section {
-                        Button("Smazat trénink", role: .destructive) { isConfirmingDelete = true }
-                    }
+                FieldBox(label: "Trenér") {
+                    TextField("nepovinné", text: $trainer)
                 }
             }
-            .environment(\.locale, Dates.czech)
-            .environment(\.timeZone, Dates.prague)
-            .navigationTitle(training == nil ? "Nový trénink" : "Upravit trénink")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
+            .card()
+
+            VStack(spacing: 14) {
+                FieldBox(label: "Den") {
+                    Menu {
+                        Picker("Den", selection: $weekday) {
+                            ForEach(1...7, id: \.self) { Text(weekdayNames[$0]).tag($0) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(weekdayNames[weekday]).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.bold)).foregroundStyle(Theme.inkSoft)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .contentShape(Rectangle())
+                    }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                HStack(spacing: 12) {
+                    TimeField(label: "Od", selection: $start)
+                    TimeField(label: "Do", selection: $end)
                 }
             }
-            .confirmationDialog("Smazat trénink \(training?.title ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-                Button("Smazat", role: .destructive) { Task { await delete() } }
-            } message: {
-                Text("Trénink zmizí z kalendáře ve všech týdnech.")
+            .card()
+
+            VStack(spacing: 14) {
+                ToggleCard(title: "Jen v určitém období", isOn: $hasPeriod)
+                if hasPeriod || isCourse {
+                    DateField(label: "Od", date: $validFrom)
+                }
+                if hasPeriod && !isCourse {
+                    DateField(label: "Do", date: $validUntil)
+                }
+                ToggleCard(title: "Kurz na počet lekcí", isOn: $isCourse)
+                if isCourse {
+                    Stepper("Lekcí: \(lessonCount)", value: $lessonCount, in: 1...200)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.ink)
+                }
+                if let status = training?.status {
+                    FieldNote(text: statusText(status))
+                }
             }
-            .onAppear(perform: fill)
+            .card()
+
+            VStack(spacing: 14) {
+                ToggleCard(title: "Pozastavit", detail: "Trénink v tom období neproběhne.", isOn: $isPaused)
+                if isPaused {
+                    DateField(label: "Od", date: $pausedFrom)
+                    DateField(label: "Do", date: $pausedUntil)
+                }
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+
+            if training != nil {
+                DangerButton(title: "Smazat trénink") { isConfirmingDelete = true }
+            }
         }
+        .confirmationDialog("Smazat trénink \(training?.title ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Smazat", role: .destructive) { Task { await delete() } }
+        } message: {
+            Text("Trénink zmizí z kalendáře ve všech týdnech.")
+        }
+        .onAppear(perform: fill)
     }
 
     private func statusText(_ status: TrainingStatus) -> String {
@@ -355,25 +371,27 @@ struct HolidayAddView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Název", text: $label)
-                DatePicker("Od", selection: $start, displayedComponents: .date)
-                DatePicker("Do", selection: $end, in: start..., displayedComponents: .date)
-                if let error { ErrorBanner(text: error) }
-            }
-            .environment(\.locale, Dates.czech)
-            .environment(\.timeZone, Dates.prague)
-            .navigationTitle("Nové prázdniny")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Zrušit") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
+        BrandSheet(
+            title: "Nové prázdniny",
+            subtitle: "Tréninky v tom období neproběhnou",
+            primaryTitle: "Přidat",
+            primaryDisabled: label.trimmingCharacters(in: .whitespaces).isEmpty,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Název") {
+                    TextField("Prázdniny", text: $label)
                 }
+                DateField(label: "Od", date: $start)
+                DateField(label: "Do", date: $end, from: start)
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private func save() async {

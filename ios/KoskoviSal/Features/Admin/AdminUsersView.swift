@@ -119,76 +119,67 @@ struct AdminUserEditView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if let user {
-                    Section {
-                        LabeledContent("Přihlašovací jméno", value: user.username)
-                        if let name = user.displayName { LabeledContent("Jméno", value: name) }
-                        if let email = user.email { LabeledContent("E-mail", value: email) }
-                        if let created = user.createdAt {
-                            LabeledContent("Vytvořen", value: Dates.dateTime(created))
-                        }
-                        if let by = user.createdBy { LabeledContent("Kým / jak", value: by) }
-                    }
-                } else {
-                    Section("Nový účet") {
-                        TextField("Přihlašovací jméno", text: $username)
+        BrandSheet(
+            title: user == nil ? "Nový uživatel" : (user?.displayName ?? user?.username ?? ""),
+            subtitle: user?.username,
+            primaryTitle: "Uložit",
+            primaryDisabled: user == nil && (username.count < 3 || password.count < 8),
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            if let user {
+                VStack(spacing: 10) {
+                    InfoLine(label: "Přihlašovací jméno", value: user.username)
+                    if let email = user.email { InfoLine(label: "E-mail", value: email) }
+                    if let created = user.createdAt { InfoLine(label: "Vytvořen", value: Dates.dateTime(created)) }
+                    if let by = user.createdBy { InfoLine(label: "Kým / jak", value: by) }
+                }
+                .card()
+            } else {
+                VStack(spacing: 14) {
+                    FieldBox(label: "Přihlašovací jméno") {
+                        TextField("jméno", text: $username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                     }
                 }
+                .card()
+            }
 
-                if user?.roleValue != .admin {
-                    Section("Role") {
-                        Picker("Role", selection: $role) {
-                            ForEach(Self.roles, id: \.0) { Text($0.1).tag($0.0) }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                    }
+            if user?.roleValue != .admin {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Role").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
+                    ChoicePills(options: Self.roles, selection: $role)
                 }
+                .card()
+            }
 
-                Section {
-                    SecureField(user == nil ? "Heslo (aspoň 8 znaků)" : "Nové heslo (nevyplněno = beze změny)", text: $password)
+            VStack(spacing: 10) {
+                FieldBox(label: user == nil ? "Heslo (aspoň 8 znaků)" : "Nové heslo") {
+                    SecureField(user == nil ? "heslo" : "nevyplněno = beze změny", text: $password)
                         .textContentType(.newPassword)
-                } header: {
-                    Text("Heslo")
-                } footer: {
-                    if user != nil {
-                        Text("Nové heslo předej uživateli osobně, dosavadní přestane platit.")
-                    }
                 }
+                if user != nil {
+                    FieldNote(text: "Nové heslo předej uživateli osobně, dosavadní přestane platit.")
+                }
+            }
+            .card()
 
-                if let error {
-                    Section { ErrorBanner(text: error) }
-                }
+            if let error {
+                ErrorBanner(text: error)
+            }
 
-                if let user, user.roleValue != .admin {
-                    Section {
-                        Button("Smazat účet", role: .destructive) { isConfirmingDelete = true }
-                    }
-                }
+            if let user, user.roleValue != .admin {
+                DangerButton(title: "Smazat účet") { isConfirmingDelete = true }
             }
-            .navigationTitle(user == nil ? "Nový uživatel" : (user?.displayName ?? user?.username ?? ""))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || (user == nil && (username.count < 3 || password.count < 8)))
-                }
-            }
-            .confirmationDialog("Smazat účet \(user?.username ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-                Button("Smazat", role: .destructive) { Task { await delete() } }
-            } message: {
-                Text("Účet se už nepřihlásí. Jeho lekce a akce zůstanou.")
-            }
-            .onAppear {
-                if let user { role = user.role }
-            }
+        }
+        .confirmationDialog("Smazat účet \(user?.username ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Smazat", role: .destructive) { Task { await delete() } }
+        } message: {
+            Text("Účet se už nepřihlásí. Jeho lekce a akce zůstanou.")
+        }
+        .onAppear {
+            if let user { role = user.role }
         }
     }
 

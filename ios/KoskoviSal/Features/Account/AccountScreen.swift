@@ -232,51 +232,53 @@ struct ProfileView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Jméno a příjmení", text: $displayName)
-                        .textContentType(.name)
-                    TextField("Stálý partner/ka", text: $partnerName)
-                } header: {
-                    Text("Jak tě uvidí ostatní")
-                } footer: {
-                    Text("Partnera předvyplníme při objednávání lekce.")
+        BrandSheet(
+            title: "Můj profil",
+            subtitle: "Jak tě uvidí ostatní",
+            primaryTitle: "Uložit",
+            primaryDisabled: !isLoaded,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            if !isLoaded {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+            } else {
+                VStack(spacing: 14) {
+                    FieldBox(label: "Jméno a příjmení") {
+                        TextField("Jana Nováková", text: $displayName)
+                            .textContentType(.name)
+                    }
+                    FieldBox(label: "Stálý partner/ka") {
+                        TextField("jméno", text: $partnerName)
+                    }
+                    FieldNote(text: "Partnera předvyplníme při objednávání lekce.")
                 }
-                Section {
-                    TextField("E-mail", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textContentType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } footer: {
-                    Text("Pro zprávy ze sálu a obnovení hesla.")
+                .card()
+
+                VStack(spacing: 14) {
+                    FieldBox(label: "E-mail") {
+                        TextField("jana@seznam.cz", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    FieldNote(text: "Pro zprávy ze sálu a obnovení hesla.")
+                    FieldBox(label: "Telefon") {
+                        TextField("777 123 456", text: $phone)
+                            .keyboardType(.phonePad)
+                            .textContentType(.telephoneNumber)
+                    }
+                    FieldNote(text: "Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.")
                 }
-                Section {
-                    TextField("Telefon", text: $phone)
-                        .keyboardType(.phonePad)
-                        .textContentType(.telephoneNumber)
-                } footer: {
-                    Text("Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.")
-                }
-                if let error {
-                    Section { ErrorBanner(text: error) }
-                }
+                .card()
             }
-            .disabled(!isLoaded)
-            .overlay { if !isLoaded { ProgressView() } }
-            .navigationTitle("Můj profil")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }.disabled(isSaving || !isLoaded)
-                }
+
+            if let error {
+                ErrorBanner(text: error)
             }
-            .task { await load() }
         }
+        .task { await load() }
     }
 
     private func load() async {
@@ -326,36 +328,38 @@ struct PasswordView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    SecureField("Současné heslo", text: $current)
+        BrandSheet(
+            title: "Změnit heslo",
+            primaryTitle: "Uložit nové heslo",
+            primaryDisabled: current.isEmpty || new.count < 8,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Současné heslo") {
+                    SecureField("heslo", text: $current)
                         .textContentType(.password)
                 }
-                Section {
-                    SecureField("Nové heslo", text: $new)
+            }
+            .card()
+
+            VStack(spacing: 14) {
+                FieldBox(label: "Nové heslo") {
+                    SecureField("aspoň 8 znaků", text: $new)
                         .textContentType(.newPassword)
-                    SecureField("Nové heslo znovu", text: $repeated)
-                        .textContentType(.newPassword)
-                } footer: {
-                    Text("Aspoň 8 znaků.")
                 }
-                if let error {
-                    Section { ErrorBanner(text: error) }
+                FieldBox(label: "Nové heslo znovu") {
+                    SecureField("pro kontrolu", text: $repeated)
+                        .textContentType(.newPassword)
                 }
             }
-            .navigationTitle("Změnit heslo")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || current.isEmpty || new.count < 8)
-                }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
+        .presentationDetents([.medium, .large])
     }
 
     private func save() async {

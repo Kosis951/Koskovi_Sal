@@ -21,108 +21,102 @@ struct BookingDetailView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Badge(text: booking.kindLabel, style: style)
-                        Text(booking.title)
-                            .font(.title2.weight(.heavy))
-                            .foregroundStyle(style.ink)
-                        Label("\(Dates.dayTitle(booking.date)) · \(booking.start)–\(booking.end)", systemImage: "clock")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(style.ink.opacity(0.85))
-                    }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(style.background))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(style.line, lineWidth: 1))
+        BrandSheet(title: booking.title, subtitle: booking.kindLabel) {
+            VStack(alignment: .leading, spacing: 8) {
+                Badge(text: booking.kindLabel, style: style)
+                Text("\(booking.start)–\(booking.end)")
+                    .font(.largeTitle.weight(.heavy).monospacedDigit())
+                Text(Dates.dayTitle(booking.date).capitalized(with: Dates.czech))
+                    .font(.subheadline.weight(.semibold))
+                    .opacity(0.85)
+            }
+            .foregroundStyle(style.ink)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(style.background))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(style.line, lineWidth: 1))
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        if let organizer = booking.organizer, !organizer.isEmpty, organizer != booking.title {
-                            DetailRow(icon: "person.2", label: "Pořádá", value: organizer)
-                        }
-                        if let trainer = booking.trainer, !trainer.isEmpty {
-                            DetailRow(icon: "figure.dance", label: "Trenér", value: trainer)
-                        }
-                        if booking.cleanupRequired == true {
-                            DetailRow(icon: "sparkles", label: "Úklid", value: booking.cleanedAt == nil ? "Čeká na úklid" : "Uklizeno")
-                        }
-                        if let note = booking.note, !note.isEmpty {
-                            DetailRow(icon: "text.alignleft", label: "Poznámka", value: note)
-                        }
-                        if booking.isTraining {
-                            DetailRow(icon: "repeat", label: "Pravidelný trénink", value: "Každý týden ve stejný čas")
-                        }
-                    }
-                    .card()
+            let rows = detailRows
 
-                    if let error {
-                        ErrorBanner(text: error)
+            if !rows.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(rows) { row in
+                        DetailRow(icon: row.icon, label: row.label, value: row.value)
                     }
+                }
+                .card()
+            }
 
-                    if booking.waitsForCleanup && hasEnded {
+            if let error {
+                ErrorBanner(text: error)
+            }
+
+            if booking.waitsForCleanup && hasEnded {
+                Button {
+                    Task { await clean() }
+                } label: {
+                    Label("Uklidil jsem sál", systemImage: "checkmark")
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isWorking)
+            }
+
+            if canEdit {
+                VStack(spacing: 10) {
+                    if !booking.isTraining {
                         Button {
-                            Task { await clean() }
+                            isEditing = true
                         } label: {
-                            Label("Uklidil jsem sál", systemImage: "checkmark")
+                            Label("Upravit název a čas", systemImage: "pencil")
                         }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(isWorking)
+                        .buttonStyle(SecondaryButtonStyle())
                     }
 
-                    if canEdit {
-                        VStack(spacing: 10) {
-                            if !booking.isTraining {
-                                Button {
-                                    isEditing = true
-                                } label: {
-                                    Label("Upravit název a čas", systemImage: "pencil")
-                                }
-                                .buttonStyle(SecondaryButtonStyle())
-                            }
-
-                            Button(role: .destructive) {
-                                isConfirmingDelete = true
-                            } label: {
-                                Label(booking.isTraining ? "Zrušit tento trénink" : "Smazat akci", systemImage: "trash")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Theme.busy.ink)
-                                    .frame(maxWidth: .infinity, minHeight: 44)
-                                    .background(Capsule().fill(Theme.busy.background))
-                            }
-                            .disabled(isWorking)
-                        }
+                    DangerButton(title: booking.isTraining ? "Zrušit tento trénink" : "Smazat akci") {
+                        isConfirmingDelete = true
                     }
-                }
-                .padding(16)
-            }
-            .pageBackground()
-            .navigationTitle("Detail akce")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Hotovo") { dismiss() }
-                }
-            }
-            .confirmationDialog(
-                booking.isTraining ? "Zrušit trénink \(booking.title)?" : "Smazat \(booking.title)?",
-                isPresented: $isConfirmingDelete,
-                titleVisibility: .visible
-            ) {
-                Button(booking.isTraining ? "Zrušit trénink" : "Smazat", role: .destructive) {
-                    Task { await delete() }
-                }
-            }
-            .sheet(isPresented: $isEditing) {
-                EditBookingView(booking: booking, model: model) {
-                    onNotice("Akce je upravená.")
-                    dismiss()
+                    .disabled(isWorking)
                 }
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .confirmationDialog(
+            booking.isTraining ? "Zrušit trénink \(booking.title)?" : "Smazat \(booking.title)?",
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(booking.isTraining ? "Zrušit trénink" : "Smazat", role: .destructive) {
+                Task { await delete() }
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            EditBookingView(booking: booking, model: model) {
+                onNotice("Akce je upravená.")
+                dismiss()
+            }
+        }
+    }
+
+    private var detailRows: [InfoRow] {
+        var rows: [InfoRow] = []
+
+        if let organizer = booking.organizer, !organizer.isEmpty, organizer != booking.title {
+            rows.append(InfoRow(icon: "person.2", label: "Pořádá", value: organizer))
+        }
+        if let trainer = booking.trainer, !trainer.isEmpty {
+            rows.append(InfoRow(icon: "figure.dance", label: "Trenér", value: trainer))
+        }
+        if booking.cleanupRequired == true {
+            rows.append(InfoRow(icon: "sparkles", label: "Úklid", value: booking.cleanedAt == nil ? "Čeká na úklid" : "Uklizeno"))
+        }
+        if let note = booking.note, !note.isEmpty {
+            rows.append(InfoRow(icon: "text.alignleft", label: "Poznámka", value: note))
+        }
+        if booking.isTraining {
+            rows.append(InfoRow(icon: "repeat", label: "Pravidelný trénink", value: "Každý týden ve stejný čas"))
+        }
+
+        return rows
     }
 
     private func delete() async {
@@ -150,6 +144,15 @@ struct BookingDetailView: View {
             self.error = error.localizedDescription
         }
     }
+}
+
+// One line of a detail card.
+struct InfoRow: Identifiable {
+    let icon: String
+    let label: String
+    let value: String
+
+    var id: String { label }
 }
 
 struct DetailRow: View {
@@ -181,43 +184,28 @@ struct CancellationDetailView: View {
     @State private var error: String?
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Badge(text: "Trénink zrušen", style: Theme.closed)
-                    Text(notice.title).font(.title2.weight(.heavy)).strikethrough()
-                    Label("\(Dates.dayTitle(notice.date)) · \(notice.start)–\(notice.end)", systemImage: "clock")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .foregroundStyle(Theme.closed.ink)
-                .padding(18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.closed.background))
-
-                if let error {
-                    ErrorBanner(text: error)
-                }
-
-                if canReinstate {
-                    Button {
-                        Task { await reinstate() }
-                    } label: {
-                        Label("Obnovit trénink", systemImage: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isWorking)
-                }
-
-                Spacer()
+        BrandSheet(
+            title: notice.title,
+            subtitle: "Trénink zrušen",
+            primaryTitle: canReinstate ? "Obnovit trénink" : nil,
+            isWorking: isWorking,
+            onPrimary: { Task { await reinstate() } }
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Badge(text: "Zrušeno", style: Theme.closed)
+                Text("\(notice.start)–\(notice.end)")
+                    .font(.largeTitle.weight(.heavy).monospacedDigit())
+                    .strikethrough()
+                Text(Dates.dayTitle(notice.date).capitalized(with: Dates.czech))
+                    .font(.subheadline.weight(.semibold))
             }
-            .padding(16)
-            .pageBackground()
-            .navigationTitle("Zrušený trénink")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Hotovo") { dismiss() }
-                }
+            .foregroundStyle(Theme.closed.ink)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.closed.background))
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
         .presentationDetents([.medium])
@@ -257,35 +245,30 @@ struct EditBookingView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Název") {
+        BrandSheet(
+            title: "Upravit akci",
+            subtitle: Dates.dayTitle(booking.date),
+            primaryTitle: "Uložit",
+            primaryDisabled: title.trimmingCharacters(in: .whitespaces).isEmpty,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Název") {
                     TextField("Název akce", text: $title)
                 }
-                Section("Čas") {
-                    Picker("Od", selection: $start) {
-                        ForEach(timeChoices(including: booking.start), id: \.self) { Text($0).tag($0) }
-                    }
-                    Picker("Do", selection: $end) {
-                        ForEach(timeChoices(including: booking.end), id: \.self) { Text($0).tag($0) }
-                    }
-                }
-                if let error {
-                    Section { ErrorBanner(text: error) }
+                HStack(spacing: 12) {
+                    TimeField(label: "Od", selection: $start, options: timeChoices(including: booking.start))
+                    TimeField(label: "Do", selection: $end, options: timeChoices(including: booking.end))
                 }
             }
-            .navigationTitle("Upravit akci")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || title.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
             }
         }
+        .presentationDetents([.medium, .large])
     }
 
     private func timeChoices(including time: String) -> [String] {
@@ -343,60 +326,48 @@ struct AddBookingView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Název akce", text: $name)
+        BrandSheet(
+            title: "Nová akce",
+            subtitle: "Obsazenost sálu",
+            primaryTitle: "Přidat akci",
+            primaryDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 14) {
+                FieldBox(label: "Název akce") {
+                    TextField("např. Seminář LAT", text: $name)
                         .textInputAutocapitalization(.sentences)
-                    Picker("Typ", selection: $eventType) {
-                        ForEach(Self.eventTypes, id: \.0) { type in
-                            Text(type.1).tag(type.0)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                } footer: {
-                    if eventType == "obsazeno" {
-                        Text("Pravidelné tréninky v té době odpadnou.")
-                    }
                 }
-
-                Section {
-                    DatePicker("Den", selection: $day, displayedComponents: .date)
-                        .environment(\.locale, Dates.czech)
-                        .environment(\.timeZone, Dates.prague)
-                    Picker("Od", selection: $start) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
-                    Picker("Do", selection: $end) {
-                        ForEach(quarterHours, id: \.self) { Text($0).tag($0) }
-                    }
-                }
-
-                Section {
-                    TextField("Poznámka", text: $note, axis: .vertical)
-                        .lineLimit(2...5)
-                    Toggle("Po akci je potřeba uklidit", isOn: $cleanup)
-                }
-
-                if let error {
-                    Section { ErrorBanner(text: error) }
+                ChoicePills(options: Self.eventTypes, selection: $eventType)
+                if eventType == "obsazeno" {
+                    FieldNote(text: "Pravidelné tréninky v té době odpadnou.")
                 }
             }
-            .navigationTitle("Nová akce")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Zrušit") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Uložit") { Task { await save() } }
-                        .disabled(isSaving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .card()
+
+            VStack(spacing: 14) {
+                DateField(label: "Den", date: $day)
+                HStack(spacing: 12) {
+                    TimeField(label: "Od", selection: $start)
+                    TimeField(label: "Do", selection: $end)
                 }
             }
-            .onChange(of: start) {
-                if end <= start {
-                    end = Dates.time(min(Dates.minutes(start) + 60, 24 * 60 - 15))
-                }
+            .card()
+
+            VStack(spacing: 14) {
+                NoteField(label: "Poznámka", placeholder: "nepovinné", text: $note)
+                ToggleCard(title: "Po akci je potřeba uklidit", detail: "Sál se ukáže jako „čeká na úklid“.", isOn: $cleanup)
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+        }
+        .onChange(of: start) {
+            if end <= start {
+                end = Dates.time(min(Dates.minutes(start) + 60, 24 * 60 - 15))
             }
         }
     }
