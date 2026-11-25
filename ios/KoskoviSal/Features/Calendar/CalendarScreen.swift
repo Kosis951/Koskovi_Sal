@@ -10,11 +10,7 @@ struct CalendarScreen: View {
     @State private var isAdding = false
     @State private var notice: String?
     @State private var cleaningId: String?
-
-    private var weekDays: [String] {
-        let start = Dates.weekStart(selectedDay)
-        return (0..<7).map { Dates.addDays($0, to: start) }
-    }
+    @AppStorage("calendar.mode") private var mode: CalendarMode = .week
 
     var body: some View {
         NavigationStack {
@@ -37,11 +33,7 @@ struct CalendarScreen: View {
                         )
                     }
 
-                    WeekCard(
-                        days: weekDays,
-                        selectedDay: $selectedDay,
-                        count: { model.bookings(on: $0).count }
-                    )
+                    CalendarCard(mode: $mode, selectedDay: $selectedDay, kinds: { model.kinds(on: $0) })
 
                     dayCard
                 }
@@ -90,6 +82,8 @@ struct CalendarScreen: View {
                 }
             }
 
+            OccupancyBar(model: model, day: selectedDay)
+
             if !model.hasLoaded && model.isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
             } else if model.hours(on: selectedDay) == nil && model.bookings(on: selectedDay).isEmpty {
@@ -111,6 +105,9 @@ struct CalendarScreen: View {
                     }
                 }
             }
+
+            Divider().padding(.top, 4)
+            CalendarLegend()
         }
         .card()
         .simultaneousGesture(
@@ -204,80 +201,6 @@ struct HallStatusCard: View {
             withAnimation(.easeInOut(duration: 1).repeatForever()) { pulse = true }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-struct WeekCard: View {
-    let days: [String]
-    @Binding var selectedDay: String
-    let count: (String) -> Int
-
-    var body: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Button {
-                    withAnimation(.snappy) { selectedDay = Dates.addDays(-7, to: selectedDay) }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel("Předchozí týden")
-
-                Spacer()
-                Text("\(Dates.dayNumber(days.first ?? "")). – \(Dates.dayTitle(days.last ?? "").split(separator: " ").dropFirst().joined(separator: " "))")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-
-                if !days.contains(Dates.todayKey()) {
-                    Button("Dnes") {
-                        withAnimation(.snappy) { selectedDay = Dates.todayKey() }
-                    }
-                    .font(.subheadline.weight(.semibold))
-                }
-
-                Button {
-                    withAnimation(.snappy) { selectedDay = Dates.addDays(7, to: selectedDay) }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .frame(width: 34, height: 34)
-                }
-                .accessibilityLabel("Další týden")
-            }
-            .foregroundStyle(Theme.accent)
-
-            HStack(spacing: 4) {
-                ForEach(days, id: \.self) { day in
-                    let isSelected = day == selectedDay
-                    let isToday = day == Dates.todayKey()
-
-                    Button {
-                        withAnimation(.snappy) { selectedDay = day }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text(Dates.shortWeekday(day))
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Theme.inkSoft)
-                            Text(Dates.dayNumber(day))
-                                .font(.headline)
-                                .foregroundStyle(isSelected ? Color.white : (isToday ? Theme.accent : Theme.ink))
-                            Text(count(day) > 0 ? "\(count(day))" : " ")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Theme.inkMuted)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(isToday ? Theme.subtle : Color.clear))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Dates.dayTitle(day))
-                }
-            }
-        }
-        .card(padding: 12)
     }
 }
 

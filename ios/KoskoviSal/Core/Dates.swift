@@ -46,6 +46,27 @@ enum Dates {
         return self.key(next)
     }
 
+    // The same day a number of months later (the 31st becomes the month's last day).
+    static func addMonths(_ months: Int, to key: String) -> String {
+        guard let date = date(key), let next = calendar.date(byAdding: .month, value: months, to: date) else { return key }
+        return self.key(next)
+    }
+
+    // Whole weeks (Monday to Sunday) covering the month the day is in.
+    static func monthGrid(_ key: String) -> [String] {
+        let first = String(key.prefix(8)) + "01"
+        let nextMonth = String(addMonths(1, to: first).prefix(8)) + "01"
+        var day = weekStart(first)
+        var days: [String] = []
+
+        while day < nextMonth || days.count % 7 != 0 {
+            days.append(day)
+            day = addDays(1, to: day)
+        }
+
+        return days
+    }
+
     // Monday of the week the day is in.
     static func weekStart(_ key: String) -> String {
         guard let date = date(key) else { return key }
