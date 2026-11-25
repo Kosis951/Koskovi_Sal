@@ -20,7 +20,8 @@ concurrency:
 jobs:
   build:
     name: Sestavení (simulátor)
-    runs-on: macos-26
+    # The check runs where Macs are easiest to get; uploads need the newest Xcode.
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
