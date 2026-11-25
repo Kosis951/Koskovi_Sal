@@ -310,6 +310,19 @@ async function handleHealth(response) {
   json(response, 200, { apns: Boolean(apns), ntfy: ntfyHealthy, ok: true });
 }
 
+// Browsers that once opened ntfy's web app here keep showing it from its
+// service worker. This one replaces it: it unregisters itself and reloads the
+// open pages, which then get the real pages from the server.
+const serviceWorkerRemover = `self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) await caches.delete(key);
+    await self.registration.unregister();
+    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate(client.url);
+  })());
+});
+`;
+
 function handleSitePage(request, response, [name, type]) {
   try {
     const body = readFileSync(path.join(site, name));
@@ -397,6 +410,12 @@ const server = http.createServer((request, response) => {
     handleSend(request, response).catch(() => json(response, 500, { message: "Chyba relaye." }));
   } else if (url.pathname === "/relay/health") {
     handleHealth(response);
+  } else if (url.pathname === "/sw.js") {
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": "text/javascript; charset=utf-8",
+    });
+    response.end(serviceWorkerRemover);
   } else if (Object.hasOwn(sitePages, url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
     handleSitePage(request, response, sitePages[url.pathname]);
   } else if (apk && (request.method === "GET" || request.method === "HEAD")) {
