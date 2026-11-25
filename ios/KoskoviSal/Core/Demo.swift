@@ -17,7 +17,7 @@ enum Demo {
         }
     }
 
-    static let session = SessionInfo(authenticated: true, displayName: "Tereza Nováková", role: "viewer", username: "tereza")
+    static let session = SessionInfo(authenticated: true, displayName: "Tereza Nováková", role: "viewer", username: "tereza", scheduleName: "Novák")
 
     private static var today: String { Dates.todayKey() }
 

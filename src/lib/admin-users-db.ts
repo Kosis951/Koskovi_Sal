@@ -87,6 +87,7 @@ export type UserProfile = {
   displayName?: string;
   // Undefined when saving keeps the stored one (older forms do not send it).
   email?: string;
+  scheduleName?: string;
   partnerName?: string;
   phone?: string;
 };
@@ -97,7 +98,13 @@ export function getUserProfile(username: string): UserProfile {
     (item) => !item.deleted && normalizeUsername(item.username) === key,
   );
 
-  return { displayName: user?.displayName, email: user?.email, partnerName: user?.partnerName, phone: user?.phone };
+  return {
+    displayName: user?.displayName,
+    email: user?.email,
+    partnerName: user?.partnerName,
+    phone: user?.phone,
+    scheduleName: user?.scheduleName,
+  };
 }
 
 // The account's own profile. Works for accounts from the server
@@ -118,6 +125,8 @@ export async function updateUserProfile(username: string, profile: UserProfile) 
         createdBy: previousUser?.createdBy ?? username,
         displayName: profile.displayName,
         email: profile.email === undefined ? previousUser?.email : profile.email || undefined,
+        scheduleName:
+          profile.scheduleName === undefined ? previousUser?.scheduleName : profile.scheduleName || undefined,
         partnerName: profile.partnerName,
         phone: profile.phone,
         updatedAt: now,
@@ -155,6 +164,7 @@ export async function registerUser(input: {
   email?: string;
   invitedBy?: string;
   password: string;
+  scheduleName?: string;
   username: string;
 }) {
   return withUsersLock(async () => {
@@ -191,6 +201,7 @@ export async function registerUser(input: {
         deleted: false,
         displayName: input.displayName || undefined,
         email: input.email ? input.email.trim().toLowerCase() : undefined,
+        scheduleName: input.scheduleName || undefined,
         passwordHash: await hashPassword(input.password),
         role: "viewer",
         updatedAt: now,
@@ -278,13 +289,15 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const db = getDb();
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
-      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone, email)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone, email,
+      schedule_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
       deleted = excluded.deleted, display_name = excluded.display_name,
       partner_name = excluded.partner_name, phone = excluded.phone, email = excluded.email,
+      schedule_name = excluded.schedule_name,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -306,6 +319,7 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.partnerName ?? null,
         user.phone ?? null,
         user.email ?? null,
+        user.scheduleName ?? null,
       );
     }
   })();

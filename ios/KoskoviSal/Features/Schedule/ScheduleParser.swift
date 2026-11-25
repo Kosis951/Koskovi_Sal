@@ -117,6 +117,20 @@ enum ScheduleParser {
         return closest.map(Dates.key)
     }
 
+    // The row is the dancer's: their schedule name appears in it as whole
+    // words, ignoring case and accents ("novák" in "Novák / Dvořáková").
+    static func row(_ text: String, belongsTo name: String) -> Bool {
+        let fold = { (value: String) in
+            value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Dates.czech)
+        }
+        let target = fold(name).trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty,
+              let regex = try? NSRegularExpression(pattern: "(^|[^\\p{L}])" + NSRegularExpression.escapedPattern(for: target) + "($|[^\\p{L}])")
+        else { return false }
+        let haystack = fold(text)
+        return regex.firstMatch(in: haystack, range: NSRange(haystack.startIndex..., in: haystack)) != nil
+    }
+
     // Names compare without case and extra spaces.
     static func nameKey(_ name: String) -> String {
         name.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()

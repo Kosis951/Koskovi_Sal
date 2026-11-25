@@ -29,6 +29,7 @@ export async function registerFromPayload(
   const password = text("password");
   const displayName = text("displayName").replace(/\s+/g, " ").trim();
   const email = text("email").trim().toLowerCase();
+  const scheduleName = text("scheduleName").replace(/\s+/g, " ").trim();
 
   if (!usernamePattern.test(username)) {
     return NextResponse.json(
@@ -41,7 +42,7 @@ export async function registerFromPayload(
     return NextResponse.json({ message: "Heslo musí mít aspoň 8 znaků." }, { status: 400 });
   }
 
-  if (displayName.length > maxDisplayNameLength) {
+  if (displayName.length > maxDisplayNameLength || scheduleName.length > maxDisplayNameLength) {
     return NextResponse.json({ message: `Jméno může mít nejvýš ${maxDisplayNameLength} znaků.` }, { status: 400 });
   }
 
@@ -58,6 +59,7 @@ export async function registerFromPayload(
     email: email || undefined,
     invitedBy: options.invitedBy,
     password,
+    scheduleName: scheduleName || undefined,
     username,
   });
 

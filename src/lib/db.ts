@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 15;
+const schemaVersion = 16;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -133,6 +133,10 @@ function migrate(db: Database) {
       migrateToV15(db);
     }
 
+    if (version < 16) {
+      migrateToV16(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
 }
@@ -140,6 +144,12 @@ function migrate(db: Database) {
 // Devices with the native app that receive notifications: iPhones by their
 // APNs token (platform "ios"), Android phones by their UnifiedPush address
 // ("android"); topics as in push_subscriptions.
+// How the account's dancer is written in the visiting trainer's schedule
+// ("Novák"), so the app can show them their lessons from it.
+function migrateToV16(db: Database) {
+  db.exec("ALTER TABLE admin_users ADD COLUMN schedule_name TEXT;");
+}
+
 // The account's e-mail (registration, later messages and password reset).
 function migrateToV15(db: Database) {
   db.exec("ALTER TABLE admin_users ADD COLUMN email TEXT;");

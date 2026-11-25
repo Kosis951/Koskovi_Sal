@@ -7,6 +7,8 @@ struct SessionInfo: Decodable {
     let displayName: String?
     let role: String?
     let username: String?
+    // How the dancer is written in the visiting trainer's schedule.
+    var scheduleName: String?
 }
 
 enum Role: String {

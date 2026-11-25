@@ -23,6 +23,7 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(SessionModel.self) private var session
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = Demo.tab ?? .calendar
     @State private var schedule = ScheduleModel()
 
@@ -53,5 +54,11 @@ struct RootView: View {
                 .tag(AppTab.account)
         }
         .task { await schedule.load() }
+        // A schedule published while the app was away shows its tab without a restart.
+        .onChange(of: scenePhase) {
+            if scenePhase == .active {
+                Task { await schedule.load() }
+            }
+        }
     }
 }

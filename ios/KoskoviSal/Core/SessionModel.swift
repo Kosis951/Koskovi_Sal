@@ -11,6 +11,10 @@ final class SessionModel {
     var role: Role? { info?.role.flatMap(Role.init(rawValue:)) }
     var username: String? { info?.username }
     var displayName: String { info?.displayName ?? info?.username ?? "" }
+    var scheduleName: String? {
+        guard let name = info?.scheduleName?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
+        return name
+    }
 
     func refresh() async {
         if Demo.isOn {

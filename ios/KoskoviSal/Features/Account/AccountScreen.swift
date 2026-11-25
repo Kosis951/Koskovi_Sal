@@ -215,6 +215,7 @@ private struct ProfileResponse: Decodable {
         let email: String?
         let partnerName: String?
         let phone: String?
+        let scheduleName: String?
     }
 
     let profile: Profile
@@ -227,6 +228,7 @@ struct ProfileView: View {
     @State private var email = ""
     @State private var partnerName = ""
     @State private var phone = ""
+    @State private var scheduleName = ""
     @State private var isLoaded = false
     @State private var isSaving = false
     @State private var error: String?
@@ -252,6 +254,11 @@ struct ProfileView: View {
                         TextField("jméno", text: $partnerName)
                     }
                     FieldNote(text: "Partnera předvyplníme při objednávání lekce.")
+                    FieldBox(label: "Jméno v rozpisu externího trenéra") {
+                        TextField("např. Novák", text: $scheduleName)
+                            .autocorrectionDisabled()
+                    }
+                    FieldNote(text: "Jak tě trenér v rozpisu píše; v Rozpisu pak uvidíš své lekce.")
                 }
                 .card()
 
@@ -288,6 +295,7 @@ struct ProfileView: View {
             email = response.profile.email ?? ""
             partnerName = response.profile.partnerName ?? ""
             phone = response.profile.phone ?? ""
+            scheduleName = response.profile.scheduleName ?? ""
         } catch {
             self.error = error.localizedDescription
         }
@@ -307,6 +315,7 @@ struct ProfileView: View {
                     "email": email.trimmingCharacters(in: .whitespaces),
                     "partnerName": partnerName.trimmingCharacters(in: .whitespaces),
                     "phone": phone.trimmingCharacters(in: .whitespaces),
+                    "scheduleName": scheduleName.trimmingCharacters(in: .whitespaces),
                 ],
                 as: MessageResponse.self
             )

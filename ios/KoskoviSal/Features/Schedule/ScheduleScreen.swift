@@ -42,8 +42,10 @@ final class ScheduleModel {
 
 struct ScheduleScreen: View {
     let model: ScheduleModel
+    @Environment(SessionModel.self) private var session
     @State private var requestRow: RequestTarget?
     @State private var notice: String?
+    @State private var isLinking = false
 
     struct RequestTarget: Identifiable {
         let id = UUID()
@@ -61,6 +63,8 @@ struct ScheduleScreen: View {
                     if let error = model.error {
                         ErrorBanner(text: error)
                     }
+
+                    myLessonsCard
 
                     if let until = model.requestsUntil {
                         HStack(alignment: .top, spacing: 12) {
@@ -97,15 +101,17 @@ struct ScheduleScreen: View {
                                 let past = isPast(day: day.dateKey, row: row)
                                 let current = isNow(day: day.dateKey, row: row)
 
+                                let mine = isMine(row)
+
                                 if canAsk(day: day.dateKey, row: row), let date = day.dateKey {
                                     Button {
                                         requestRow = RequestTarget(date: date, row: row)
                                     } label: {
-                                        ScheduleRowView(row: row, isPast: past, isNow: current, canRequest: true)
+                                        ScheduleRowView(row: row, isPast: past, isNow: current, canRequest: true, isMine: mine)
                                     }
                                     .buttonStyle(.plain)
                                 } else {
-                                    ScheduleRowView(row: row, isPast: past, isNow: current, canRequest: false)
+                                    ScheduleRowView(row: row, isPast: past, isNow: current, canRequest: false, isMine: mine)
                                 }
                             }
                         }
@@ -121,10 +127,81 @@ struct ScheduleScreen: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await model.load() }
+            .sheet(isPresented: $isLinking) {
+                ScheduleNameView(current: session.scheduleName ?? "") {
+                    Task { await session.refresh() }
+                }
+            }
             .sheet(item: $requestRow) { target in
                 ScheduleRequestView(date: target.date, row: target.row) { message in
                     notice = message
                 }
+            }
+        }
+    }
+
+    private func isMine(_ row: ScheduleRow) -> Bool {
+        guard row.kind == .lesson, let name = session.scheduleName else { return false }
+        return ScheduleParser.row(row.text, belongsTo: name)
+    }
+
+    // The dancer's own lessons from the schedule, or an offer to link the
+    // account with their name in it.
+    @ViewBuilder
+    private var myLessonsCard: some View {
+        if session.isSignedIn {
+            if let name = session.scheduleName {
+                let mine = model.days.flatMap { day in
+                    day.rows.filter { isMine($0) }.map { (date: day.dateKey, row: $0) }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("Moje lekce", systemImage: "person.crop.circle.badge.checkmark")
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        Button("Změnit") { isLinking = true }
+                            .font(.footnote.weight(.semibold))
+                    }
+                    if mine.isEmpty {
+                        Text("V rozpisu zatím nevidíme „\(name)“. Zkontroluj, jak tě trenér píše.")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
+                    ForEach(Array(mine.enumerated()), id: \.offset) { _, item in
+                        HStack(spacing: 12) {
+                            Text(item.date.map { Dates.dayTitle($0) } ?? "")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Theme.ink)
+                            Spacer()
+                            Text("\(item.row.start ?? "")–\(item.row.end ?? "")")
+                                .font(.subheadline.weight(.bold).monospacedDigit())
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.training.background))
+                    }
+                }
+                .card()
+            } else {
+                Button {
+                    isLinking = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "link.circle.fill").font(.title2).foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Propoj se s rozpisem").font(.subheadline.weight(.bold)).foregroundStyle(Theme.ink)
+                            Text("Napiš, jak tě trenér v rozpisu píše, a uvidíš tu své lekce.")
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkMuted)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.inkSoft)
+                    }
+                    .card(padding: 14)
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -151,6 +228,7 @@ struct ScheduleRowView: View {
     let isPast: Bool
     let isNow: Bool
     let canRequest: Bool
+    var isMine = false
 
     private var style: KindStyle {
         switch row.kind {
@@ -186,6 +264,9 @@ struct ScheduleRowView: View {
 
                 Spacer(minLength: 4)
 
+                if isMine {
+                    Badge(text: "Ty", style: Theme.event)
+                }
                 if isNow {
                     Badge(text: "Teď", style: Theme.free)
                 } else if canRequest {
@@ -199,7 +280,10 @@ struct ScheduleRowView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, row.kind == .pause ? 8 : 11)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(style.background))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(style.line.opacity(row.kind == .lesson && !isNow ? 0 : 1), lineWidth: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isMine ? Theme.accent : style.line.opacity(row.kind == .lesson && !isNow ? 0 : 1), lineWidth: isMine ? 2 : 1)
+            )
             .opacity(isPast ? 0.45 : 1)
         }
     }
@@ -296,6 +380,61 @@ struct ScheduleRequestView: View {
                 as: MessageResponse.self
             )
             onDone(response.message ?? "Žádost je odeslaná.")
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+// Links the account with the dancer's name in the schedule (saved in the
+// profile, so it works on every device).
+struct ScheduleNameView: View {
+    let current: String
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var isSaving = false
+    @State private var error: String?
+
+    var body: some View {
+        BrandSheet(
+            title: "Jméno v rozpisu",
+            subtitle: "Jak tě píše externí trenér",
+            primaryTitle: "Uložit",
+            isWorking: isSaving,
+            onPrimary: { Task { await save() } }
+        ) {
+            VStack(spacing: 10) {
+                FieldBox(label: "Jméno v rozpisu") {
+                    TextField("např. Novák", text: $name)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                }
+                FieldNote(text: "Stačí příjmení, jak je v rozpisu (\"Novák\" najde i řádek „Novák / Dvořáková“). Prázdné = zrušit propojení.")
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+        }
+        .presentationDetents([.medium])
+        .onAppear { name = current }
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            _ = try await API.send(
+                "PUT",
+                "/api/account/profile",
+                body: ["scheduleName": name.trimmingCharacters(in: .whitespaces)],
+                as: MessageResponse.self
+            )
+            onSaved()
             dismiss()
         } catch {
             self.error = error.localizedDescription

@@ -7,6 +7,7 @@ struct RegisterView: View {
     let onRegistered: () -> Void
     @State private var displayName = ""
     @State private var email = ""
+    @State private var scheduleName = ""
     @State private var username = ""
     @State private var password = ""
     @State private var passwordAgain = ""
@@ -41,6 +42,11 @@ struct RegisterView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
+                FieldBox(label: "Jméno v rozpisu externího trenéra (nepovinné)") {
+                    TextField("např. Nováková", text: $scheduleName)
+                        .autocorrectionDisabled()
+                }
+                FieldNote(text: "Jak tě trenér v rozpisu píše; v Rozpisu pak uvidíš své lekce.")
             }
             .card()
 
@@ -93,6 +99,7 @@ struct RegisterView: View {
                     "displayName": displayName.trimmingCharacters(in: .whitespaces),
                     "email": email.trimmingCharacters(in: .whitespaces),
                     "password": password,
+                    "scheduleName": scheduleName.trimmingCharacters(in: .whitespaces),
                     "username": username.trimmingCharacters(in: .whitespaces),
                 ],
                 as: Empty.self
