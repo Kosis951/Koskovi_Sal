@@ -1,0 +1,24 @@
+# The web (sal.tkkoskovi.cz) with its database on the Synology NAS (see
+# README.md). Container Manager → Project → Create → path
+# /volume1/docker/koskovi-web. The image comes from GitHub (web-image.yml);
+# Akce → Sestavit pulls the newest one.
+services:
+  web:
+    image: ghcr.io/kosis951/koskovi_sal:latest
+    pull_policy: always
+    container_name: koskovi-web
+    init: true
+    # The web's secrets (the same as .env.local on the VPS).
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/koskovi.sqlite
+      PORT: "3001"
+      PUSH_RELAY_URL: https://push.tkkoskovi.cz
+      APP_URL: https://sal.tkkoskovi.cz
+      TZ: Europe/Prague
+    volumes:
+      - ./data:/data
+    ports:
+      # Only DSM's reverse proxy talks to it; HTTPS is done there.
+      - "127.0.0.1:3011:3001"
+    restart: unless-stopped

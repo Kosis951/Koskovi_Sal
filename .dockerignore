@@ -1,0 +1,12 @@
+.git
+.github
+.next
+node_modules
+data
+ios
+nas
+*.log
+.env*
+!.env.example
+*.p8
+tsconfig.tsbuildinfo
