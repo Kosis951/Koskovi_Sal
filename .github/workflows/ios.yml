@@ -116,6 +116,12 @@ jobs:
           printf '%s\n' "$ASC_KEY_P8" > "$key"
           echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
 
+      # The last run's development certificate cannot be used here (its key
+      # stayed on that Mac) and blocks a new one.
+      - name: Staré certifikáty
+        if: steps.setup.outputs.ready == 'true'
+        run: node ios/ci/revoke-dev-certs.mjs
+
       - name: Archiv
         if: steps.setup.outputs.ready == 'true'
         working-directory: ios

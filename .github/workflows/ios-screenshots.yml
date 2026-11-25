@@ -85,7 +85,7 @@ jobs:
           ls -la shots
           sips -g pixelWidth -g pixelHeight shots/*.png
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: app-store-screenshots
           path: shots
