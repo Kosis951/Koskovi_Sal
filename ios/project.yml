@@ -36,7 +36,7 @@ targets:
     info:
       path: KoskoviSal/Info.plist
       properties:
-        CFBundleDisplayName: Koškovi sál
+        CFBundleDisplayName: TK Koškovi
         CFBundleDevelopmentRegion: cs
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

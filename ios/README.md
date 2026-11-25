@@ -18,7 +18,7 @@ Zbytek (sprava uzivatelu, pravidelne treninky, casy vyuky treneru, rozpis…) je
 
 ## Jednorazove nastaveni
 
-1. **App Store Connect → Apps → + → New App**: platforma iOS, nazev „Koškovi sál“, jazyk cestina,
+1. **App Store Connect → Apps → + → New App**: platforma iOS, nazev „TK Koškovi“ (hotovo, SKU `tk-koskovi-sal`), jazyk cestina,
    Bundle ID `cz.tkkoskovi.sal` (kdyz v nabidce neni, nejdriv ho zaregistruj v
    developer.apple.com → Certificates, IDs & Profiles → Identifiers → + → App IDs, zaskrtni
    Push Notifications), SKU treba `koskovi-sal`.
@@ -35,7 +35,7 @@ Zbytek (sprava uzivatelu, pravidelne treninky, casy vyuky treneru, rozpis…) je
    Connect → TestFlight; prvni build muze cekat na „Missing Compliance“ (aplikace sifrovani
    nepouziva, je to v Info.plist, takze by se nemelo ptat).
 6. **Testeri**: TestFlight → Internal Testing → + skupina, pridat sebe (ucty z App Store
-   Connect, bez kontroly od Applu). Na iPhonu aplikace TestFlight → Koškovi sál → Nainstalovat.
+   Connect, bez kontroly od Applu). Na iPhonu aplikace TestFlight → TK Koškovi → Nainstalovat.
 
 ## Upozorneni
 

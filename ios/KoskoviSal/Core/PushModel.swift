@@ -75,7 +75,7 @@ final class PushModel {
             if !granted {
                 topics.remove(topic)
                 UserDefaults.standard.set(topics.map(\.rawValue).sorted(), forKey: Self.topicsKey)
-                message = "Upozornění jsou pro aplikaci vypnutá. Zapni je v Nastavení → Koškovi sál → Oznámení."
+                message = "Upozornění jsou pro aplikaci vypnutá. Zapni je v Nastavení → TK Koškovi → Oznámení."
                 return
             }
         }
