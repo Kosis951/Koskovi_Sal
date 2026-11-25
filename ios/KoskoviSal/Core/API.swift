@@ -14,6 +14,8 @@ enum AppConfig {
 }
 
 enum APIError: LocalizedError {
+    static let outdatedServer = "Web sálu ještě běží ve starší verzi, která tohle neumí. Jakmile se nasadí nová verze, bude to fungovat."
+
     case server(String)
     case network
     case decoding
@@ -90,6 +92,11 @@ enum API {
 
         guard (200..<300).contains(status) else {
             let message = (try? JSONDecoder().decode(Message.self, from: data))?.message
+            // A 404 page instead of the API's own answer: the web does not
+            // have this part yet.
+            if status == 404 && message == nil {
+                throw APIError.server(APIError.outdatedServer)
+            }
             throw APIError.server(message ?? defaultMessage(for: status))
         }
 
@@ -116,4 +123,23 @@ struct Empty: Decodable {}
 
 struct MessageResponse: Decodable {
     let message: String?
+}
+
+// What PUT /api/account/profile answers; an older web leaves out the
+// schedule name, so the app can tell it was not saved.
+struct ProfileSaveResponse: Decodable {
+    struct Profile: Decodable {
+        let scheduleName: String?
+    }
+
+    let message: String?
+    let profile: Profile?
+
+    func check(scheduleName: String) throws {
+        // The web collapses spaces, so compare the same way.
+        let collapse = { (value: String) in value.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        if collapse(profile?.scheduleName ?? "") != collapse(scheduleName) {
+            throw APIError.server(APIError.outdatedServer)
+        }
+    }
 }

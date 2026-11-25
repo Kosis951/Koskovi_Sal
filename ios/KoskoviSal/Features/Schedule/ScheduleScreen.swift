@@ -428,12 +428,14 @@ struct ScheduleNameView: View {
         defer { isSaving = false }
 
         do {
-            _ = try await API.send(
+            let wanted = name.trimmingCharacters(in: .whitespaces)
+            let response = try await API.send(
                 "PUT",
                 "/api/account/profile",
-                body: ["scheduleName": name.trimmingCharacters(in: .whitespaces)],
-                as: MessageResponse.self
+                body: ["scheduleName": wanted],
+                as: ProfileSaveResponse.self
             )
+            try response.check(scheduleName: wanted)
             onSaved()
             dismiss()
         } catch {

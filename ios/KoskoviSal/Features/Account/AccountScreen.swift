@@ -307,6 +307,7 @@ struct ProfileView: View {
         defer { isSaving = false }
 
         do {
+            let wantedScheduleName = scheduleName.trimmingCharacters(in: .whitespaces)
             let response = try await API.send(
                 "PUT",
                 "/api/account/profile",
@@ -315,10 +316,11 @@ struct ProfileView: View {
                     "email": email.trimmingCharacters(in: .whitespaces),
                     "partnerName": partnerName.trimmingCharacters(in: .whitespaces),
                     "phone": phone.trimmingCharacters(in: .whitespaces),
-                    "scheduleName": scheduleName.trimmingCharacters(in: .whitespaces),
+                    "scheduleName": wantedScheduleName,
                 ],
-                as: MessageResponse.self
+                as: ProfileSaveResponse.self
             )
+            try response.check(scheduleName: wantedScheduleName)
             onSaved(response.message ?? "Profil je uložený.")
             dismiss()
         } catch {
