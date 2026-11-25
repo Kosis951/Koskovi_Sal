@@ -20,8 +20,9 @@ concurrency:
 jobs:
   build:
     name: Sestavení (simulátor)
-    # The check runs where Macs are easiest to get; uploads need the newest Xcode.
-    runs-on: macos-15
+    # Intel Macs: GitHub often has no Apple-silicon Macs free (jobs were
+    # never picked up). The step below picks Xcode 26 when the image has it.
+    runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +70,7 @@ jobs:
     name: TestFlight
     needs: build
     if: github.event_name == 'push' || inputs.testflight
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 45
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -102,6 +103,11 @@ jobs:
           xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
           if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
           xcodebuild -version
+          # App Store Connect takes only builds made with the iOS 26 SDK.
+          if ! xcodebuild -version | grep -q "^Xcode 26"; then
+            echo "::error::Na tomhle Macu GitHubu není Xcode 26, App Store Connect by build odmítl."
+            exit 1
+          fi
           brew install xcodegen
           xcodegen generate
           key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"

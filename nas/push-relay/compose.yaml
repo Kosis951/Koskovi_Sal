@@ -1,14 +1,20 @@
 # Push relay for the Koškovi sál apps on the Synology NAS (see README.md).
 # Container Manager → Project → Create → path /volume1/docker/koskovi-push.
+# Secrets live in ./secrets: AuthKey.p8 (Apple push key) and
+# relay-secret.txt (shared with the web as PUSH_RELAY_SECRET).
 services:
   relay:
     image: node:22-alpine
     container_name: koskovi-relay
+    init: true
     command: ["node", "/app/server.mjs"]
-    env_file: .env
     environment:
-      NTFY_INTERNAL_URL: http://ntfy:80
+      APNS_KEY_ID: F8QS7XUX7B
+      APNS_TEAM_ID: 44HJR678JA
+      APNS_BUNDLE_ID: cz.tkkoskovi.sal
       APNS_KEY_PATH: /secrets/AuthKey.p8
+      RELAY_SECRET_FILE: /secrets/relay-secret.txt
+      NTFY_INTERNAL_URL: http://ntfy:80
       DOWNLOADS_DIR: /downloads
       TZ: Europe/Prague
     volumes:
@@ -30,7 +36,11 @@ services:
   ntfy:
     image: binwiederhier/ntfy:v2.11.0
     container_name: koskovi-ntfy
-    command: serve
+    # The phones' "up…" topics are open to everyone (random per phone). The
+    # rule needs the user database the server creates, so it is set once the
+    # server runs (on every start; it changes nothing the next time).
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ntfy serve & pid=$$!; trap 'kill $$pid' TERM INT; for i in $$(seq 1 30); do [ -f /var/lib/ntfy/user.db ] && break; sleep 1; done; ntfy access everyone 'up*' read-write; wait $$pid"]
     environment:
       TZ: Europe/Prague
     volumes:

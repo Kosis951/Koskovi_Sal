@@ -17,14 +17,23 @@ import path from "node:path";
 
 const env = process.env;
 const port = Number(env.PORT || 8080);
-const secret = env.RELAY_SECRET || "";
+// The secret shared with the web: from RELAY_SECRET or a file in ./secrets.
+const secret = (env.RELAY_SECRET || readSecretFile(env.RELAY_SECRET_FILE || "/secrets/relay-secret.txt")).trim();
 const ntfy = new URL(env.NTFY_INTERNAL_URL || "http://ntfy:80");
 const downloads = env.DOWNLOADS_DIR || "/downloads";
 const maxBody = 1024 * 1024;
 const maxDevices = 2000;
 
+function readSecretFile(file) {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 if (secret.length < 32) {
-  console.error("RELAY_SECRET musí mít aspoň 32 znaků.");
+  console.error("Tajný řetězec relaye (secrets/relay-secret.txt) musí mít aspoň 32 znaků.");
   process.exit(1);
 }
 

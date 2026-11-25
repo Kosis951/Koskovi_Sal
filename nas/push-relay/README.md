@@ -20,11 +20,11 @@ predava ntfy (tam se pripojuje aplikace ntfy na telefonech). ntfy neni zvenku pr
 2. **Soubory** (File Station): vytvor `/volume1/docker/koskovi-push` a do ni nahraj
    obsah teto slozky: `compose.yaml`, `relay/server.mjs`, `ntfy/server.yml`. Vytvor prazdne
    slozky `secrets`, `downloads`, `ntfy-data`.
-3. **Push klic**: soubor `AuthKey_F8QS7XUX7B.p8` nahraj do `secrets` a prejmenuj na
-   `AuthKey.p8`.
-4. **Nastaveni**: podle `.env.example` vytvor v `/volume1/docker/koskovi-push` soubor `.env`.
-   `RELAY_SECRET` je nahodny retezec aspon 32 znaku (stejny pak pujde na VPS). Vygenerujes ho
-   treba prikazem `openssl rand -hex 32`.
+3. **Tajne soubory** do `secrets`: `AuthKey.p8` (push klic od Applu, prejmenovany
+   `AuthKey_F8QS7XUX7B.p8`) a `relay-secret.txt` (nahodny retezec aspon 32 znaku, napr.
+   `openssl rand -hex 32`; stejny pak pujde na VPS). Key ID, Team ID a bundle ID jsou primo
+   v `compose.yaml`.
+4. (Pravidlo pro temata telefonu `up*` si ntfy nastavi samo pri kazdem startu.)
 5. **Container Manager → Projekt → Vytvorit**: nazev `koskovi-push`, cesta
    `/volume1/docker/koskovi-push`, „Pouzit existujici compose.yaml“ → Dalsi → Hotovo.
 6. **Reverzni proxy**: Ovladaci panel → Prihlasovaci portal → Upresnit → Reverzni proxy →
@@ -36,12 +36,6 @@ predava ntfy (tam se pripojuje aplikace ntfy na telefonech). ntfy neni zvenku pr
      drzi spojeni dlouho).
 7. **Certifikat**: Ovladaci panel → Zabezpeceni → Certifikat → Pridat → Let's Encrypt pro
    `push.tkkoskovi.cz`, pak v „Nastaveni“ priradit k teto reverzni proxy.
-8. **ntfy temata pro telefony** (jen jednou): Container Manager → Kontejner → koskovi-ntfy →
-   Akce → Otevrit terminal → Vytvorit → `sh`:
-
-   ```sh
-   ntfy access everyone 'up*' read-write
-   ```
 
 ## Napojeni webu (VPS)
 
@@ -49,7 +43,7 @@ Do `.env.local` na VPS:
 
 ```
 PUSH_RELAY_URL=https://push.tkkoskovi.cz
-PUSH_RELAY_SECRET=<stejny RELAY_SECRET jako na NAS>
+PUSH_RELAY_SECRET=<obsah secrets/relay-secret.txt z NAS>
 ```
 
 a `pm2 restart koskovi-sal`. Klic od Applu na VPS nepatri.
