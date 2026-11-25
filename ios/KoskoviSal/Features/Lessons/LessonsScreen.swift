@@ -163,7 +163,11 @@ struct LessonsScreen: View {
         defer { isLoading = false }
 
         do {
-            trainers = try await API.get("/api/lessons", as: TrainersResponse.self).trainers
+            if Demo.isOn {
+                trainers = Demo.trainers
+            } else {
+                trainers = try await API.get("/api/lessons", as: TrainersResponse.self).trainers
+            }
             selected = trainers.first { $0.trainer == lastTrainer }?.trainer ?? trainers.first?.trainer
             error = nil
             await loadCalendar()
@@ -176,7 +180,11 @@ struct LessonsScreen: View {
         guard let selected else { return }
 
         do {
-            calendar = try await API.get("/api/lessons/\(API.segment(selected))", as: TrainerCalendar.self)
+            if Demo.isOn {
+                calendar = Demo.trainerCalendar
+            } else {
+                calendar = try await API.get("/api/lessons/\(API.segment(selected))", as: TrainerCalendar.self)
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription

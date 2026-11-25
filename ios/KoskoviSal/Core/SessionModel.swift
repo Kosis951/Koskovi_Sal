@@ -13,6 +13,11 @@ final class SessionModel {
     var displayName: String { info?.displayName ?? info?.username ?? "" }
 
     func refresh() async {
+        if Demo.isOn {
+            info = Demo.session
+            return
+        }
+
         isChecking = true
         defer { isChecking = false }
 

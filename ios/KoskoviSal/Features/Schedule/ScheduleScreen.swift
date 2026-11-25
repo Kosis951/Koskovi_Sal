@@ -23,7 +23,14 @@ final class ScheduleModel {
 
     func load() async {
         do {
-            let schedule = try await API.get("/api/rozpis", as: PublicScheduleResponse.self)
+            let schedule: PublicScheduleResponse
+
+            if Demo.isOn {
+                schedule = Demo.schedule
+            } else {
+                schedule = try await API.get("/api/rozpis", as: PublicScheduleResponse.self)
+            }
+
             self.schedule = schedule
             days = ScheduleParser.parse(schedule.body, todayKey: Dates.todayKey())
             error = nil

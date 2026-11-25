@@ -40,12 +40,14 @@ final class PushModel {
 
     private init() {
         let saved = UserDefaults.standard.stringArray(forKey: Self.topicsKey) ?? []
-        topics = Set(saved.compactMap(PushTopic.init(rawValue:)))
+        topics = Demo.isOn ? [.hall] : Set(saved.compactMap(PushTopic.init(rawValue:)))
     }
 
     // On launch: when notifications are allowed, get a fresh token (Apple may
     // change it) and keep the server's topics in step.
     func registerIfAllowed() async {
+        if Demo.isOn { return }
+
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         isAuthorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
 

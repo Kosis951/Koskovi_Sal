@@ -23,7 +23,7 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(SessionModel.self) private var session
-    @State private var tab: AppTab = .calendar
+    @State private var tab: AppTab = Demo.tab ?? .calendar
     @State private var schedule = ScheduleModel()
 
     var body: some View {

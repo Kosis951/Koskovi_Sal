@@ -35,6 +35,15 @@ final class HallModel {
     var error: String?
 
     func load() async {
+        if Demo.isOn {
+            let response = Demo.availability
+            bookings = response.bookings
+            cancellations = response.recurringCancellations ?? []
+            openingHours = response.hall?.openingHours ?? []
+            hasLoaded = true
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
 

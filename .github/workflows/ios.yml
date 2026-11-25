@@ -21,7 +21,7 @@ jobs:
   build:
     name: Sestavení (simulátor)
     # Intel Macs: GitHub often has no Apple-silicon Macs free (jobs were
-    # never picked up). The step below picks Xcode 26 when the image has it.
+    # never picked up). The steps below pick the newest Xcode on the image.
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Xcode
         run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          xcode=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
           if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
           xcodebuild -version
 
@@ -100,12 +100,14 @@ jobs:
         if: steps.setup.outputs.ready == 'true'
         working-directory: ios
         run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          xcode=$(ls -d /Applications/Xcode_[0-9]*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
           if [ -n "$xcode" ]; then sudo xcode-select -s "$xcode"; fi
           xcodebuild -version
-          # App Store Connect takes only builds made with the iOS 26 SDK.
-          if ! xcodebuild -version | grep -q "^Xcode 26"; then
-            echo "::error::Na tomhle Macu GitHubu není Xcode 26, App Store Connect by build odmítl."
+          # App Store Connect takes only builds made with a recent SDK (iOS 26
+          # now, iOS 27 from April 2027).
+          major=$(xcodebuild -version | head -1 | sed 's/^Xcode \([0-9]*\).*/\1/')
+          if [ "$major" -lt 26 ]; then
+            echo "::error::Na tomhle Macu GitHubu je staré Xcode $major, App Store Connect by build odmítl."
             exit 1
           fi
           brew install xcodegen
