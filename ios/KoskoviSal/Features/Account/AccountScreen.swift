@@ -83,7 +83,7 @@ struct AccountScreen: View {
             }
 
             VStack(spacing: 0) {
-                AccountRow(icon: "person.text.rectangle", title: "Můj profil", detail: "Jméno, partner/ka, telefon") {
+                AccountRow(icon: "person.text.rectangle", title: "Můj profil", detail: "Jméno, e-mail, partner/ka, telefon") {
                     isEditingProfile = true
                 }
                 Divider().padding(.leading, 44)
@@ -212,6 +212,7 @@ struct LinkRow: View {
 private struct ProfileResponse: Decodable {
     struct Profile: Decodable {
         let displayName: String?
+        let email: String?
         let partnerName: String?
         let phone: String?
     }
@@ -223,6 +224,7 @@ struct ProfileView: View {
     let onSaved: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var displayName = ""
+    @State private var email = ""
     @State private var partnerName = ""
     @State private var phone = ""
     @State private var isLoaded = false
@@ -240,6 +242,15 @@ struct ProfileView: View {
                     Text("Jak tě uvidí ostatní")
                 } footer: {
                     Text("Partnera předvyplníme při objednávání lekce.")
+                }
+                Section {
+                    TextField("E-mail", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text("Pro zprávy ze sálu a obnovení hesla.")
                 }
                 Section {
                     TextField("Telefon", text: $phone)
@@ -272,6 +283,7 @@ struct ProfileView: View {
         do {
             let response = try await API.get("/api/account/profile", as: ProfileResponse.self)
             displayName = response.profile.displayName ?? ""
+            email = response.profile.email ?? ""
             partnerName = response.profile.partnerName ?? ""
             phone = response.profile.phone ?? ""
         } catch {
@@ -290,6 +302,7 @@ struct ProfileView: View {
                 "/api/account/profile",
                 body: [
                     "displayName": displayName.trimmingCharacters(in: .whitespaces),
+                    "email": email.trimmingCharacters(in: .whitespaces),
                     "partnerName": partnerName.trimmingCharacters(in: .whitespaces),
                     "phone": phone.trimmingCharacters(in: .whitespaces),
                 ],

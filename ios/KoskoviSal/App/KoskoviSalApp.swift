@@ -18,7 +18,7 @@ struct KoskoviSalApp: App {
 }
 
 enum AppTab: Hashable {
-    case calendar, lessons, schedule, account
+    case calendar, lessons, schedule, admin, account
 }
 
 struct RootView: View {
@@ -40,6 +40,12 @@ struct RootView: View {
                 ScheduleScreen(model: schedule)
                     .tabItem { Label("Rozpis", systemImage: "list.bullet.rectangle") }
                     .tag(AppTab.schedule)
+            }
+
+            if session.role?.canManageBookings == true {
+                AdminScreen()
+                    .tabItem { Label("Správa", systemImage: "gearshape.2") }
+                    .tag(AppTab.admin)
             }
 
             AccountScreen()

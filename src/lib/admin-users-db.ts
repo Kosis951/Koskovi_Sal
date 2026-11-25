@@ -26,6 +26,10 @@ export async function getAdminUsers() {
       const storedUser = storedByUsername.get(normalizeUsername(username));
 
       return {
+        createdAt: storedUser?.createdAt,
+        createdBy: storedUser?.createdBy,
+        displayName: storedUser?.displayName,
+        email: storedUser?.email,
         isStored: Boolean(storedUser?.passwordHash),
         role: getAdminRole(username, storedUsers),
         username: storedUser?.username ?? username,
@@ -81,6 +85,8 @@ export async function upsertAdminUserPassword(input: {
 
 export type UserProfile = {
   displayName?: string;
+  // Undefined when saving keeps the stored one (older forms do not send it).
+  email?: string;
   partnerName?: string;
   phone?: string;
 };
@@ -91,7 +97,7 @@ export function getUserProfile(username: string): UserProfile {
     (item) => !item.deleted && normalizeUsername(item.username) === key,
   );
 
-  return { displayName: user?.displayName, partnerName: user?.partnerName, phone: user?.phone };
+  return { displayName: user?.displayName, email: user?.email, partnerName: user?.partnerName, phone: user?.phone };
 }
 
 // The account's own profile. Works for accounts from the server
@@ -111,6 +117,7 @@ export async function updateUserProfile(username: string, profile: UserProfile) 
         createdAt: previousUser?.createdAt ?? now,
         createdBy: previousUser?.createdBy ?? username,
         displayName: profile.displayName,
+        email: profile.email === undefined ? previousUser?.email : profile.email || undefined,
         partnerName: profile.partnerName,
         phone: profile.phone,
         updatedAt: now,
@@ -119,18 +126,34 @@ export async function updateUserProfile(username: string, profile: UserProfile) 
       },
     ]);
 
-    return profile;
+    // What is stored now (an e-mail left out of the form stays).
+    return getUserProfile(username);
   });
 }
 
+// Another account already uses the e-mail (compared in lower case).
+export function isEmailTaken(email: string, exceptUsername?: string) {
+  const key = email.trim().toLowerCase();
+  const except = exceptUsername ? normalizeUsername(exceptUsername) : null;
+
+  return readStoredAdminUsersSync().some(
+    (user) => !user.deleted && user.email === key && normalizeUsername(user.username) !== except,
+  );
+}
+
 const invitedByPrefix = "pozvánka: ";
+const registeredBy = "registrace";
 const maxInvitedUsers = 300;
 
 // Self-registration through a trainer's invite link: a new read-only account.
 // Never touches an existing name – not even a deleted account or one from the
 // server configuration – so a registration cannot take over anybody's account.
-export async function registerInvitedUser(input: {
-  invitedBy: string;
+// Registration: through a trainer's invite link or straight from the app
+// (no invitedBy). The new account is a dancer's and works right away.
+export async function registerUser(input: {
+  displayName?: string;
+  email?: string;
+  invitedBy?: string;
   password: string;
   username: string;
 }) {
@@ -145,9 +168,15 @@ export async function registerInvitedUser(input: {
       return { error: "taken" as const };
     }
 
+    if (input.email && isEmailTaken(input.email)) {
+      return { error: "email" as const };
+    }
+
     if (
-      users.filter((user) => !user.deleted && user.createdBy?.startsWith(invitedByPrefix)).length >=
-      maxInvitedUsers
+      users.filter(
+        (user) =>
+          !user.deleted && (user.createdBy?.startsWith(invitedByPrefix) || user.createdBy === registeredBy),
+      ).length >= maxInvitedUsers
     ) {
       return { error: "full" as const };
     }
@@ -158,8 +187,10 @@ export async function registerInvitedUser(input: {
     await writeStoredUsers([
       {
         createdAt: now,
-        createdBy: `${invitedByPrefix}${input.invitedBy}`,
+        createdBy: input.invitedBy ? `${invitedByPrefix}${input.invitedBy}` : registeredBy,
         deleted: false,
+        displayName: input.displayName || undefined,
+        email: input.email ? input.email.trim().toLowerCase() : undefined,
         passwordHash: await hashPassword(input.password),
         role: "viewer",
         updatedAt: now,
@@ -247,13 +278,13 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const db = getDb();
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
-      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone, email)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
       deleted = excluded.deleted, display_name = excluded.display_name,
-      partner_name = excluded.partner_name, phone = excluded.phone,
+      partner_name = excluded.partner_name, phone = excluded.phone, email = excluded.email,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -274,6 +305,7 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.displayName ?? null,
         user.partnerName ?? null,
         user.phone ?? null,
+        user.email ?? null,
       );
     }
   })();

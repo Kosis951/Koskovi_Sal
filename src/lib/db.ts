@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 14;
+const schemaVersion = 15;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -129,6 +129,10 @@ function migrate(db: Database) {
       migrateToV14(db);
     }
 
+    if (version < 15) {
+      migrateToV15(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
 }
@@ -136,6 +140,11 @@ function migrate(db: Database) {
 // Devices with the native app that receive notifications: iPhones by their
 // APNs token (platform "ios"), Android phones by their UnifiedPush address
 // ("android"); topics as in push_subscriptions.
+// The account's e-mail (registration, later messages and password reset).
+function migrateToV15(db: Database) {
+  db.exec("ALTER TABLE admin_users ADD COLUMN email TEXT;");
+}
+
 function migrateToV14(db: Database) {
   db.exec(`
     CREATE TABLE native_push_devices (

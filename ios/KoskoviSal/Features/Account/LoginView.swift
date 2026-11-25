@@ -8,6 +8,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var showsPassword = false
     @State private var isSigningIn = false
+    @State private var isRegistering = false
     @State private var error: String?
     @FocusState private var focused: Field?
 
@@ -93,11 +94,16 @@ struct LoginView: View {
                     .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Theme.surface))
                     .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
 
-                    VStack(spacing: 6) {
+                    VStack(spacing: 10) {
                         Text("Nemáš účet?")
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white)
-                        Text("Kalendář sálu a rozpis vidíš i bez přihlášení. Účet na lekce dostaneš přes pozvánku od svého trenéra.")
+                        Button("Zaregistrovat se") { isRegistering = true }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Capsule().stroke(.white.opacity(0.7), lineWidth: 1.5))
+                        Text("Kalendář sálu a rozpis vidíš i bez přihlášení.")
                             .font(.footnote)
                             .foregroundStyle(Theme.accentSoft)
                             .multilineTextAlignment(.center)
@@ -123,6 +129,9 @@ struct LoginView: View {
             .accessibilityLabel("Zavřít")
         }
         .onAppear { focused = .username }
+        .sheet(isPresented: $isRegistering) {
+            RegisterView { dismiss() }
+        }
     }
 
     private func signIn() async {
