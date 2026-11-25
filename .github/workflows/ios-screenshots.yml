@@ -10,6 +10,11 @@ on:
     paths: [".github/workflows/ios-screenshots.yml", "ios/screenshots/**"]
   workflow_dispatch:
 
+# Two runs would replace each other's screenshots.
+concurrency:
+  group: ios-screenshots
+  cancel-in-progress: true
+
 jobs:
   screenshots:
     name: Snímky pro App Store
@@ -75,6 +80,9 @@ jobs:
       - name: Snímky
         run: |
           mkdir -p shots
+          # The first launch on a fresh simulator is slow: warm up first.
+          xcrun simctl launch "$DEVICE" cz.tkkoskovi.sal -demo -tab calendar
+          sleep 30
           n=1
           for tab in calendar lessons schedule account; do
             xcrun simctl launch --terminate-running-process "$DEVICE" cz.tkkoskovi.sal -demo -tab "$tab"
