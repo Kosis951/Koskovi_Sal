@@ -21,6 +21,7 @@ services:
       - ./relay/server.mjs:/app/server.mjs:ro
       - ./secrets:/secrets:ro
       - ./downloads:/downloads:ro
+      - ./site:/site:ro
     ports:
       # Only DSM's reverse proxy talks to it; HTTPS is done there.
       - "127.0.0.1:2587:8080"

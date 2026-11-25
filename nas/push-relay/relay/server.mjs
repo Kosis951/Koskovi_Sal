@@ -6,6 +6,8 @@
 //                          (APNs, the key stays here), Android phones to ntfy.
 //   GET  /relay/health   – what is set up.
 //   GET  /app/<name>.apk – the Android app to download (./downloads).
+//   GET  /, /privacy, /support – the apps' web pages (./site), also for
+//                          app.tkkoskovi.cz.
 //   anything else        – passed on to ntfy (the Android phones' ntfy app
 //                          connects here), WebSockets included.
 import { createPrivateKey, sign, timingSafeEqual } from "node:crypto";
@@ -21,6 +23,16 @@ const port = Number(env.PORT || 8080);
 const secret = (env.RELAY_SECRET || readSecretFile(env.RELAY_SECRET_FILE || "/secrets/relay-secret.txt")).trim();
 const ntfy = new URL(env.NTFY_INTERNAL_URL || "http://ntfy:80");
 const downloads = env.DOWNLOADS_DIR || "/downloads";
+const site = env.SITE_DIR || "/site";
+// The pages and what they are served as.
+const sitePages = {
+  "/": ["index.html", "text/html; charset=utf-8"],
+  "/icon.png": ["icon.png", "image/png"],
+  "/logo.svg": ["logo.svg", "image/svg+xml"],
+  "/privacy": ["privacy.html", "text/html; charset=utf-8"],
+  "/style.css": ["style.css", "text/css; charset=utf-8"],
+  "/support": ["support.html", "text/html; charset=utf-8"],
+};
 const maxBody = 1024 * 1024;
 const maxDevices = 2000;
 
@@ -298,6 +310,21 @@ async function handleHealth(response) {
   json(response, 200, { apns: Boolean(apns), ntfy: ntfyHealthy, ok: true });
 }
 
+function handleSitePage(request, response, [name, type]) {
+  try {
+    const body = readFileSync(path.join(site, name));
+    response.writeHead(200, {
+      "cache-control": "public, max-age=300",
+      "content-length": body.length,
+      "content-type": type,
+      "x-content-type-options": "nosniff",
+    });
+    response.end(request.method === "HEAD" ? undefined : body);
+  } catch {
+    json(response, 404, { message: "Nenalezeno." });
+  }
+}
+
 function handleDownload(request, response, name) {
   const file = path.join(downloads, name);
 
@@ -370,6 +397,8 @@ const server = http.createServer((request, response) => {
     handleSend(request, response).catch(() => json(response, 500, { message: "Chyba relaye." }));
   } else if (url.pathname === "/relay/health") {
     handleHealth(response);
+  } else if (Object.hasOwn(sitePages, url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
+    handleSitePage(request, response, sitePages[url.pathname]);
   } else if (apk && (request.method === "GET" || request.method === "HEAD")) {
     handleDownload(request, response, apk[1]);
   } else if (url.pathname.startsWith("/relay/") || url.pathname.startsWith("/app/")) {
