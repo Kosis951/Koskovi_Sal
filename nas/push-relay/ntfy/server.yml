@@ -1,0 +1,22 @@
+# ntfy behind the relay, only for the Android app (UnifiedPush): the "up…"
+# topics (random per phone) are open, everything else needs an account.
+base-url: "https://push.tkkoskovi.cz"
+listen-http: ":80"
+# The relay passes the client's address in X-Forwarded-For.
+behind-proxy: true
+
+cache-file: "/var/lib/ntfy/cache.db"
+cache-duration: "12h"
+
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+enable-signup: false
+enable-login: true
+
+# The relay's own sends (from the compose network) are not rate-limited.
+visitor-request-limit-exempt-hosts: "172.31.250.0/24"
+visitor-request-limit-burst: 60
+visitor-request-limit-replenish: "5s"
+visitor-subscription-limit: 30
+
+log-level: info

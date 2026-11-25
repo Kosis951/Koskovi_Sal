@@ -1,0 +1,46 @@
+# Push relay for the Koškovi sál apps on the Synology NAS (see README.md).
+# Container Manager → Project → Create → path /volume1/docker/koskovi-push.
+services:
+  relay:
+    image: node:22-alpine
+    container_name: koskovi-relay
+    command: ["node", "/app/server.mjs"]
+    env_file: .env
+    environment:
+      NTFY_INTERNAL_URL: http://ntfy:80
+      APNS_KEY_PATH: /secrets/AuthKey.p8
+      DOWNLOADS_DIR: /downloads
+      TZ: Europe/Prague
+    volumes:
+      - ./relay/server.mjs:/app/server.mjs:ro
+      - ./secrets:/secrets:ro
+      - ./downloads:/downloads:ro
+    ports:
+      # Only DSM's reverse proxy talks to it; HTTPS is done there.
+      - "127.0.0.1:2587:8080"
+    depends_on:
+      - ntfy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/relay/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0
+    container_name: koskovi-ntfy
+    command: serve
+    environment:
+      TZ: Europe/Prague
+    volumes:
+      - ./ntfy/server.yml:/etc/ntfy/server.yml:ro
+      - ./ntfy-data:/var/lib/ntfy
+    # Not published: reachable only through the relay.
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

@@ -1,6 +1,6 @@
 import webpush from "web-push";
-import { getApnsConfig, sendApns } from "@/lib/apns";
 import { getDb } from "@/lib/db";
+import { getRelayUrl, sendThroughRelay, type NativePlatform } from "@/lib/push-relay";
 
 // What a device can subscribe to: "hall" = the hall is taken today (other
 // than trainings) and cancelled trainings; "cleanup" = hall waits for cleanup.
@@ -167,7 +167,7 @@ export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
         row.topics.split(",").includes(topic),
       )
     : [];
-  const devices = getApnsConfig()
+  const devices = getRelayUrl()
     ? (getDb().prepare("SELECT * FROM native_push_devices").all() as NativeDeviceRow[]).filter((row) =>
         row.topics.split(",").includes(topic),
       )
@@ -182,12 +182,13 @@ export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
   return delivered;
 }
 
-// --- Devices with the native app (iPhone: APNs token) ---
+// --- Devices with the native app (iPhone: APNs token, Android: its
+// UnifiedPush address), sent through the relay on the NAS ---
 
 type NativeDeviceRow = { failures: number; platform: string; token: string; topics: string };
 
 // Returns false when the device limit is reached.
-export function saveNativeDevice(token: string, platform: "ios", topics: PushTopic[]) {
+export function saveNativeDevice(token: string, platform: NativePlatform, topics: PushTopic[]) {
   const db = getDb();
   const now = new Date().toISOString();
   const exists = db.prepare("SELECT 1 FROM native_push_devices WHERE token = ?").get(token);
@@ -233,8 +234,10 @@ export async function sendToNativeDevice(token: string, payload: PushPayload) {
 }
 
 async function sendToNativeDevices(rows: NativeDeviceRow[], payload: PushPayload) {
-  const results = await sendApns(
-    rows.filter((row) => row.platform === "ios").map((row) => row.token),
+  const results = await sendThroughRelay(
+    rows
+      .filter((row) => row.platform === "ios" || row.platform === "android")
+      .map((row) => ({ platform: row.platform as NativePlatform, token: row.token })),
     payload,
   );
   let delivered = 0;

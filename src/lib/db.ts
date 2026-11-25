@@ -133,8 +133,9 @@ function migrate(db: Database) {
   })();
 }
 
-// Devices with the native app that receive notifications: for now iPhones
-// by their APNs token (platform "ios"), topics as in push_subscriptions.
+// Devices with the native app that receive notifications: iPhones by their
+// APNs token (platform "ios"), Android phones by their UnifiedPush address
+// ("android"); topics as in push_subscriptions.
 function migrateToV14(db: Database) {
   db.exec(`
     CREATE TABLE native_push_devices (

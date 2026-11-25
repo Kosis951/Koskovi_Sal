@@ -1,7 +1,7 @@
 # Koskovi sal – aplikace pro iPhone
 
 Nativni aplikace ve SwiftUI (iOS 17+). Data bere z API webu (stejne prihlaseni jako na webu),
-upozorneni chodi pres Apple (APNs). Projekt Xcode se generuje z `project.yml` (XcodeGen), takze se
+upozorneni chodi pres Apple (APNs) z relaye na NAS. Projekt Xcode se generuje z `project.yml` (XcodeGen), takze se
 da sestavit i bez Macu: GitHub Actions (`.github/workflows/ios.yml`) ho po kazdem pushi do
 `ios/` sestavi na Macu v GitHubu a nahraje na TestFlight.
 
@@ -37,12 +37,12 @@ Zbytek (sprava uzivatelu, pravidelne treninky, casy vyuky treneru, rozpis…) je
 6. **Testeri**: TestFlight → Internal Testing → + skupina, pridat sebe (ucty z App Store
    Connect, bez kontroly od Applu). Na iPhonu aplikace TestFlight → Koškovi sál → Nainstalovat.
 
-## Upozorneni (server)
+## Upozorneni
 
-1. developer.apple.com → Keys → + → Apple Push Notifications service (APNs) → stahni `.p8`.
-2. Na VPS do `.env.local`: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID=cz.tkkoskovi.sal`,
-   `APNS_KEY_PATH` (cesta k .p8, mimo slozku aplikace), pak `pm2 restart koskovi-sal`.
-3. V aplikaci Ucet → Upozorneni → zapnout → „Poslat zkusebni upozorneni“.
+Upozorneni chodi pres relay na NAS (`nas/push-relay`, adresa `push.tkkoskovi.cz`): tam je klic
+od Applu, web na VPS posila zpravy jen relayi (`PUSH_RELAY_URL`, `PUSH_RELAY_SECRET` v
+`.env.local`). Navod je v `nas/push-relay/README.md`. V aplikaci pak Ucet → Upozorneni →
+zapnout → „Poslat zkusebni upozorneni“.
 
 Zarizeni se ukladaji do tabulky `native_push_devices` (API `/api/push/native`); posilaji se
 stejna upozorneni jako do prohlizecu.
@@ -54,5 +54,5 @@ brew install xcodegen
 cd ios && xcodegen generate && open KoskoviSal.xcodeproj
 ```
 
-Adresa webu je v `project.yml` (`KOSKOVI_HOST`). Pri spusteni primo z Xcode je potreba na serveru
-`APNS_SANDBOX=true`, jinak upozorneni nedojdou (TestFlight a App Store pouzivaji produkcni APNs).
+Adresa webu je v `project.yml` (`KOSKOVI_HOST`). Pri spusteni primo z Xcode je potreba
+na NAS `APNS_SANDBOX=true`, jinak upozorneni nedojdou (TestFlight a App Store pouzivaji produkcni APNs).

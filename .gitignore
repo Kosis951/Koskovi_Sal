@@ -56,3 +56,9 @@ next-env.d.ts
 
 # Apple keys (APNs, App Store Connect) never go to git
 *.p8
+
+# NAS push relay: secrets, data and the APK stay on the NAS
+/nas/push-relay/.env
+/nas/push-relay/secrets/
+/nas/push-relay/downloads/
+/nas/push-relay/ntfy-data/
