@@ -29,7 +29,8 @@ Zbytek (sprava uzivatelu, pravidelne treninky, casy vyuky treneru, rozpis…) je
 4. **GitHub** → repozitar → Settings → Secrets and variables → Actions:
    - Secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (cely obsah souboru .p8 vcetne
      radku BEGIN/END), `APPLE_TEAM_ID`.
-   - Variables: `KOSKOVI_HOST` – adresa webu bez https:// (napr. `sal.tkkoskovi.cz`).
+   - Adresa webu je `sal.tkkoskovi.cz` (v `project.yml`); jinou jde nastavit promennou
+     `KOSKOVI_HOST` (Variables) bez https://.
 5. Actions → iOS → Run workflow (nebo push do `ios/`). Po ~15 minutach je build v App Store
    Connect → TestFlight; prvni build muze cekat na „Missing Compliance“ (aplikace sifrovani
    nepouziva, je to v Info.plist, takze by se nemelo ptat).

@@ -12,7 +12,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     # Where the app talks to: the web's host name, without https://.
-    KOSKOVI_HOST: sal.example.cz
+    KOSKOVI_HOST: sal.tkkoskovi.cz
 targets:
   KoskoviSal:
     type: application

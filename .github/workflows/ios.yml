@@ -76,13 +76,13 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      KOSKOVI_HOST: ${{ vars.KOSKOVI_HOST }}
+      KOSKOVI_HOST: ${{ vars.KOSKOVI_HOST || 'sal.tkkoskovi.cz' }}
     steps:
       - name: Nastavení
         id: setup
         run: |
           missing=""
-          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID KOSKOVI_HOST; do
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
