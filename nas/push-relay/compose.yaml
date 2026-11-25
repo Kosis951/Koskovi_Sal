@@ -7,7 +7,9 @@ services:
     image: node:22-alpine
     container_name: koskovi-relay
     init: true
-    command: ["node", "/app/server.mjs"]
+    # The relay's code and web pages come from this repository at a fixed
+    # commit (nothing to upload by hand); an update = a newer commit here.
+    command: ["sh", "-c", "mkdir -p /opt/relay/site && cd /opt/relay && base=https://raw.githubusercontent.com/Kosis951/Koskovi_Sal/3f8039cfa431a7258cd00803a9a8aa16d34b9261/nas/push-relay && wget -qO server.mjs $$base/relay/server.mjs && for f in index.html privacy.html support.html style.css logo.svg icon.png; do wget -qO site/$$f $$base/site/$$f; done && SITE_DIR=/opt/relay/site exec node server.mjs"]
     environment:
       APNS_KEY_ID: F8QS7XUX7B
       APNS_TEAM_ID: 44HJR678JA
@@ -18,10 +20,8 @@ services:
       DOWNLOADS_DIR: /downloads
       TZ: Europe/Prague
     volumes:
-      - ./relay/server.mjs:/app/server.mjs:ro
       - ./secrets:/secrets:ro
       - ./downloads:/downloads:ro
-      - ./site:/site:ro
     ports:
       # Only DSM's reverse proxy talks to it; HTTPS is done there.
       - "127.0.0.1:2587:8080"

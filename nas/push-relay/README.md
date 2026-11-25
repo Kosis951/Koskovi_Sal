@@ -18,8 +18,9 @@ predava ntfy (tam se pripojuje aplikace ntfy na telefonech). ntfy neni zvenku pr
    nebo CNAME na DDNS adresu NAS. Router musi preposilat port 443 na NAS (pokud uz to
    funguje pro jinou domenu NAS, staci DNS).
 2. **Soubory** (File Station): vytvor `/volume1/docker/koskovi-push` a do ni nahraj
-   obsah teto slozky: `compose.yaml`, `relay/server.mjs`, `ntfy/server.yml`. Vytvor prazdne
-   slozky `secrets`, `downloads`, `ntfy-data`.
+   `compose.yaml` a `ntfy/server.yml`. Vytvor prazdne slozky `secrets`, `downloads`, `ntfy-data`.
+   Kod relaye a stranky (`relay/`, `site/`) si kontejner pri startu stahne z GitHubu z commitu
+   uvedeneho v `compose.yaml`; aktualizace = novy commit v `compose.yaml` a Sestavit.
 3. **Tajne soubory** do `secrets`: `AuthKey.p8` (push klic od Applu, prejmenovany
    `AuthKey_F8QS7XUX7B.p8`) a `relay-secret.txt` (nahodny retezec aspon 32 znaku, napr.
    `openssl rand -hex 32`; stejny pak pujde na VPS). Key ID, Team ID a bundle ID jsou primo
