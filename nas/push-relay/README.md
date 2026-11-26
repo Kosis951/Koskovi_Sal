@@ -1,12 +1,14 @@
 # Push relay na Synology (push.tkkoskovi.cz)
 
 Vsechna upozorneni nativnich aplikaci jdou pres NAS: web na VPS posle zpravu relayi a ten ji
-doruci – iPhonum pres Apple (APNs, klic `.p8` je jen tady), Androidum pres ntfy (UnifiedPush).
+doruci – iPhonum pres Apple (APNs, klic `.p8` je jen tady), Androidum pres Google (Firebase
+Cloud Messaging, servisni ucet je jen tady). ntfy (UnifiedPush) zustava jako zaloha.
 Na stejne adrese je ke stazeni Android aplikace (`https://push.tkkoskovi.cz/app/koskovi-sal.apk`).
 
 ```
 VPS (sal.tkkoskovi.cz) ──POST /relay/send──▶ relay ──▶ Apple → iPhone
-                                               └──▶ ntfy → aplikace ntfy → Android
+                                               ├──▶ Google (FCM) → Android
+                                               └──▶ ntfy → aplikace ntfy → Android (zaloha)
 ```
 
 Relay (`relay/server.mjs`, Node bez zavislosti) obsluhuje `/relay/…` a `/app/….apk`, vse ostatni
@@ -25,7 +27,11 @@ predava ntfy (tam se pripojuje aplikace ntfy na telefonech). ntfy neni zvenku pr
    `AuthKey_F8QS7XUX7B.p8`) a `relay-secret.txt` (nahodny retezec aspon 32 znaku, napr.
    `openssl rand -hex 32`; stejny pak pujde na VPS). Key ID, Team ID a bundle ID jsou primo
    v `compose.yaml`.
-4. (Pravidlo pro temata telefonu `up*` si ntfy nastavi samo pri kazdem startu.)
+4. **Android pres Google**: v [konzoli Firebase](https://console.firebase.google.com) projekt
+   s Android aplikaci `cz.tkkoskovi.sal`; Nastaveni projektu → Servisni ucty → Vygenerovat novy
+   soukromy klic → soubor uloz do `secrets` jako `fcm.json`. Relay ho nacte pri startu
+   (bez nej jen Android upozorneni nechodi).
+   (Pravidlo pro temata telefonu `up*` si ntfy nastavi samo pri kazdem startu.)
 5. **Container Manager → Projekt → Vytvorit**: nazev `koskovi-push`, cesta
    `/volume1/docker/koskovi-push`, „Pouzit existujici compose.yaml“ → Dalsi → Hotovo.
 6. **Reverzni proxy**: Ovladaci panel → Prihlasovaci portal → Upresnit → Reverzni proxy →
@@ -55,7 +61,7 @@ a `pm2 restart koskovi-sal`. Klic od Applu na VPS nepatri.
 curl -s https://push.tkkoskovi.cz/relay/health
 ```
 
-Ma vratit `{"apns":true,"ntfy":true,"ok":true}`. Pak v aplikaci na iPhonu: Ucet → Upozorneni →
+Ma vratit `{"apns":true,"fcm":true,"ntfy":true,"ok":true}`. Pak v aplikaci na iPhonu: Ucet → Upozorneni →
 zapnout → „Poslat zkusebni upozorneni“.
 
 APK: novou verzi nahraj do `downloads` jako `koskovi-sal.apk`, odkaz zustava stejny.
