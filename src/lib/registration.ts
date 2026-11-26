@@ -17,7 +17,8 @@ export function emailMessage() {
   return "Zadej platný e-mail, např. jana@seznam.cz.";
 }
 
-// Checks the registration form ({ username, password, displayName?, email? })
+// Checks the registration form ({ username, password, firstName?, lastName?,
+// displayName?, email? })
 // and creates the dancer's account, signed in right away. `requireEmail` for
 // registration without an invite.
 export async function registerFromPayload(
@@ -27,7 +28,9 @@ export async function registerFromPayload(
   const text = (field: string) => (typeof payload?.[field] === "string" ? (payload[field] as string) : "");
   const username = text("username").trim();
   const password = text("password");
-  const displayName = text("displayName").replace(/\s+/g, " ").trim();
+  const firstName = text("firstName").replace(/\s+/g, " ").trim();
+  const lastName = text("lastName").replace(/\s+/g, " ").trim();
+  const displayName = text("displayName").replace(/\s+/g, " ").trim() || [firstName, lastName].filter(Boolean).join(" ");
   const email = text("email").trim().toLowerCase();
   const scheduleName = text("scheduleName").replace(/\s+/g, " ").trim();
 
@@ -42,7 +45,18 @@ export async function registerFromPayload(
     return NextResponse.json({ message: "Heslo musí mít aspoň 8 znaků." }, { status: 400 });
   }
 
-  if (displayName.length > maxDisplayNameLength || scheduleName.length > maxDisplayNameLength) {
+  // The apps ask for the name and surname: lessons in the visiting trainer's
+  // schedule are found by them. (The older invite form does not.)
+  if (options.requireEmail && (!firstName || !lastName)) {
+    return NextResponse.json({ message: "Vyplň jméno a příjmení." }, { status: 400 });
+  }
+
+  if (
+    displayName.length > maxDisplayNameLength ||
+    scheduleName.length > maxDisplayNameLength ||
+    firstName.length > maxDisplayNameLength ||
+    lastName.length > maxDisplayNameLength
+  ) {
     return NextResponse.json({ message: `Jméno může mít nejvýš ${maxDisplayNameLength} znaků.` }, { status: 400 });
   }
 
@@ -57,7 +71,9 @@ export async function registerFromPayload(
   const result = await registerUser({
     displayName: displayName || undefined,
     email: email || undefined,
+    firstName: firstName || undefined,
     invitedBy: options.invitedBy,
+    lastName: lastName || undefined,
     password,
     scheduleName: scheduleName || undefined,
     username,

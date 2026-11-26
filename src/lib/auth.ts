@@ -54,6 +54,11 @@ export type StoredAdminUser = {
   email?: string;
   // How the dancer is written in the visiting trainer's schedule.
   scheduleName?: string;
+  firstName?: string;
+  lastName?: string;
+  // The schedule's lessons found by the name: "confirmed" by the dancer, or
+  // "declined" (then only scheduleName counts).
+  scheduleLink?: "confirmed" | "declined";
   // Usual dance partner, offered when requesting a lesson as a couple.
   partnerName?: string;
   // For WhatsApp messages from the trainer (international digits).
@@ -415,6 +420,9 @@ type AdminUserRow = {
   display_name: string | null;
   email: string | null;
   schedule_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  schedule_link: string | null;
   partner_name: string | null;
   phone: string | null;
   lesson_filter: string | null;
@@ -437,6 +445,10 @@ export function readStoredAdminUsersSync(): StoredAdminUser[] {
     displayName: row.display_name ?? undefined,
     email: row.email ?? undefined,
     scheduleName: row.schedule_name ?? undefined,
+    firstName: row.first_name ?? undefined,
+    lastName: row.last_name ?? undefined,
+    scheduleLink:
+      row.schedule_link === "confirmed" || row.schedule_link === "declined" ? row.schedule_link : undefined,
     partnerName: row.partner_name ?? undefined,
     phone: row.phone ?? undefined,
     lessonFilter: row.lesson_filter ? (JSON.parse(row.lesson_filter) as LessonFilter) : undefined,

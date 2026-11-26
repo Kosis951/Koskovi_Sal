@@ -22,7 +22,7 @@ export async function GET() {
   );
 }
 
-// { displayName?, email?, partnerName?, phone?, scheduleName? } – empty values clear the field. The
+// { displayName?, firstName?, lastName?, email?, partnerName?, phone?, scheduleName? } – empty values clear the field. The
 // phone is only for the trainer's WhatsApp messages.
 export async function PUT(request: NextRequest) {
   const auth = await requireSession();
@@ -40,8 +40,16 @@ export async function PUT(request: NextRequest) {
   };
   const displayName = text("displayName");
   const partnerName = text("partnerName");
+  // Older forms do not send these: keep the stored ones then.
+  const firstName = payload?.firstName === undefined ? undefined : text("firstName");
+  const lastName = payload?.lastName === undefined ? undefined : text("lastName");
 
-  if (displayName.length > maxNameLength || partnerName.length > maxNameLength) {
+  if (
+    displayName.length > maxNameLength ||
+    partnerName.length > maxNameLength ||
+    (firstName?.length ?? 0) > maxNameLength ||
+    (lastName?.length ?? 0) > maxNameLength
+  ) {
     return NextResponse.json(
       { message: `Jméno může mít nejvýš ${maxNameLength} znaků.` },
       { status: 400 },
@@ -81,6 +89,8 @@ export async function PUT(request: NextRequest) {
   const profile = await updateUserProfile(auth.access.username, {
     displayName: displayName || undefined,
     email,
+    firstName,
+    lastName,
     scheduleName,
     partnerName: partnerName || undefined,
     phone: phone || undefined,

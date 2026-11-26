@@ -10,6 +10,7 @@ import {
   maxScheduleTitleLength,
   parseSchedule,
 } from "@/lib/public-schedule";
+import { linkSuggestion, myLessonKeys } from "@/lib/my-lessons";
 import { getPublicSchedule, savePublicSchedule } from "@/lib/public-schedule-db";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +19,24 @@ const pragueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" 
 const shortDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "short" });
 
 // Public: the schedule once it is published (the header asks whether to show
-// its tab). Hall managers also get the unpublished draft.
+// its tab). Hall managers also get the unpublished draft. A signed-in dancer
+// also gets their own lessons in it ("date|start", partner's included) and,
+// until they said whether lessons found by their name are theirs, the row to
+// ask about.
 export async function GET() {
   const schedule = getPublicSchedule();
-  const canEdit = canManageBookings(getAdminAccess(await cookies()));
+  const access = getAdminAccess(await cookies());
+  const canEdit = canManageBookings(access);
+  const days = access && schedule.published ? parseSchedule(schedule.body, pragueDate.format(new Date())) : [];
 
   return NextResponse.json(
     schedule.published || canEdit
-      ? schedule
+      ? {
+          ...schedule,
+          ...(access && schedule.published
+            ? { linkSuggestion: linkSuggestion(access.username, days), mine: myLessonKeys(access.username, days) }
+            : {}),
+        }
       : { body: "", published: false, title: schedule.title },
     { headers: { "Cache-Control": "no-store" } },
   );

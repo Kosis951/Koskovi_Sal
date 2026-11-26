@@ -85,6 +85,10 @@ export async function upsertAdminUserPassword(input: {
 
 export type UserProfile = {
   displayName?: string;
+  // Undefined when saving keeps the stored ones.
+  firstName?: string;
+  lastName?: string;
+  scheduleLink?: "confirmed" | "declined";
   // Undefined when saving keeps the stored one (older forms do not send it).
   email?: string;
   scheduleName?: string;
@@ -101,6 +105,9 @@ export function getUserProfile(username: string): UserProfile {
   return {
     displayName: user?.displayName,
     email: user?.email,
+    firstName: user?.firstName,
+    lastName: user?.lastName,
+    scheduleLink: user?.scheduleLink,
     partnerName: user?.partnerName,
     phone: user?.phone,
     scheduleName: user?.scheduleName,
@@ -125,6 +132,14 @@ export async function updateUserProfile(username: string, profile: UserProfile) 
         createdBy: previousUser?.createdBy ?? username,
         displayName: profile.displayName,
         email: profile.email === undefined ? previousUser?.email : profile.email || undefined,
+        firstName: profile.firstName === undefined ? previousUser?.firstName : profile.firstName || undefined,
+        lastName: profile.lastName === undefined ? previousUser?.lastName : profile.lastName || undefined,
+        // A changed name or surname asks again whether the found lessons are theirs.
+        scheduleLink:
+          (profile.lastName !== undefined && profile.lastName !== previousUser?.lastName) ||
+          (profile.firstName !== undefined && profile.firstName !== previousUser?.firstName)
+            ? undefined
+            : previousUser?.scheduleLink,
         scheduleName:
           profile.scheduleName === undefined ? previousUser?.scheduleName : profile.scheduleName || undefined,
         partnerName: profile.partnerName,
@@ -162,6 +177,8 @@ const maxInvitedUsers = 300;
 export async function registerUser(input: {
   displayName?: string;
   email?: string;
+  firstName?: string;
+  lastName?: string;
   invitedBy?: string;
   password: string;
   scheduleName?: string;
@@ -201,6 +218,8 @@ export async function registerUser(input: {
         deleted: false,
         displayName: input.displayName || undefined,
         email: input.email ? input.email.trim().toLowerCase() : undefined,
+        firstName: input.firstName || undefined,
+        lastName: input.lastName || undefined,
         scheduleName: input.scheduleName || undefined,
         passwordHash: await hashPassword(input.password),
         role: "viewer",
@@ -290,14 +309,15 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
       deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone, email,
-      schedule_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      schedule_name, first_name, last_name, schedule_link)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
       deleted = excluded.deleted, display_name = excluded.display_name,
       partner_name = excluded.partner_name, phone = excluded.phone, email = excluded.email,
-      schedule_name = excluded.schedule_name,
+      schedule_name = excluded.schedule_name, first_name = excluded.first_name,
+      last_name = excluded.last_name, schedule_link = excluded.schedule_link,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -320,6 +340,9 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.phone ?? null,
         user.email ?? null,
         user.scheduleName ?? null,
+        user.firstName ?? null,
+        user.lastName ?? null,
+        user.scheduleLink ?? null,
       );
     }
   })();
@@ -333,4 +356,19 @@ function withUsersLock<T>(operation: () => Promise<T>) {
   );
 
   return nextOperation;
+}
+
+// The dancer's answer to "Are these lessons yours?" (schedule found by name).
+export async function setScheduleLink(username: string, link: "confirmed" | "declined") {
+  return withUsersLock(async () => {
+    const key = normalizeUsername(username);
+    const previousUser = (await readStoredUsers()).find((user) => normalizeUsername(user.username) === key);
+
+    if (!previousUser) {
+      return false;
+    }
+
+    await writeStoredUsers([{ ...previousUser, scheduleLink: link, updatedAt: new Date().toISOString(), updatedBy: username }]);
+    return true;
+  });
 }

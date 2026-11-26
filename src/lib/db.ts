@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 17;
+const schemaVersion = 18;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -141,6 +141,10 @@ function migrate(db: Database) {
       migrateToV17(db);
     }
 
+    if (version < 18) {
+      migrateToV18(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
 }
@@ -148,6 +152,26 @@ function migrate(db: Database) {
 // Devices with the native app that receive notifications: iPhones by their
 // APNs token (platform "ios"), Android phones by their UnifiedPush address
 // ("android"); topics as in push_subscriptions.
+// First name and surname of the account (lessons in the visiting trainer's
+// schedule are linked by them), whether the dancer confirmed that link
+// ("confirmed" / "declined"), and partnerships between two accounts that then
+// share their lessons.
+function migrateToV18(db: Database) {
+  db.exec(`
+    ALTER TABLE admin_users ADD COLUMN first_name TEXT;
+    ALTER TABLE admin_users ADD COLUMN last_name TEXT;
+    ALTER TABLE admin_users ADD COLUMN schedule_link TEXT;
+    CREATE TABLE partnerships (
+      id TEXT PRIMARY KEY,
+      from_user TEXT NOT NULL,
+      to_user TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      decided_at TEXT
+    );
+  `);
+}
+
 // Which account a phone with the app belongs to (for reminders of the
 // dancer's own lessons) and, on iPhones, the token that starts the lesson
 // countdown on the lock screen and in the Dynamic Island.

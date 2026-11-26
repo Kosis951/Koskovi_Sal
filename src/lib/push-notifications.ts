@@ -2,8 +2,10 @@ import {
   getBookings,
   getRecurringCancellationNotices,
 } from "@/lib/bookings-db";
-import { readStoredAdminUsersSync } from "@/lib/auth";
-import { parseSchedule, rowBelongsTo } from "@/lib/public-schedule";
+import { normalizeUsername, readStoredAdminUsersSync } from "@/lib/auth";
+import { rowOwners } from "@/lib/my-lessons";
+import { getPartnerMap } from "@/lib/partners-db";
+import { parseSchedule } from "@/lib/public-schedule";
 import { getPublicSchedule } from "@/lib/public-schedule-db";
 import {
   getLessonReminderDevices,
@@ -189,11 +191,8 @@ async function checkLessons(now: PragueNow) {
     return;
   }
 
-  const names = new Map(
-    readStoredAdminUsersSync()
-      .filter((user) => !user.deleted && user.scheduleName?.trim())
-      .map((user) => [user.username, user.scheduleName!.trim()]),
-  );
+  const users = readStoredAdminUsersSync();
+  const partners = getPartnerMap();
 
   for (const row of today.rows) {
     if (row.kind !== "lesson" || !row.start || !row.end) {
@@ -206,10 +205,12 @@ async function checkLessons(now: PragueNow) {
       continue;
     }
 
-    const due = devices.filter((device) => {
-      const name = names.get(device.username!);
-      return name && rowBelongsTo(row.text, name) && !readPushState(lessonKey(device.token, now.dateKey, row.start!));
-    });
+    // The dancers whose lesson it is (their name, or confirmed surname, and partners).
+    const owners = new Set([...rowOwners(row.text, users, partners)].map(normalizeUsername));
+    const due = devices.filter(
+      (device) =>
+        owners.has(normalizeUsername(device.username!)) && !readPushState(lessonKey(device.token, now.dateKey, row.start!)),
+    );
 
     if (due.length === 0) {
       continue;
