@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TK Koškovi</string>
+    <string name="hall_widget_description">Jestli je sál volný a co se v něm dnes děje</string>
 </resources>

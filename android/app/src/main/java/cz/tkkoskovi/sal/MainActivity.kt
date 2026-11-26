@@ -24,6 +24,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import kotlinx.coroutines.coroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.glance.appwidget.updateAll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -131,10 +133,13 @@ fun App() {
 
     // The schedule tab appears once the visiting trainer's schedule is
     // published; checked whenever the app comes back.
+    val context = LocalContext.current
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         scope.launch {
             schedule.load()
             hall.load()
+            // The home screen widget shows the same fresh data.
+            runCatching { HallWidget().updateAll(context) }
         }
     }
 
