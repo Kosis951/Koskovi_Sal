@@ -210,20 +210,14 @@ struct AdminUserEditView: View {
                         Divider()
                         Text("Práva po sekcích").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
                         ForEach(Permissions.sections) { section in
-                            HStack {
+                            VStack(alignment: .leading, spacing: 8) {
                                 Text(section.label).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
-                                Spacer()
-                                Picker(section.label, selection: Binding(
+                                PermissionPills(options: section.options, selection: Binding(
                                     get: { permissions[keyPath: section.key] },
                                     set: { permissions[keyPath: section.key] = $0 }
-                                )) {
-                                    ForEach(section.options, id: \.0) { option in
-                                        Text(option.1).tag(option.0)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .tint(Theme.accent)
+                                ))
                             }
+                            .padding(.top, 4)
                         }
                         FieldNote(text: "Předvolba nastaví sekce, pak je můžeš upravit.")
                     }
@@ -322,6 +316,38 @@ struct AdminUserEditView: View {
             dismiss()
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+}
+
+// The options of one section as buttons, two in a row, so longer names fit.
+private struct PermissionPills: View {
+    let options: [(String, String)]
+    @Binding var selection: String
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+            ForEach(options, id: \.0) { option in
+                let isSelected = option.0 == selection
+
+                Button {
+                    withAnimation(.snappy) { selection = option.0 }
+                } label: {
+                    Text(option.1)
+                        .font(.subheadline.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .foregroundStyle(isSelected ? Color.white : Theme.ink)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                        .background(
+                            Capsule().fill(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.subtle))
+                        )
+                        .overlay(Capsule().stroke(isSelected ? Color.clear : Theme.line, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 }
