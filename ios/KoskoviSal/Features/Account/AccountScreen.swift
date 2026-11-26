@@ -40,7 +40,6 @@ struct AccountScreen: View {
                         .foregroundStyle(Theme.inkSoft)
                         .padding(.top, 4)
                 }
-                .scrollTargetLayout()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }

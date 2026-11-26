@@ -137,12 +137,18 @@ extension View {
         }
     }
 
-    // Scrolls the tab's screen so what the guide points at is at the top, with
-    // room for the bubble right under it; extra room below lets even the last
-    // cards get up there.
+    // Scrolls the tab's screen (once per step, smoothly) so what the guide
+    // points at is at the top, with room for the bubble right under it. The
+    // scroll view stays free otherwise.
     func tourScroll(_ tab: AppTab) -> some View {
-        scrollPosition(id: Binding(get: { TourModel.shared.scrollTarget(on: tab) }, set: { _ in }), anchor: .top)
-            .contentMargins(.bottom, TourModel.shared.isActive ? 420 : 0, for: .scrollContent)
+        ScrollViewReader { proxy in
+            onChange(of: TourModel.shared.index, initial: true) {
+                guard let target = TourModel.shared.scrollTarget(on: tab) else { return }
+                withAnimation(.smooth(duration: 0.45)) {
+                    proxy.scrollTo(target, anchor: .top)
+                }
+            }
+        }
     }
 }
 

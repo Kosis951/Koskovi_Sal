@@ -40,7 +40,6 @@ struct CalendarScreen: View {
                     dayCard
                         .tourTarget(.dayCard)
                 }
-                .scrollTargetLayout()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
