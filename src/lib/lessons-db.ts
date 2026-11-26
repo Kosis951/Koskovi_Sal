@@ -259,9 +259,10 @@ export function getTrainerCalendar(
   // replaced by what people should read.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- left out on purpose
   const named = ({ phone, ...lesson }: TrainerLesson) => ({ ...lesson, requester: label(lesson) });
-  // The trainer also gets the phone number for a WhatsApp message.
+  // Only the trainer gets the phone number (for a WhatsApp message) – not
+  // even the main administrator, who also manages the calendar (GDPR).
   const phones = new Map(
-    viewer.canManage
+    viewerKey === trainerKey
       ? readStoredAdminUsersSync()
           .filter((user) => !user.deleted && user.phone)
           .map((user) => [normalizeUsername(user.username), user.phone as string])
@@ -269,7 +270,12 @@ export function getTrainerCalendar(
   );
   const forTrainer = (lesson: TrainerLesson) => ({
     ...named(lesson),
-    phone: lesson.guest ? lesson.phone : phones.get(normalizeUsername(lesson.requester)),
+    phone:
+      viewerKey !== trainerKey
+        ? undefined
+        : lesson.guest
+          ? lesson.phone
+          : phones.get(normalizeUsername(lesson.requester)),
   });
 
   return {
