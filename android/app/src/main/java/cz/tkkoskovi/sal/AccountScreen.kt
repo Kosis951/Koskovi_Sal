@@ -102,7 +102,7 @@ fun AccountScreen(session: SessionModel) {
             }
         }
 
-        item { NotificationsCard() }
+        item { NotificationsCard(session) }
 
         item {
             Card(padding = 6) {
@@ -145,7 +145,7 @@ fun AccountScreen(session: SessionModel) {
 
 // Notifications through Google, as in the iPhone app.
 @Composable
-private fun NotificationsCard() {
+private fun NotificationsCard(session: SessionModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var pending by remember { mutableStateOf<PushTopic?>(null) }
@@ -174,6 +174,14 @@ private fun NotificationsCard() {
                         scope.launch { Push.set(topic, enabled) }
                     }
                 }
+            }
+            if (PushTopic.lessons in Push.topics) {
+                FieldNote(
+                    when (val name = session.scheduleName) {
+                        null -> "Pro připomínky lekcí vyplň v profilu, jak tě píše trenér v rozpisu."
+                        else -> "Hodinu před tvou lekcí ($name) přijde upozornění s odpočtem do začátku."
+                    },
+                )
             }
             if (Push.topics.isNotEmpty()) {
                 SecondaryButton("Poslat zkušební upozornění", enabled = !Push.busy) {

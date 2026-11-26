@@ -1,6 +1,14 @@
 package cz.tkkoskovi.sal
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,7 +19,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -537,6 +544,10 @@ private fun HolidaySheet(onDismiss: () -> Unit, onDone: () -> Unit) {
 
 // --- The visiting trainer's schedule ---
 
+private data class ScheduleDraftState(val title: String, val text: String, val published: Boolean, val cancelTrainings: Boolean)
+
+// The text is edited in its own full-screen window, so the page never scrolls
+// inside the text; saving stays at the bottom of the screen.
 @Composable
 private fun AdminSchedule(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -544,12 +555,17 @@ private fun AdminSchedule(onBack: () -> Unit) {
     var text by remember { mutableStateOf("") }
     var published by remember { mutableStateOf(false) }
     var cancelTrainings by remember { mutableStateOf(false) }
-    var loaded by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf<ScheduleDraftState?>(null) }
     var saving by remember { mutableStateOf(false) }
+    var editingText by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     val days = remember(text) { ScheduleParser.parse(text, Dates.todayKey()) }
+    val lessonCount = days.sumOf { day -> day.rows.count { it.kind == RowKind.Lesson } }
+    val current = ScheduleDraftState(title, text, published, cancelTrainings)
+    val loaded = saved != null
+    val hasChanges = loaded && saved != current
 
     suspend fun load() {
         runCatching { Api.get<ScheduleDraft>("/api/rozpis") }
@@ -558,7 +574,7 @@ private fun AdminSchedule(onBack: () -> Unit) {
                 text = it.body
                 published = it.published
                 cancelTrainings = it.cancelTrainings ?: false
-                loaded = true
+                saved = ScheduleDraftState(it.title, it.body, it.published, it.cancelTrainings ?: false)
                 error = null
             }
             .onFailure { error = it.message }
@@ -566,84 +582,186 @@ private fun AdminSchedule(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { load() }
 
-    ScreenScaffold(header = { SubHeader(AdminPage.Schedule.title, "Správa", onBack) }) {
+    val saveTitle = when {
+        published && saved?.published == false -> "Uložit a zveřejnit"
+        !published && saved?.published == true -> "Uložit a skrýt"
+        else -> "Uložit"
+    }
+
+    ScreenScaffold(
+        header = { SubHeader(AdminPage.Schedule.title, "Správa", onBack) },
+        bottomBar = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(P.page)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (hasChanges) {
+                    Text("Máš neuložené změny", color = P.cleanup.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+                PrimaryButton(saveTitle, enabled = hasChanges, working = saving) {
+                    saving = true
+                    val sending = current
+                    scope.launch {
+                        runCatching {
+                            Api.send<MessageResponse>(
+                                "PUT",
+                                "/api/rozpis",
+                                mapOf(
+                                    "body" to sending.text,
+                                    "cancelTrainings" to sending.cancelTrainings,
+                                    "published" to sending.published,
+                                    "title" to sending.title.trim(),
+                                ),
+                            )
+                        }
+                            .onSuccess {
+                                saved = sending
+                                notice = it.message ?: "Uloženo."
+                                error = null
+                            }
+                            .onFailure { error = it.message }
+                        saving = false
+                    }
+                }
+            }
+        },
+    ) {
         notice?.let { item { NoticeBanner(it) } }
         error?.let { item { ErrorBanner(it) } }
         item {
             Card {
                 Field("Nadpis", title, { title = it }, placeholder = "Externí trenér")
-                Text("Rozpis (jak ho trenér pošle)", color = P.inkMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    enabled = loaded,
-                    minLines = 10,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = P.ink),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = P.accent,
-                        unfocusedBorderColor = P.line,
-                        focusedContainerColor = P.subtle,
-                        unfocusedContainerColor = P.subtle,
-                        cursorColor = P.accent,
-                    ),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
-                )
-                FieldNote("Řádek s datem (5.11.) začíná den, řádky „10:00–10:45 – Jméno“ jsou lekce. Oběd a pauza se poznají, GROUP je seminář.")
                 ToggleRow("Zveřejnit", published, "Uvidí ho všichni i bez přihlášení, propíše se do kalendáře sálu.") { published = it }
                 ToggleRow("Zrušit tréninky v té době", cancelTrainings, "Jinak poběží tréninky vedle bloku trenéra.") { cancelTrainings = it }
             }
         }
         item {
-            PrimaryButton("Uložit", enabled = loaded, working = saving) {
-                saving = true
-                scope.launch {
-                    runCatching {
-                        Api.send<MessageResponse>(
-                            "PUT",
-                            "/api/rozpis",
-                            mapOf(
-                                "body" to text,
-                                "cancelTrainings" to cancelTrainings,
-                                "published" to published,
-                                "title" to title.trim(),
-                            ),
-                        )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(P.surface)
+                    .border(1.dp, P.line, RoundedCornerShape(18.dp))
+                    .clickable(enabled = loaded) { editingText = true }
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Text rozpisu", color = P.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (text.isEmpty()) "Vložit" else "Upravit", color = P.accent, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    if (text.isEmpty()) "Zatím prázdný. Klepni a vlož rozpis, jak ho trenér poslal." else text,
+                    color = if (text.isEmpty()) P.inkSoft else P.inkMuted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                    maxLines = 5,
+                )
+                if (text.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Badge(if (days.size == 1) "1 den" else "${days.size} dní", P.training)
+                        Badge("$lessonCount lekcí", P.event)
                     }
-                        .onSuccess {
-                            notice = it.message ?: "Uloženo."
-                            error = null
-                        }
-                        .onFailure { error = it.message }
-                    saving = false
                 }
             }
         }
-        item {
-            Card {
-                Row(
-                    Modifier.fillMaxWidth().clickable { preview = !preview },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Náhled (${days.size} dní)", color = P.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text(if (preview) "Skrýt" else "Ukázat", color = P.accent, fontWeight = FontWeight.SemiBold)
-                }
-                if (preview) {
-                    days.forEach { day ->
-                        day.dateKey?.let {
-                            Text(
-                                Dates.dayTitle(it).replaceFirstChar { c -> c.titlecase(Dates.czech) },
-                                color = P.ink,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 6.dp),
-                            )
+        if (days.isNotEmpty()) {
+            item {
+                Card {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { preview = !preview },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Náhled, jak ho uvidí tanečníci", color = P.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(if (preview) "Skrýt" else "Ukázat", color = P.accent, fontWeight = FontWeight.SemiBold)
+                    }
+                    if (preview) {
+                        days.forEach { day ->
+                            day.dateKey?.let {
+                                Text(
+                                    Dates.dayTitle(it).replaceFirstChar { c -> c.titlecase(Dates.czech) },
+                                    color = P.ink,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                            day.rows.forEach { row -> ScheduleRowView(row, past = false, current = false, mine = false) {} }
                         }
-                        day.rows.forEach { row -> ScheduleRowView(row, past = false, current = false, mine = false) {} }
                     }
                 }
             }
+        }
+    }
+
+    if (editingText) {
+        ScheduleTextEditor(text, onDone = {
+            text = it
+            editingText = false
+        })
+    }
+}
+
+// The schedule's text on the whole screen: only the text scrolls here.
+@Composable
+private fun ScheduleTextEditor(initial: String, onDone: (String) -> Unit) {
+    var value by remember { mutableStateOf(initial) }
+    val clipboard = LocalClipboardManager.current
+
+    Dialog(
+        onDismissRequest = { onDone(value) },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(P.surface)
+                .systemBarsPadding()
+                .imePadding(),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { clipboard.getText()?.text?.let { value = it } }) {
+                    Text("Vložit ze schránky", color = P.accent, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    "Text rozpisu",
+                    color = P.ink,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                )
+                TextButton(onClick = { onDone(value) }) {
+                    Text("Hotovo", color = P.accent, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(
+                "Řádek s datem (5.11.) začíná den, „10:00–10:45 – Jméno“ je lekce. Oběd a pauza se poznají, GROUP je seminář.",
+                color = P.inkMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().background(P.subtle).padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = P.ink),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = P.surface,
+                    unfocusedContainerColor = P.surface,
+                    cursorColor = P.accent,
+                ),
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
         }
     }
 }

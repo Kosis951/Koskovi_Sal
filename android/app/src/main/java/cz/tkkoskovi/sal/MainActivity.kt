@@ -124,6 +124,11 @@ fun App() {
         session.refresh()
     }
 
+    // The phone's notifications follow the signed-in account (own lessons).
+    LaunchedEffect(session.username) {
+        Push.accountChanged()
+    }
+
     // The schedule tab appears once the visiting trainer's schedule is
     // published; checked whenever the app comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -186,13 +191,15 @@ fun App() {
 
 val LocalRefreshApp = staticCompositionLocalOf<suspend () -> Unit> { {} }
 
-// A screen: header, then content scrolling under it. Pulling it down runs
-// `onRefresh` together with the app's own refresh.
+// A screen: header, then content scrolling under it, and an optional bar
+// that stays at the bottom (a save button). Pulling it down runs `onRefresh`
+// together with the app's own refresh.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenScaffold(
     header: @Composable () -> Unit,
     onRefresh: (suspend () -> Unit)? = null,
+    bottomBar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val refreshApp = LocalRefreshApp.current
@@ -235,5 +242,6 @@ fun ScreenScaffold(
                 content = content,
             )
         }
+        bottomBar?.invoke()
     }
 }

@@ -1,6 +1,21 @@
 package cz.tkkoskovi.sal
 
 import android.content.Context
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -195,12 +210,26 @@ private fun HallStatusCard(status: HallStatus, canClean: Boolean, onClean: (Book
     }
 }
 
+// The week strip or month grid; swiping it (or the arrows) moves to the next
+// or previous week/month, and the days follow the finger.
 @Composable
 private fun CalendarCard(hall: HallModel, selected: String, month: Boolean, onMode: (Boolean) -> Unit, onSelect: (String) -> Unit) {
     val today = Dates.todayKey()
+    val haptics = LocalHapticFeedback.current
+    var drag by remember { mutableFloatStateOf(0f) }
+    var forward by remember { mutableStateOf(true) }
+    val period = if (month) selected.take(7) else Dates.weekStart(selected)
+
+    fun step(direction: Int) {
+        forward = direction > 0
+        drag = 0f
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onSelect(if (month) Dates.addMonths(direction.toLong(), selected) else Dates.addDays(7L * direction, selected))
+    }
+
     Card {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onSelect(if (month) Dates.addMonths(-1, selected) else Dates.addDays(-7, selected)) }) {
+            IconButton(onClick = { step(-1) }) {
                 Icon(Icons.Filled.ChevronLeft, contentDescription = "Předchozí", tint = P.ink)
             }
             Text(
@@ -211,7 +240,7 @@ private fun CalendarCard(hall: HallModel, selected: String, month: Boolean, onMo
                 modifier = Modifier.weight(1f).clickable { onSelect(today) },
                 textAlign = TextAlign.Center,
             )
-            IconButton(onClick = { onSelect(if (month) Dates.addMonths(1, selected) else Dates.addDays(7, selected)) }) {
+            IconButton(onClick = { step(1) }) {
                 Icon(Icons.Filled.ChevronRight, contentDescription = "Další", tint = P.ink)
             }
         }
@@ -234,25 +263,52 @@ private fun CalendarCard(hall: HallModel, selected: String, month: Boolean, onMo
             }
         }
 
-        val days = if (month) Dates.monthGrid(selected) else Dates.week(selected)
-        val currentMonth = selected.take(7)
-        Row(Modifier.fillMaxWidth()) {
-            days.take(7).forEach {
-                Text(Dates.shortWeekday(it), color = P.inkSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-            }
-        }
-        days.chunked(7).forEach { week ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                week.forEach { key ->
-                    DayCell(
-                        key = key,
-                        selected = key == selected,
-                        today = key == today,
-                        faded = month && key.take(7) != currentMonth,
-                        closed = hall.hasLoaded && hall.hours(key) == null,
-                        kinds = hall.kinds(key),
-                        modifier = Modifier.weight(1f),
-                    ) { onSelect(key) }
+        AnimatedContent(
+            targetState = month to period,
+            transitionSpec = {
+                val direction = if (forward) 1 else -1
+                (slideInHorizontally { it * direction } + fadeIn()) togetherWith
+                    (slideOutHorizontally { -it * direction } + fadeOut())
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clipToBounds()
+                .offset { IntOffset(drag.roundToInt(), 0) }
+                .pointerInput(selected, month) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (abs(drag) > 30.dp.toPx()) step(if (drag < 0) 1 else -1) else drag = 0f
+                        },
+                        onDragCancel = { drag = 0f },
+                    ) { change, amount ->
+                        change.consume()
+                        drag += amount * 0.5f
+                    }
+                },
+            label = "calendar",
+        ) { (isMonth, shown) ->
+            val anchor = if (isMonth) "$shown-01" else shown
+            val days = if (isMonth) Dates.monthGrid(anchor) else Dates.week(anchor)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth()) {
+                    days.take(7).forEach {
+                        Text(Dates.shortWeekday(it), color = P.inkSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    }
+                }
+                days.chunked(7).forEach { week ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        week.forEach { key ->
+                            DayCell(
+                                key = key,
+                                selected = key == selected,
+                                today = key == today,
+                                faded = isMonth && key.take(7) != shown,
+                                closed = hall.hasLoaded && hall.hours(key) == null,
+                                kinds = hall.kinds(key),
+                                modifier = Modifier.weight(1f),
+                            ) { onSelect(key) }
+                        }
+                    }
                 }
             }
         }

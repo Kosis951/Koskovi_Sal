@@ -28,8 +28,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 // What the phone is subscribed to, as on the web and in the iPhone app:
-// "hall" (the hall is taken today, trainings cancelled) and "cleanup".
+// "lessons" (an hour before the account's own lesson in the schedule, with a
+// countdown), "hall" (the hall is taken today, trainings cancelled), "cleanup".
 enum class PushTopic(val title: String) {
+    lessons("Moje lekce z rozpisu (hodinu předem)"),
     hall("Obsazený sál a zrušené tréninky"),
     cleanup("Sál čeká na úklid"),
 }
@@ -38,6 +40,7 @@ enum class PushTopic(val title: String) {
 // goes to the web, the relay on the NAS sends through Google.
 object Push {
     const val CHANNEL = "hall"
+    const val LESSON_CHANNEL = "lessons"
 
     private lateinit var prefs: SharedPreferences
     private lateinit var app: Context
@@ -64,8 +67,20 @@ object Push {
             val channel = NotificationChannel(CHANNEL, "Sál", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Obsazený sál, zrušené tréninky, úklid"
             }
-            app.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val lessons = NotificationChannel(LESSON_CHANNEL, "Moje lekce", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Připomínka hodinu před lekcí s odpočtem"
+            }
+            app.getSystemService(NotificationManager::class.java).apply {
+                createNotificationChannel(channel)
+                createNotificationChannel(lessons)
+            }
         }
+    }
+
+    // The signed-in account changed: the server links the phone to it (for
+    // reminders of the account's own lessons).
+    fun accountChanged() {
+        registerIfAllowed()
     }
 
     fun hasPermission(context: Context) =
@@ -156,10 +171,55 @@ object Push {
     }
 }
 
+// The reminder of the dancer's own lesson: stays in the notifications with a
+// countdown to the start (Android's counterpart of the Dynamic Island) and
+// goes away when the lesson ends.
+@SuppressLint("MissingPermission")
+internal fun Push.showLesson(context: Context, title: String, body: String, startsAt: Long, endsAt: Long) {
+    init(context)
+    if (!hasPermission(context)) return
+    val now = System.currentTimeMillis()
+    if (endsAt <= now) return
+
+    val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    val open = PendingIntent.getActivity(context, 1, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    val builder = NotificationCompat.Builder(context, Push.LESSON_CHANNEL)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(0xFF003758.toInt())
+        .setContentTitle(title)
+        .setContentText(body)
+        .setSubText("Lekce začíná za")
+        .setCategory(NotificationCompat.CATEGORY_REMINDER)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setContentIntent(open)
+        .setTimeoutAfter(endsAt - now)
+
+    if (startsAt > now) {
+        builder.setWhen(startsAt).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
+    }
+
+    runCatching { NotificationManagerCompat.from(context).notify("lesson", startsAt.hashCode(), builder.build()) }
+}
+
 class PushService : FirebaseMessagingService() {
     override fun onNewToken(token: String) = Push.onNewToken(applicationContext, token)
 
     override fun onMessageReceived(message: RemoteMessage) {
+        if (message.data["kind"] == "lesson") {
+            val startsAt = message.data["startsAt"]?.toLongOrNull() ?: return
+            val endsAt = message.data["endsAt"]?.toLongOrNull() ?: startsAt
+            Push.showLesson(
+                applicationContext,
+                title = message.data["title"] ?: "Za hodinu máš lekci",
+                body = message.data["body"].orEmpty(),
+                startsAt = startsAt * 1000,
+                endsAt = endsAt * 1000,
+            )
+            return
+        }
+
         val title = message.notification?.title ?: message.data["title"] ?: return
         val body = message.notification?.body ?: message.data["body"].orEmpty()
         Push.show(applicationContext, title, body, message.notification?.tag)
