@@ -306,7 +306,7 @@ fun Field(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
-        placeholder = if (placeholder.isEmpty()) null else ({ Text(placeholder, color = P.inkSoft) }),
+        placeholder = { if (placeholder.isNotEmpty()) Text(placeholder, color = P.inkSoft) },
         singleLine = singleLine,
         minLines = minLines,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),
