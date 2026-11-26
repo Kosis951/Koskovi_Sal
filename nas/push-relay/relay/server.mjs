@@ -91,24 +91,49 @@ function getApnsToken() {
   return apnsToken.value;
 }
 
-async function sendApns(tokens, payload, results) {
+// `live`: the tokens start a Live Activity (the lesson countdown on the lock
+// screen and in the Dynamic Island, iOS 17.2+) instead of a notification.
+async function sendApns(tokens, payload, results, live = false) {
   if (tokens.length === 0) {
     return;
   }
 
-  if (!apns) {
+  if (!apns || (live && !payload.lesson)) {
     tokens.forEach((token) => results.set(token, "failed"));
     return;
   }
 
-  const body = JSON.stringify({
-    aps: {
-      alert: { body: payload.body, title: payload.title },
-      sound: "default",
-      ...(payload.tag ? { "thread-id": payload.tag } : {}),
-    },
-    url: payload.url,
-  });
+  const alert = { body: payload.body, title: payload.title };
+  const body = JSON.stringify(
+    live
+      ? {
+          aps: {
+            alert,
+            attributes: {
+              endsAt: payload.lesson.endsAt,
+              startsAt: payload.lesson.startsAt,
+              time: payload.lesson.time,
+              title: payload.lesson.title,
+            },
+            "attributes-type": "LessonActivityAttributes",
+            "content-state": { phase: "upcoming" },
+            "dismissal-date": payload.lesson.endsAt,
+            event: "start",
+            sound: "default",
+            "stale-date": payload.lesson.endsAt,
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        }
+      : {
+          aps: {
+            alert,
+            sound: "default",
+            ...(payload.tag ? { "thread-id": payload.tag } : {}),
+          },
+          url: payload.url,
+        },
+  );
+  payload = { ...payload, live };
   // An app installed from Xcode has a token of Apple's test servers (sandbox),
   // one from TestFlight or the App Store of the real ones. Each server calls
   // the other's tokens "BadDeviceToken", so those are tried on the other one.
@@ -152,9 +177,9 @@ function sendOneApns(session, host, token, body, payload, results, retry) {
         authorization: `bearer ${getApnsToken()}`,
         "apns-expiration": String(Math.floor(Date.now() / 1000) + 6 * 60 * 60),
         "apns-priority": "10",
-        "apns-push-type": "alert",
-        "apns-topic": apns.bundleId,
-        ...(payload.tag ? { "apns-collapse-id": String(payload.tag).slice(0, 64) } : {}),
+        "apns-push-type": payload.live ? "liveactivity" : "alert",
+        "apns-topic": payload.live ? `${apns.bundleId}.push-type.liveactivity` : apns.bundleId,
+        ...(payload.tag && !payload.live ? { "apns-collapse-id": String(payload.tag).slice(0, 64) } : {}),
         "content-type": "application/json",
       });
     } catch {
@@ -331,18 +356,33 @@ async function sendFcm(tokens, payload, results) {
         try {
           const response = await fetch(url, {
             body: JSON.stringify({
-              message: {
-                // Shown by the system when the app is closed; the app shows it
-                // itself while open (PushService).
-                android: {
-                  notification: { channel_id: "hall", ...(payload.tag ? { tag: payload.tag } : {}) },
-                  priority: "high",
-                  ttl: `${6 * 60 * 60}s`,
-                },
-                data: { body: payload.body, title: payload.title, ...(payload.url ? { url: payload.url } : {}) },
-                notification: { body: payload.body, title: payload.title },
-                token,
-              },
+              message: payload.lesson
+                ? {
+                    // A lesson reminder: data only, so the app always gets it
+                    // and shows its own notification with a countdown.
+                    android: { priority: "high", ttl: "3600s" },
+                    data: {
+                      body: payload.body,
+                      endsAt: String(payload.lesson.endsAt),
+                      kind: "lesson",
+                      startsAt: String(payload.lesson.startsAt),
+                      time: payload.lesson.time,
+                      title: payload.title,
+                    },
+                    token,
+                  }
+                : {
+                    // Shown by the system when the app is closed; the app shows it
+                    // itself while open (PushService).
+                    android: {
+                      notification: { channel_id: "hall", ...(payload.tag ? { tag: payload.tag } : {}) },
+                      priority: "high",
+                      ttl: `${6 * 60 * 60}s`,
+                    },
+                    data: { body: payload.body, title: payload.title, ...(payload.url ? { url: payload.url } : {}) },
+                    notification: { body: payload.body, title: payload.title },
+                    token,
+                  },
             }),
             headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
             method: "POST",
@@ -438,6 +478,7 @@ async function handleSend(request, response) {
     tag: typeof payload.tag === "string" ? payload.tag.slice(0, 64) : undefined,
     title: payload.title.slice(0, 200),
     url: typeof payload.url === "string" ? payload.url.slice(0, 500) : undefined,
+    lesson: cleanLesson(payload.lesson),
   };
   const ios = devices
     .filter((device) => device?.platform === "ios" && /^[0-9a-f]{64,200}$/i.test(device.token ?? ""))
@@ -448,10 +489,14 @@ async function handleSend(request, response) {
     .map((device) => device.token);
   const ntfyEndpoints = android.filter((token) => token.startsWith("https://"));
   const fcmTokens = android.filter((token) => !token.startsWith("https://"));
+  const live = devices
+    .filter((device) => device?.platform === "ios-live" && /^[0-9a-f]{64,400}$/i.test(device.token ?? ""))
+    .map((device) => device.token);
   const results = new Map();
 
   await Promise.all([
     sendApns(ios, clean, results),
+    sendApns(live, clean, results, true),
     sendFcm(fcmTokens, clean, results),
     sendNtfy(ntfyEndpoints, clean, results),
   ]);
@@ -459,6 +504,20 @@ async function handleSend(request, response) {
   const delivered = [...results.values()].filter((result) => result === "delivered").length;
   console.info(`[relay] ${clean.title} → ${delivered}/${results.size}`);
   json(response, 200, { results: Object.fromEntries(results) });
+}
+
+// { startsAt, endsAt (Unix seconds), time, title } of a lesson reminder.
+function cleanLesson(lesson) {
+  if (!lesson || !Number.isFinite(lesson.startsAt) || !Number.isFinite(lesson.endsAt)) {
+    return undefined;
+  }
+
+  return {
+    endsAt: Math.floor(lesson.endsAt),
+    startsAt: Math.floor(lesson.startsAt),
+    time: String(lesson.time ?? "").slice(0, 40),
+    title: String(lesson.title ?? "").slice(0, 80),
+  };
 }
 
 async function handleHealth(response) {

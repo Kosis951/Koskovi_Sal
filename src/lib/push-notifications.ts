@@ -2,19 +2,27 @@ import {
   getBookings,
   getRecurringCancellationNotices,
 } from "@/lib/bookings-db";
+import { readStoredAdminUsersSync } from "@/lib/auth";
+import { parseSchedule, rowBelongsTo } from "@/lib/public-schedule";
+import { getPublicSchedule } from "@/lib/public-schedule-db";
 import {
+  getLessonReminderDevices,
   isPushConfigured,
   prunePushState,
   readPushState,
+  sendLessonReminder,
   sendToTopic,
   writePushState,
 } from "@/lib/push";
+import { getRelayUrl } from "@/lib/push-relay";
 import type { Booking } from "@/lib/schedule";
 
 // When the morning summary goes out, and after which hour changes to today
 // are no longer announced (the hall closes at 22:00 at the latest).
 const digestAtMinutes = 7 * 60;
 const quietAfterMinutes = 22 * 60;
+// How long before their own lesson dancers with the app are reminded.
+const lessonReminderMinutes = 60;
 
 // What subscribers hear about: today's hall bookings other than trainings,
 // and today's cancelled trainings. `signature` changes when the entry does.
@@ -55,7 +63,7 @@ export function runPushChecks() {
 
 // Called after a booking changes; several quick edits end up in one check.
 export function queuePushCheck() {
-  if (!isPushConfigured()) {
+  if (!isPushConfigured() && !getRelayUrl()) {
     return;
   }
 
@@ -70,11 +78,16 @@ export function queuePushCheck() {
 }
 
 async function checkNow() {
+  const now = getPragueNow();
+
+  if (getRelayUrl()) {
+    await checkLessons(now);
+  }
+
   if (!isPushConfigured()) {
     return;
   }
 
-  const now = getPragueNow();
   const bookings = await getBookings();
 
   await checkToday(now, bookings);
@@ -156,6 +169,89 @@ async function checkCleanups(now: PragueNow, bookings: Booking[]) {
       url: "/",
     });
   }
+}
+
+// An hour before a lesson in the visiting trainer's published schedule, the
+// phones of the dancer's account get a reminder (and iPhones a countdown).
+async function checkLessons(now: PragueNow) {
+  const devices = getLessonReminderDevices();
+
+  if (devices.length === 0) {
+    return;
+  }
+
+  const schedule = getPublicSchedule();
+  const today = schedule.published
+    ? parseSchedule(schedule.body, now.dateKey).find((day) => day.dateKey === now.dateKey)
+    : undefined;
+
+  if (!today) {
+    return;
+  }
+
+  const names = new Map(
+    readStoredAdminUsersSync()
+      .filter((user) => !user.deleted && user.scheduleName?.trim())
+      .map((user) => [user.username, user.scheduleName!.trim()]),
+  );
+
+  for (const row of today.rows) {
+    if (row.kind !== "lesson" || !row.start || !row.end) {
+      continue;
+    }
+
+    const minutesLeft = toMinutes(row.start) - now.minutes;
+
+    if (minutesLeft <= 0 || minutesLeft > lessonReminderMinutes) {
+      continue;
+    }
+
+    const due = devices.filter((device) => {
+      const name = names.get(device.username!);
+      return name && rowBelongsTo(row.text, name) && !readPushState(lessonKey(device.token, now.dateKey, row.start!));
+    });
+
+    if (due.length === 0) {
+      continue;
+    }
+
+    for (const device of due) {
+      writePushState(lessonKey(device.token, now.dateKey, row.start), new Date().toISOString());
+    }
+
+    const time = `${row.start}–${row.end}`;
+    const delivered = await sendLessonReminder(due, {
+      body: `${time} · ${row.text}`,
+      lesson: {
+        endsAt: pragueEpoch(now.dateKey, row.end),
+        startsAt: pragueEpoch(now.dateKey, row.start),
+        time,
+        title: schedule.title || "Lekce",
+      },
+      tag: `lesson-${now.dateKey}-${row.start}`,
+      title: minutesLeft >= 55 ? "Za hodinu máš lekci" : `Za ${minutesLeft} min máš lekci`,
+      url: "/rozpis",
+    });
+
+    console.info(`[push] lekce ${time} ${row.text} → ${delivered}/${due.length}`);
+  }
+}
+
+function lessonKey(token: string, dateKey: string, start: string) {
+  return `lesson:${dateKey}:${start}:${token.slice(-24)}`;
+}
+
+// Unix seconds of a Prague date and time.
+function pragueEpoch(dateKey: string, time: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  const guess = Date.UTC(year, month - 1, day, hours, minutes);
+  const parts = Object.fromEntries(
+    pragueFormatter.formatToParts(new Date(guess)).map((part) => [part.type, part.value]),
+  );
+  const shown = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute);
+
+  return Math.round((guess - (shown - guess)) / 1000);
 }
 
 async function readTodayItems(dateKey: string, bookings: Booking[]): Promise<TodayItem[]> {

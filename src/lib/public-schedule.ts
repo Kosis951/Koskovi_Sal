@@ -44,6 +44,20 @@ const breakWords = /oběd|obed|coffee|káva|kafe|pauza|přestávka|prestavka|bre
 // A lesson for everybody ("GROUP", "Seminář LAT"…), not one person's.
 const groupWords = /group|skupin|semin[aá][rř]/i;
 
+// Whether a schedule row is the dancer's: their name as a whole word, without
+// case and diacritics ("Novák" finds "Novák / Dvořáková", not "Nováková").
+export function rowBelongsTo(text: string, name: string) {
+  const fold = (value: string) => value.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
+  const target = fold(name).trim().replace(/\s+/g, " ");
+
+  if (!target) {
+    return false;
+  }
+
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}])${escaped}($|[^\\p{L}])`, "u").test(fold(text));
+}
+
 // `todayKey` (YYYY-MM-DD) picks the year for dates written without one: the
 // one that puts the date closest to today.
 export function parseSchedule(body: string, todayKey: string): ScheduleDay[] {

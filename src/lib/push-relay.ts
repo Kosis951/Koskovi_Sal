@@ -7,6 +7,8 @@ import type { PushPayload } from "@/lib/push";
 //   PUSH_RELAY_SECRET=… (the relay's RELAY_SECRET)
 
 export type NativePlatform = "android" | "ios";
+// "ios-live": an iPhone's token for starting a Live Activity (lesson countdown).
+export type RelayPlatform = NativePlatform | "ios-live";
 export type RelayResult = "delivered" | "failed" | "gone";
 
 export function getRelayUrl() {
@@ -30,6 +32,11 @@ export function isApnsToken(value: unknown): value is string {
 }
 
 // An Android phone's Firebase (FCM) registration token.
+// An iPhone's push-to-start token for Live Activities (hex like APNs tokens).
+export function isLiveToken(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64,400}$/i.test(value);
+}
+
 export function isFcmToken(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_:-]{100,400}$/.test(value);
 }
@@ -58,7 +65,7 @@ export function isRelayEndpoint(value: unknown): value is string {
 }
 
 export async function sendThroughRelay(
-  devices: Array<{ platform: NativePlatform; token: string }>,
+  devices: Array<{ platform: RelayPlatform; token: string }>,
   payload: PushPayload,
 ) {
   const relay = getRelayUrl();

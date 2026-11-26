@@ -7,7 +7,9 @@ import {
   saveNativeDevice,
   sendToNativeDevice,
 } from "@/lib/push";
-import { getRelayUrl, isApnsToken, isFcmToken, isRelayEndpoint } from "@/lib/push-relay";
+import { cookies } from "next/headers";
+import { getAdminAccess } from "@/lib/auth";
+import { getRelayUrl, isApnsToken, isFcmToken, isLiveToken, isRelayEndpoint } from "@/lib/push-relay";
 import { isRateLimited } from "@/lib/simple-rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,9 @@ export const dynamic = "force-dynamic";
 //   POST { platform: "ios", token, topics },
 //        { platform: "android", token, topics } (Firebase) or
 //        { platform: "android", endpoint, topics } (ntfy) – subscribe or change
-//        topics (no topics = unsubscribe); `test: true` sends a test.
+//        topics (no topics = unsubscribe); `test: true` sends a test;
+//        `liveToken` (iPhone) starts the lesson countdown. The signed-in
+//        account is remembered for reminders of its own lessons.
 //   PUT { token } / { endpoint } – which topics this device receives.
 
 function deviceKey(body: Record<string, unknown> | null) {
@@ -61,12 +65,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ subscribed: false, topics });
   }
 
-  if (!saveNativeDevice(device.token, device.platform, topics)) {
+  const username = getAdminAccess(await cookies())?.username ?? null;
+  const liveToken =
+    device.platform !== "ios" || body?.liveToken === undefined
+      ? undefined
+      : isLiveToken(body.liveToken)
+        ? body.liveToken
+        : null;
+
+  if (!saveNativeDevice(device.token, device.platform, topics, username, liveToken)) {
     return NextResponse.json({ message: "Kapacita upozornění je plná." }, { status: 507 });
   }
 
   // In `pm2 logs`: which phone (end of its token) subscribed to what.
-  console.info(`[push] aplikace ${device.platform} …${device.token.slice(-6)}: ${topics.join(", ")}`);
+  console.info(
+    `[push] aplikace ${device.platform} …${device.token.slice(-6)}: ${topics.join(", ")}${username ? ` (${username})` : ""}`,
+  );
 
   if (body?.test === true) {
     const delivered = await sendToNativeDevice(device.token, {

@@ -3,16 +3,29 @@ import { getDb } from "@/lib/db";
 import { getRelayUrl, sendThroughRelay, type NativePlatform } from "@/lib/push-relay";
 
 // What a device can subscribe to: "hall" = the hall is taken today (other
-// than trainings) and cancelled trainings; "cleanup" = hall waits for cleanup.
-export const pushTopics = ["hall", "cleanup"] as const;
+// than trainings) and cancelled trainings; "cleanup" = hall waits for cleanup;
+// "lessons" = an hour before the dancer's own lesson in the visiting
+// trainer's schedule (apps only, needs a signed-in account with its name).
+export const pushTopics = ["hall", "cleanup", "lessons"] as const;
 export type PushTopic = (typeof pushTopics)[number];
 
 export type PushPayload = {
   body: string;
+  // A lesson reminder: the apps show a countdown to its start.
+  lesson?: LessonCountdown;
   // Notifications with the same tag replace each other on the device.
   tag?: string;
   title: string;
   url?: string;
+};
+
+export type LessonCountdown = {
+  // Unix seconds.
+  endsAt: number;
+  startsAt: number;
+  // "10:00–10:45"
+  time: string;
+  title: string;
 };
 
 export type PushSubscriptionInput = {
@@ -189,10 +202,25 @@ export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
 // --- Devices with the native app (iPhone: APNs token, Android: its
 // UnifiedPush address), sent through the relay on the NAS ---
 
-type NativeDeviceRow = { failures: number; platform: string; token: string; topics: string };
+type NativeDeviceRow = {
+  failures: number;
+  live_token: string | null;
+  platform: string;
+  token: string;
+  topics: string;
+  username: string | null;
+};
 
-// Returns false when the device limit is reached.
-export function saveNativeDevice(token: string, platform: NativePlatform, topics: PushTopic[]) {
+// Returns false when the device limit is reached. `username` is the account
+// signed in on the phone (null when nobody is), `liveToken` the iPhone's token
+// for starting the lesson countdown (undefined keeps the stored one).
+export function saveNativeDevice(
+  token: string,
+  platform: NativePlatform,
+  topics: PushTopic[],
+  username: string | null = null,
+  liveToken?: string | null,
+) {
   const db = getDb();
   const now = new Date().toISOString();
   const exists = db.prepare("SELECT 1 FROM native_push_devices WHERE token = ?").get(token);
@@ -208,13 +236,47 @@ export function saveNativeDevice(token: string, platform: NativePlatform, topics
   }
 
   db.prepare(
-    `INSERT INTO native_push_devices (token, platform, topics, failures, created_at, updated_at)
-     VALUES (?, ?, ?, 0, ?, ?)
+    `INSERT INTO native_push_devices (token, platform, topics, username, live_token, failures, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?)
      ON CONFLICT(token) DO UPDATE SET platform = excluded.platform, topics = excluded.topics,
+       username = excluded.username,
+       live_token = CASE WHEN ? THEN excluded.live_token ELSE native_push_devices.live_token END,
        failures = 0, updated_at = excluded.updated_at`,
-  ).run(token, platform, topics.join(","), now, now);
+  ).run(token, platform, topics.join(","), username, liveToken ?? null, now, now, liveToken === undefined ? 0 : 1);
 
   return true;
+}
+
+// Phones that want reminders of their account's own lessons.
+export function getLessonReminderDevices() {
+  return (getDb().prepare("SELECT * FROM native_push_devices WHERE username IS NOT NULL").all() as NativeDeviceRow[])
+    .filter((row) => row.topics.split(",").includes("lessons"));
+}
+
+// The reminder an hour before a lesson. iPhones with a live token get it as
+// the countdown on the lock screen and in the Dynamic Island (it alerts too);
+// the others as a notification (Android shows its own countdown).
+export async function sendLessonReminder(rows: NativeDeviceRow[], payload: PushPayload) {
+  if (!getRelayUrl() || rows.length === 0) {
+    return 0;
+  }
+
+  const liveTokens = rows.filter((row) => row.platform === "ios" && row.live_token).map((row) => row.live_token!);
+  const results = await sendThroughRelay(
+    liveTokens.map((token) => ({ platform: "ios-live" as const, token })),
+    payload,
+  );
+
+  for (const token of liveTokens) {
+    if (results.get(token) === "gone") {
+      getDb().prepare("UPDATE native_push_devices SET live_token = NULL WHERE live_token = ?").run(token);
+    }
+  }
+
+  const started = rows.filter((row) => row.live_token && results.get(row.live_token) === "delivered");
+  const others = rows.filter((row) => !started.includes(row));
+
+  return started.length + (others.length > 0 ? await sendToNativeDevices(others, payload) : 0);
 }
 
 export function deleteNativeDevice(token: string) {
