@@ -4,8 +4,7 @@ struct CalendarScreen: View {
     @Environment(SessionModel.self) private var session
     @Environment(\.refreshApp) private var refreshApp
     @State private var model = HallModel()
-    // In the screenshot demo: Wednesday of this week, the day with the most going on.
-    @State private var selectedDay = Demo.isOn ? Dates.addDays(2, to: Dates.weekStart(Dates.todayKey())) : Dates.todayKey()
+    @State private var selectedDay = Dates.todayKey()
     @State private var openBooking: Booking?
     @State private var openCancellation: CancellationNotice?
     @State private var isAdding = false

@@ -65,11 +65,12 @@ final class HallModel {
         #if !WIDGET
         let isTour = TourModel.shared.isActive
         if Demo.isOn || isTour {
-            let response = isTour ? Demo.tourAvailability : Demo.availability
+            // The screenshots show the guide's day too (at 17:00).
+            let response = Demo.tourAvailability
             bookings = response.bookings
             cancellations = response.recurringCancellations ?? []
             openingHours = response.hall?.openingHours ?? []
-            showsTour = isTour
+            showsTour = true
             hasLoaded = true
             return
         }

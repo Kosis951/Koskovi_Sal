@@ -115,7 +115,8 @@ enum Demo {
         let week = availability
         var bookings = week.bookings.filter { $0.date != today }
         bookings += [
-            booking("demo-tour-a", today, "14:00", "16:30", "Seminář STT", eventType: "seminar", trainer: "Šárka", cleanup: true),
+            booking("demo-tour-m", today, "10:00", "11:30", "Soustředění juniorů", eventType: "soustredeni", trainer: "Šárka"),
+            booking("demo-tour-a", today, "14:00", "16:30", "Seminář STT", eventType: "seminar", trainer: "Jirka", cleanup: true),
             booking("recurring-tour-b-\(today)", today, "18:00", "19:30", "Společná LAT"),
         ]
         let cancelled = (week.recurringCancellations ?? []).filter { $0.date != today }
@@ -126,7 +127,7 @@ enum Demo {
     // The schedule with two of "your" lessons highlighted.
     static var tourSchedule: PublicScheduleResponse {
         var result = schedule
-        result.mine = ["\(day(1))|10:00", "\(day(1))|13:45"]
+        result.mine = ["\(day(9))|10:00", "\(day(9))|13:45"]
         return result
     }
 
@@ -159,8 +160,9 @@ enum Demo {
     }
 
     static var schedule: PublicScheduleResponse {
-        let first = Dates.date(day(1)) ?? Date()
-        let second = Dates.date(day(2)) ?? Date()
+        // In 9 days: lessons can still be cancelled or moved.
+        let first = Dates.date(day(9)) ?? Date()
+        let second = Dates.date(day(10)) ?? Date()
         let label = { (date: Date) -> String in
             "\(Dates.calendar.component(.day, from: date)).\(Dates.calendar.component(.month, from: date))."
         }

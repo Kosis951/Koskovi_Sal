@@ -1,13 +1,13 @@
 # App Store screenshots: the app runs in its demo mode (made-up data) in an
 # iPhone simulator, the screens are captured and uploaded to App Store
 # Connect. Run by hand (Actions → iOS snímky → Run workflow) or by changing
-# this file or ios/screenshots/.
+# this file, ios/screenshots/ or the demo data.
 name: iOS snímky
 
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/ios-screenshots.yml", "ios/screenshots/**"]
+    paths: [".github/workflows/ios-screenshots.yml", "ios/screenshots/**", "ios/KoskoviSal/Core/Demo.swift"]
   workflow_dispatch:
 
 # Two runs would replace each other's screenshots.

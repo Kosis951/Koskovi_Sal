@@ -8,6 +8,7 @@ struct AccountScreen: View {
     @State private var isEditingProfile = false
     @State private var isChangingPassword = false
     @State private var isConfirmingSignOut = false
+    @State private var isDeletingAccount = false
     @State private var notice: String?
 
     var body: some View {
@@ -63,6 +64,12 @@ struct AccountScreen: View {
             .sheet(isPresented: $isChangingPassword) {
                 PasswordView { message in notice = message }
             }
+            .sheet(isPresented: $isDeletingAccount) {
+                DeleteAccountView { message in
+                    notice = message
+                    Task { await session.signOut() }
+                }
+            }
             .alert("Odhlásit se?", isPresented: $isConfirmingSignOut) {
                 Button("Zpět", role: .cancel) {}
                 Button("Odhlásit se", role: .destructive) {
@@ -106,6 +113,10 @@ struct AccountScreen: View {
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "rectangle.portrait.and.arrow.right", title: "Odhlásit se", detail: nil, tint: Theme.busy.ink) {
                     isConfirmingSignOut = true
+                }
+                Divider().padding(.leading, 44)
+                AccountRow(icon: "trash", title: "Smazat účet", detail: "Natrvalo, i s údaji v profilu", tint: Theme.busy.ink) {
+                    isDeletingAccount = true
                 }
             }
         }
@@ -364,6 +375,55 @@ struct ProfileView: View {
             )
             try response.check(scheduleName: wantedScheduleName)
             onSaved(response.message ?? "Profil je uložený.")
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+// Deletes the signed-in account for good (asks for the password).
+struct DeleteAccountView: View {
+    let onDeleted: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var isDeleting = false
+    @State private var error: String?
+
+    var body: some View {
+        BrandSheet(
+            title: "Smazat účet",
+            subtitle: "Tohle nejde vrátit",
+            primaryTitle: "Smazat účet natrvalo",
+            primaryDisabled: password.isEmpty,
+            isWorking: isDeleting,
+            onPrimary: { Task { await delete() } }
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Smažeme tvůj profil (jméno, příjmení, e-mail, telefon, partnera) i propojení s partnery a rozpisem. Telefon ti přestane posílat připomínky lekcí. Lekce, které už máš objednané, zůstanou trenérovi v kalendáři.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkMuted)
+                FieldBox(label: "Heslo pro potvrzení") {
+                    SecureField("heslo", text: $password)
+                        .textContentType(.password)
+                }
+            }
+            .card()
+
+            if let error {
+                ErrorBanner(text: error)
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func delete() async {
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            let response = try await API.send("DELETE", "/api/account", body: ["password": password], as: MessageResponse.self)
+            onDeleted(response.message ?? "Účet je smazaný.")
             dismiss()
         } catch {
             self.error = error.localizedDescription

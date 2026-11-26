@@ -106,6 +106,10 @@ struct PartnerCard: View {
     }
 
     private func load() async {
+        if Demo.isOn {
+            state = Partnerships(partner: .init(id: "demo", name: "Martin Dvořák", username: "martin"), incoming: [], outgoing: [])
+            return
+        }
         state = try? await API.get("/api/account/partners", as: Partnerships.self)
     }
 

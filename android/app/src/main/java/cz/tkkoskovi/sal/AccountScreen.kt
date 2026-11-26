@@ -67,6 +67,7 @@ fun AccountScreen(session: SessionModel) {
     var notice by remember { mutableStateOf<String?>(null) }
     var editingProfile by remember { mutableStateOf(false) }
     var changingPassword by remember { mutableStateOf(false) }
+    var deletingAccount by remember { mutableStateOf(false) }
 
     ScreenScaffold(header = { BrandHeader("Účet", session.displayName) }) {
         notice?.let { item { NoticeBanner(it) } }
@@ -120,6 +121,17 @@ fun AccountScreen(session: SessionModel) {
 
         item {
             Text(
+                "Smazat účet",
+                color = P.busy.ink,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clickable { deletingAccount = true }.padding(10.dp),
+            )
+        }
+
+        item {
+            Text(
                 "TK Koškovi ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 color = P.inkSoft,
                 fontSize = 12.sp,
@@ -142,6 +154,46 @@ fun AccountScreen(session: SessionModel) {
             notice = message
             changingPassword = false
         }
+    }
+
+    if (deletingAccount) {
+        DeleteAccountSheet(onDismiss = { deletingAccount = false }) {
+            deletingAccount = false
+            scope.launch { session.signOut() }
+        }
+    }
+}
+
+// Deletes the signed-in account for good (asks for the password).
+@Composable
+private fun DeleteAccountSheet(onDismiss: () -> Unit, onDeleted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var password by remember { mutableStateOf("") }
+    var working by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    BrandSheet(
+        title = "Smazat účet",
+        subtitle = "Tohle nejde vrátit",
+        onDismiss = onDismiss,
+        primaryTitle = "Smazat účet natrvalo",
+        primaryEnabled = password.isNotEmpty(),
+        working = working,
+        onPrimary = {
+            working = true
+            scope.launch {
+                runCatching { Api.send<MessageResponse>("DELETE", "/api/account", mapOf("password" to password)) }
+                    .onSuccess { onDeleted() }
+                    .onFailure { error = it.message }
+                working = false
+            }
+        },
+    ) {
+        Card {
+            Muted("Smažeme tvůj profil (jméno, příjmení, e-mail, telefon, partnera) i propojení s partnery a rozpisem. Telefon ti přestane posílat připomínky lekcí. Lekce, které už máš objednané, zůstanou trenérovi v kalendáři.")
+            Field("Heslo pro potvrzení", password, { password = it }, password = true)
+        }
+        error?.let { ErrorBanner(it) }
     }
 }
 

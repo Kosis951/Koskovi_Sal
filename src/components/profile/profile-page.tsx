@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { LoginForm } from "@/components/dashboard/login-form";
 import { AppHeader, profileChangeEvent, type HeaderSession } from "@/components/ui/app-header";
+import { DeleteAccountForm } from "@/components/ui/delete-account-form";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { buttonPrimary, eyebrow, noticeTone, pageContainer } from "@/components/ui/styles";
 import { loginAdmin, logoutAdmin } from "@/lib/admin-auth-client";
@@ -64,6 +65,12 @@ export function ProfilePage({
                 <h2 className="mb-3 text-lg font-black">Změna hesla</h2>
                 <PasswordChangeForm />
               </section>
+              {initialSession.role === "admin" ? null : (
+                <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+                  <h2 className="mb-3 text-lg font-black">Smazat účet</h2>
+                  <DeleteAccountForm />
+                </section>
+              )}
             </>
           )}
         </div>
