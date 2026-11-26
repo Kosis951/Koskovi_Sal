@@ -10,7 +10,7 @@ services:
     init: true
     # The relay's code and web pages come from this repository at a fixed
     # commit (nothing to upload by hand); an update = a newer commit here.
-    command: ["sh", "-c", "mkdir -p /opt/relay/site && cd /opt/relay && base=https://raw.githubusercontent.com/Kosis951/Koskovi_Sal/3028c17ac2957acf22774e2a697e572c8db4ab9a/nas/push-relay && wget -qO server.mjs $$base/relay/server.mjs && for f in index.html privacy.html support.html style.css logo.svg icon.png; do wget -qO site/$$f $$base/site/$$f; done && SITE_DIR=/opt/relay/site exec node server.mjs"]
+    command: ["sh", "-c", "mkdir -p /opt/relay/site && cd /opt/relay && base=https://raw.githubusercontent.com/Kosis951/Koskovi_Sal/46a652fda448cd13d6c5c2d294bac1bd4361ce70/nas/push-relay && wget -qO server.mjs $$base/relay/server.mjs && for f in index.html privacy.html support.html style.css logo.svg icon.png; do wget -qO site/$$f $$base/site/$$f; done && SITE_DIR=/opt/relay/site exec node server.mjs"]
     environment:
       APNS_KEY_ID: F8QS7XUX7B
       APNS_TEAM_ID: 44HJR678JA
