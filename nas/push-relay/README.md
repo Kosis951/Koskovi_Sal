@@ -13,6 +13,9 @@ VPS (sal.tkkoskovi.cz) ──POST /relay/send──▶ relay ──▶ Apple →
 Relay (`relay/server.mjs`, Node bez zavislosti) obsluhuje `/relay/…`, `/app/….apk` a stranky
 (`/`, `/privacy`, `/support`).
 
+Stranky vypadaji jako web (stejna hlavicka, CSS i pismo) a jsou jeho zalozka „Aplikace“. Generuje je
+`npx tsx scripts/build-app-site.mts` z `site-src/` do `site/`; pak commit a novy commit v `compose.yaml`.
+
 ## Instalace (DSM 7, Container Manager)
 
 1. **DNS**: u spravce domeny tkkoskovi.cz zaznam `app` → verejna IP NAS (A zaznam). Router musi

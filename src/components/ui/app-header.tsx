@@ -21,6 +21,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NavDropdown } from "@/components/ui/nav-dropdown";
 import { pageContainer } from "@/components/ui/styles";
 import { getAdminSession, type AdminRole } from "@/lib/admin-auth-client";
+import { appSiteUrl } from "@/lib/app-site";
 
 export type HeaderSession = {
   // Profile name; the header fetches it itself when a page does not pass it.
@@ -58,7 +59,8 @@ export function AppHeader({
       active: activeTab === "app",
       // Not needed inside the installed app.
       className: "[@media(display-mode:standalone)]:hidden",
-      href: "/aplikace",
+      // The apps' site, which looks like this one.
+      href: appSiteUrl,
       icon: Smartphone,
       label: "Aplikace do telefonu",
     },
@@ -105,7 +107,7 @@ export function AppHeader({
           {/* Not needed inside the installed app. */}
           <Link
             className={`${tabClass(activeTab === "app")} [@media(display-mode:standalone)]:hidden`}
-            href="/aplikace"
+            href={appSiteUrl}
           >
             Aplikace
           </Link>
@@ -281,7 +283,7 @@ function AccountMenu({
           ) : null}
           <Link
             className={`${itemClass} sm:hidden [@media(display-mode:standalone)]:hidden`}
-            href="/aplikace"
+            href={appSiteUrl}
             onClick={() => setIsOpen(false)}
           >
             <Smartphone size={16} />

@@ -26,14 +26,24 @@ const downloads = env.DOWNLOADS_DIR || "/downloads";
 // repository's Android workflow).
 const releaseDownloads = (env.APK_RELEASE_URL || "https://github.com/Kosis951/Koskovi_Sal/releases/download/android-latest").replace(/\/$/, "");
 const site = env.SITE_DIR || "/site";
-// The pages and what they are served as.
+// The pages and what they are served as (built by scripts/build-app-site.mts
+// in the web's look).
 const sitePages = {
   "/": ["index.html", "text/html; charset=utf-8"],
+  "/app.js": ["app.js", "text/javascript; charset=utf-8"],
+  "/brand/zaklad-white.svg": ["brand/zaklad-white.svg", "image/svg+xml"],
+  "/brand/znak-white.svg": ["brand/znak-white.svg", "image/svg+xml"],
   "/icon.png": ["icon.png", "image/png"],
   "/logo.svg": ["logo.svg", "image/svg+xml"],
   "/privacy": ["privacy.html", "text/html; charset=utf-8"],
-  "/style.css": ["style.css", "text/css; charset=utf-8"],
   "/support": ["support.html", "text/html; charset=utf-8"],
+  "/web.css": ["web.css", "text/css; charset=utf-8"],
+  ...Object.fromEntries(
+    ["regular", "medium", "semibold", "bold", "black"].map((weight) => [
+      `/fonts/br-firma-${weight}.woff2`,
+      [`fonts/br-firma-${weight}.woff2`, "font/woff2"],
+    ]),
+  ),
 };
 const maxBody = 1024 * 1024;
 const maxDevices = 2000;
