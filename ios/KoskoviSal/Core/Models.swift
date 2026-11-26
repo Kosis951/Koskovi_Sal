@@ -146,4 +146,8 @@ struct PublicScheduleResponse: Decodable {
     let published: Bool
     let publishedAt: String?
     let title: String
+    // For a signed-in dancer: their lessons ("date|start", partner's too) and,
+    // until they answer, a row found by their name to confirm.
+    var mine: [String]? = nil
+    var linkSuggestion: String? = nil
 }

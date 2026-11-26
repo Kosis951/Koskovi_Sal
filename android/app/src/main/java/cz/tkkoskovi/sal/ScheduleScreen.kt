@@ -3,6 +3,7 @@ package cz.tkkoskovi.sal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +41,9 @@ class ScheduleModel {
 
     val isPublished get() = schedule?.published == true
 
+    // The server's list of the dancer's lessons (null: an older web).
+    val mineKeys: Set<String>? get() = schedule?.mine?.toSet()
+
     // Requests to cancel or move a lesson are accepted a day from publishing.
     val requestsUntil: Instant?
         get() = schedule?.publishedAt?.let { Dates.instant(it) }?.plus(1, ChronoUnit.DAYS)
@@ -69,7 +73,11 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
     val now = Dates.minutes(Dates.nowTime())
     val name = session.scheduleName
 
-    fun isMine(row: ScheduleRow) = row.kind == RowKind.Lesson && name != null && ScheduleParser.belongsTo(row.text, name)
+    fun isMine(day: ScheduleDay, row: ScheduleRow): Boolean {
+        if (row.kind != RowKind.Lesson) return false
+        model.mineKeys?.let { return "${day.dateKey}|${row.start}" in it }
+        return name != null && ScheduleParser.belongsTo(row.text, name)
+    }
 
     fun isPast(day: ScheduleDay, row: ScheduleRow): Boolean {
         val key = day.dateKey ?: return false
@@ -84,6 +92,34 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
         model.error?.let { item { ErrorBanner(it) } }
         notice?.let { item { NoticeBanner(it) } }
 
+        // "Is this you?" – lessons found by the account's surname.
+        model.schedule?.linkSuggestion?.takeIf { session.isSignedIn }?.let { suggestion ->
+            item {
+                Card {
+                    SectionTitle("Tohle jsi ty?")
+                    Text(suggestion, color = P.accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Muted("V rozpisu jsme našli tvoje příjmení. Když potvrdíš, budeš tu mít své lekce (i partnerovy) a připomínky k nim.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(true to "Ano, to jsem já", false to "Nejsem").forEach { (confirm, label) ->
+                            val action = {
+                                scope.launch {
+                                    runCatching {
+                                        Api.send<MessageResponse>("POST", "/api/account/schedule-link", mapOf("confirm" to confirm))
+                                    }
+                                        .onSuccess { notice = it.message }
+                                        .onFailure { model.error = it.message }
+                                    model.load()
+                                }
+                                Unit
+                            }
+                            if (confirm) PrimaryButton(label, Modifier.weight(1f), onClick = action)
+                            else SecondaryButton(label, Modifier.weight(1f), onClick = action)
+                        }
+                    }
+                }
+            }
+        }
+
         // The dancer's own lessons, found by their name in the schedule.
         item {
             Card {
@@ -91,13 +127,13 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
                 if (!session.isSignedIn) {
                     Muted("Přihlas se a propoj účet se svým jménem v rozpisu – tvoje lekce se tu ukážou samy.")
                     SecondaryButton("Přihlásit se", onClick = onSignIn)
-                } else if (name == null) {
-                    Muted("Propoj se s rozpisem: napiš, jak tě trenér v rozpisu píše, a tvoje lekce se zvýrazní.")
-                    PrimaryButton("Propojit s rozpisem") { naming = true }
+                } else if (name == null && model.days.none { day -> day.rows.any { isMine(day, it) } }) {
+                    Muted("Najdeme tě podle příjmení z profilu, nebo napiš, jak tě trenér v rozpisu píše.")
+                    SecondaryButton("Napsat jméno z rozpisu") { naming = true }
                 } else {
-                    val mine = model.days.flatMap { day -> day.rows.filter { isMine(it) }.map { RowRef(day, it) } }
+                    val mine = model.days.flatMap { day -> day.rows.filter { isMine(day, it) }.map { RowRef(day, it) } }
                     if (mine.isEmpty()) {
-                        Muted("V rozpisu teď nejsi (hledáme „$name“).")
+                        Muted("V rozpisu teď nejsi (hledáme „${name.orEmpty()}“).")
                     }
                     mine.forEach { ref ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -111,7 +147,7 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
                         }
                     }
                     Text(
-                        "Jméno v rozpisu: $name · změnit",
+                        if (name != null) "Jméno v rozpisu: $name · změnit" else "Zadat jméno z rozpisu ručně",
                         color = P.accent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -150,7 +186,7 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
                         val current = day.dateKey == today && row.start != null && row.end != null &&
                             Dates.minutes(row.start) <= now && now < Dates.minutes(row.end)
                         val canRequest = model.canRequest && row.kind == RowKind.Lesson && !past
-                        ScheduleRowView(row, past, current, isMine(row)) {
+                        ScheduleRowView(row, past, current, isMine(day, row)) {
                             if (canRequest) requesting = RowRef(day, row)
                         }
                     }

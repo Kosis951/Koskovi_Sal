@@ -20,6 +20,7 @@ struct AccountScreen: View {
 
                     if session.isSignedIn {
                         profileCard
+                        PartnerCard()
                     } else {
                         SignInPrompt(
                             icon: "person.crop.circle",
@@ -86,7 +87,7 @@ struct AccountScreen: View {
             }
 
             VStack(spacing: 0) {
-                AccountRow(icon: "person.text.rectangle", title: "Můj profil", detail: "Jméno, e-mail, partner/ka, telefon") {
+                AccountRow(icon: "person.text.rectangle", title: "Můj profil", detail: "Jméno, příjmení, e-mail, telefon") {
                     isEditingProfile = true
                 }
                 Divider().padding(.leading, 44)
@@ -223,6 +224,8 @@ struct LinkRow: View {
 private struct ProfileResponse: Decodable {
     struct Profile: Decodable {
         let displayName: String?
+        let firstName: String?
+        let lastName: String?
         let email: String?
         let partnerName: String?
         let phone: String?
@@ -235,7 +238,8 @@ private struct ProfileResponse: Decodable {
 struct ProfileView: View {
     let onSaved: (String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var displayName = ""
+    @State private var firstName = ""
+    @State private var lastName = ""
     @State private var email = ""
     @State private var partnerName = ""
     @State private var phone = ""
@@ -257,19 +261,25 @@ struct ProfileView: View {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
             } else {
                 VStack(spacing: 14) {
-                    FieldBox(label: "Jméno a příjmení") {
-                        TextField("Jana Nováková", text: $displayName)
-                            .textContentType(.name)
+                    HStack(spacing: 12) {
+                        FieldBox(label: "Jméno") {
+                            TextField("Jana", text: $firstName)
+                                .textContentType(.givenName)
+                        }
+                        FieldBox(label: "Příjmení") {
+                            TextField("Nováková", text: $lastName)
+                                .textContentType(.familyName)
+                        }
                     }
-                    FieldBox(label: "Stálý partner/ka") {
+                    FieldNote(text: "Podle příjmení najdeme tvoje lekce v rozpisu externího trenéra.")
+                    FieldBox(label: "Partner/ka bez vlastního účtu") {
                         TextField("jméno", text: $partnerName)
                     }
-                    FieldNote(text: "Partnera předvyplníme při objednávání lekce.")
-                    FieldBox(label: "Jméno v rozpisu externího trenéra") {
+                    FieldNote(text: "Když tančí s tebou na jeden účet. Partner/ka s vlastním účtem se propojí v Účtu → Partner/ka.")
+                    FieldBox(label: "Jméno v rozpisu (jen když tě trenér píše jinak)") {
                         TextField("např. Novák", text: $scheduleName)
                             .autocorrectionDisabled()
                     }
-                    FieldNote(text: "Jak tě trenér v rozpisu píše; v Rozpisu pak uvidíš své lekce.")
                 }
                 .card()
 
@@ -287,7 +297,7 @@ struct ProfileView: View {
                             .keyboardType(.phonePad)
                             .textContentType(.telephoneNumber)
                     }
-                    FieldNote(text: "Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.")
+                    FieldNote(text: "Nepovinné. Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.")
                 }
                 .card()
             }
@@ -302,7 +312,14 @@ struct ProfileView: View {
     private func load() async {
         do {
             let response = try await API.get("/api/account/profile", as: ProfileResponse.self)
-            displayName = response.profile.displayName ?? ""
+            firstName = response.profile.firstName ?? ""
+            lastName = response.profile.lastName ?? ""
+            // Older accounts: split the shown name once.
+            if firstName.isEmpty && lastName.isEmpty, let name = response.profile.displayName {
+                let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
+                firstName = parts.first ?? ""
+                lastName = parts.count > 1 ? parts[1] : ""
+            }
             email = response.profile.email ?? ""
             partnerName = response.profile.partnerName ?? ""
             phone = response.profile.phone ?? ""
@@ -323,8 +340,13 @@ struct ProfileView: View {
                 "PUT",
                 "/api/account/profile",
                 body: [
-                    "displayName": displayName.trimmingCharacters(in: .whitespaces),
+                    "displayName": [firstName, lastName]
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: " "),
                     "email": email.trimmingCharacters(in: .whitespaces),
+                    "firstName": firstName.trimmingCharacters(in: .whitespaces),
+                    "lastName": lastName.trimmingCharacters(in: .whitespaces),
                     "partnerName": partnerName.trimmingCharacters(in: .whitespaces),
                     "phone": phone.trimmingCharacters(in: .whitespaces),
                     "scheduleName": wantedScheduleName,

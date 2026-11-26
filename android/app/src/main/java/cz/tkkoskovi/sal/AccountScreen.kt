@@ -102,6 +102,8 @@ fun AccountScreen(session: SessionModel) {
             }
         }
 
+        item { PartnerCard() }
+
         item { NotificationsCard(session) }
 
         item {
@@ -277,9 +279,9 @@ private fun LoginScreen(session: SessionModel) {
 @Composable
 private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var displayName by remember { mutableStateOf("") }
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var scheduleName by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordAgain by remember { mutableStateOf("") }
@@ -291,7 +293,7 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
         subtitle = "Účet je hned aktivní",
         onDismiss = onDismiss,
         primaryTitle = "Vytvořit účet",
-        primaryEnabled = displayName.isNotBlank() && email.isNotBlank() && username.isNotBlank() && password.isNotEmpty(),
+        primaryEnabled = firstName.isNotBlank() && lastName.isNotBlank() && email.isNotBlank() && username.isNotBlank() && password.isNotEmpty(),
         working = working,
         onPrimary = {
             if (password != passwordAgain) {
@@ -304,10 +306,10 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
                             "POST",
                             "/api/auth/register",
                             mapOf(
-                                "displayName" to displayName.trim(),
                                 "email" to email.trim(),
+                                "firstName" to firstName.trim(),
+                                "lastName" to lastName.trim(),
                                 "password" to password,
-                                "scheduleName" to scheduleName.trim(),
                                 "username" to username.trim(),
                             ),
                         )
@@ -321,10 +323,10 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
         },
     ) {
         Card {
-            Field("Jméno a příjmení", displayName, { displayName = it })
+            Field("Jméno", firstName, { firstName = it })
+            Field("Příjmení", lastName, { lastName = it })
+            FieldNote("Podle příjmení najdeme tvoje lekce v rozpisu externího trenéra.")
             Field("E-mail", email, { email = it }, keyboard = KeyboardType.Email)
-            Field("Jméno v rozpisu", scheduleName, { scheduleName = it }, placeholder = "nepovinné, např. Novák")
-            FieldNote("Podle něj ti v rozpisu externího trenéra ukážeme tvoje lekce.")
         }
         Card {
             Field("Uživatelské jméno", username, { username = it })
@@ -339,7 +341,8 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
 @Composable
 private fun ProfileSheet(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
     val scope = rememberCoroutineScope()
-    var displayName by remember { mutableStateOf("") }
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var partnerName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -351,7 +354,14 @@ private fun ProfileSheet(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
     LaunchedEffect(Unit) {
         runCatching { Api.get<ProfileResponse>("/api/account/profile").profile }
             .onSuccess {
-                displayName = it.displayName.orEmpty()
+                firstName = it.firstName.orEmpty()
+                lastName = it.lastName.orEmpty()
+                // Older accounts: split the shown name once.
+                if (firstName.isEmpty() && lastName.isEmpty()) {
+                    val parts = it.displayName.orEmpty().trim().split(" ", limit = 2)
+                    firstName = parts.getOrElse(0) { "" }
+                    lastName = parts.getOrElse(1) { "" }
+                }
                 email = it.email.orEmpty()
                 partnerName = it.partnerName.orEmpty()
                 phone = it.phone.orEmpty()
@@ -376,8 +386,10 @@ private fun ProfileSheet(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
                         "PUT",
                         "/api/account/profile",
                         mapOf(
-                            "displayName" to displayName.trim(),
+                            "displayName" to listOf(firstName.trim(), lastName.trim()).filter { it.isNotEmpty() }.joinToString(" "),
                             "email" to email.trim(),
+                            "firstName" to firstName.trim(),
+                            "lastName" to lastName.trim(),
                             "partnerName" to partnerName.trim(),
                             "phone" to phone.trim(),
                             "scheduleName" to scheduleName.trim(),
@@ -391,14 +403,17 @@ private fun ProfileSheet(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
         },
     ) {
         Card {
-            Field("Jméno a příjmení", displayName, { displayName = it })
+            Field("Jméno", firstName, { firstName = it })
+            Field("Příjmení", lastName, { lastName = it })
+            FieldNote("Podle příjmení najdeme tvoje lekce v rozpisu externího trenéra.")
             Field("E-mail", email, { email = it }, keyboard = KeyboardType.Email)
-            Field("Telefon", phone, { phone = it }, keyboard = KeyboardType.Phone)
+            Field("Telefon", phone, { phone = it }, keyboard = KeyboardType.Phone, placeholder = "nepovinné")
+            FieldNote("Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.")
         }
         Card {
-            Field("Partner/ka", partnerName, { partnerName = it }, placeholder = "nepovinné")
-            Field("Jméno v rozpisu", scheduleName, { scheduleName = it }, placeholder = "např. Novák")
-            FieldNote("Podle jména v rozpisu ti ukážeme tvoje lekce u externího trenéra.")
+            Field("Partner/ka bez vlastního účtu", partnerName, { partnerName = it }, placeholder = "nepovinné")
+            FieldNote("Když tančí s tebou na jeden účet. Partner/ka s vlastním účtem se propojí v Účtu → Partner/ka.")
+            Field("Jméno v rozpisu (jen když tě trenér píše jinak)", scheduleName, { scheduleName = it }, placeholder = "např. Novák")
         }
         error?.let { ErrorBanner(it) }
     }

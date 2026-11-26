@@ -5,9 +5,9 @@ struct RegisterView: View {
     @Environment(SessionModel.self) private var session
     @Environment(\.dismiss) private var dismiss
     let onRegistered: () -> Void
-    @State private var displayName = ""
+    @State private var firstName = ""
+    @State private var lastName = ""
     @State private var email = ""
-    @State private var scheduleName = ""
     @State private var username = ""
     @State private var password = ""
     @State private var passwordAgain = ""
@@ -15,7 +15,8 @@ struct RegisterView: View {
     @State private var error: String?
 
     private var isComplete: Bool {
-        !displayName.trimmingCharacters(in: .whitespaces).isEmpty
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+            && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
             && email.contains("@")
             && username.trimmingCharacters(in: .whitespaces).count >= 3
             && password.count >= 8
@@ -31,10 +32,17 @@ struct RegisterView: View {
             onPrimary: { Task { await register() } }
         ) {
             VStack(spacing: 14) {
-                FieldBox(label: "Jméno a příjmení") {
-                    TextField("Jana Nováková", text: $displayName)
-                        .textContentType(.name)
+                HStack(spacing: 12) {
+                    FieldBox(label: "Jméno") {
+                        TextField("Jana", text: $firstName)
+                            .textContentType(.givenName)
+                    }
+                    FieldBox(label: "Příjmení") {
+                        TextField("Nováková", text: $lastName)
+                            .textContentType(.familyName)
+                    }
                 }
+                FieldNote(text: "Podle příjmení najdeme tvoje lekce v rozpisu externího trenéra.")
                 FieldBox(label: "E-mail") {
                     TextField("jana@seznam.cz", text: $email)
                         .textContentType(.emailAddress)
@@ -42,11 +50,6 @@ struct RegisterView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
-                FieldBox(label: "Jméno v rozpisu externího trenéra (nepovinné)") {
-                    TextField("např. Nováková", text: $scheduleName)
-                        .autocorrectionDisabled()
-                }
-                FieldNote(text: "Jak tě trenér v rozpisu píše; v Rozpisu pak uvidíš své lekce.")
             }
             .card()
 
@@ -96,10 +99,10 @@ struct RegisterView: View {
                 "POST",
                 "/api/auth/register",
                 body: [
-                    "displayName": displayName.trimmingCharacters(in: .whitespaces),
                     "email": email.trimmingCharacters(in: .whitespaces),
+                    "firstName": firstName.trimmingCharacters(in: .whitespaces),
+                    "lastName": lastName.trimmingCharacters(in: .whitespaces),
                     "password": password,
-                    "scheduleName": scheduleName.trimmingCharacters(in: .whitespaces),
                     "username": username.trimmingCharacters(in: .whitespaces),
                 ],
                 as: Empty.self

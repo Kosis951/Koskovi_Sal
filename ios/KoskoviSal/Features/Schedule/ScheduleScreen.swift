@@ -10,6 +10,8 @@ final class ScheduleModel {
     var error: String?
 
     var isPublished: Bool { schedule?.published == true }
+    // The server's list of the dancer's lessons (nil: an older web).
+    var mineKeys: Set<String>? { schedule?.mine.map(Set.init) }
 
     // Requests to cancel or move a lesson are accepted a day from publishing.
     var requestsUntil: Date? {
@@ -46,6 +48,7 @@ struct ScheduleScreen: View {
     @State private var requestRow: RequestTarget?
     @State private var notice: String?
     @State private var isLinking = false
+    @State private var isAnswering = false
 
     struct RequestTarget: Identifiable {
         let id = UUID()
@@ -101,7 +104,7 @@ struct ScheduleScreen: View {
                                 let past = isPast(day: day.dateKey, row: row)
                                 let current = isNow(day: day.dateKey, row: row)
 
-                                let mine = isMine(row)
+                                let mine = isMine(day.dateKey, row)
 
                                 if canAsk(day: day.dateKey, row: row), let date = day.dateKey {
                                     Button {
@@ -140,20 +143,64 @@ struct ScheduleScreen: View {
         }
     }
 
-    private func isMine(_ row: ScheduleRow) -> Bool {
-        guard row.kind == .lesson, let name = session.scheduleName else { return false }
+    private func isMine(_ date: String?, _ row: ScheduleRow) -> Bool {
+        guard row.kind == .lesson else { return false }
+        if let keys = model.mineKeys {
+            return keys.contains("\(date ?? "")|\(row.start ?? "")")
+        }
+        guard let name = session.scheduleName else { return false }
         return ScheduleParser.row(row.text, belongsTo: name)
+    }
+
+    // "Is this you?" – the answer links (or not) the lessons found by name.
+    private func answer(_ confirm: Bool) async {
+        isAnswering = true
+        defer { isAnswering = false }
+
+        do {
+            let response = try await API.send("POST", "/api/account/schedule-link", body: ["confirm": confirm], as: MessageResponse.self)
+            notice = response.message
+            await model.load()
+        } catch {
+            model.error = error.localizedDescription
+        }
+    }
+
+    private var suggestionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Tohle jsi ty?", systemImage: "person.crop.circle.badge.questionmark")
+                .font(.headline)
+                .foregroundStyle(Theme.ink)
+            Text(model.schedule?.linkSuggestion ?? "")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+            Text("V rozpisu jsme našli tvoje příjmení. Když potvrdíš, budeš tu mít své lekce (i partnerovy) a připomínky k nim.")
+                .font(.footnote)
+                .foregroundStyle(Theme.inkMuted)
+            HStack(spacing: 10) {
+                Button("Ano, to jsem já") { Task { await answer(true) } }
+                    .buttonStyle(PrimaryButtonStyle())
+                Button("Nejsem") { Task { await answer(false) } }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            .disabled(isAnswering)
+        }
+        .card()
     }
 
     // The dancer's own lessons from the schedule, or an offer to link the
     // account with their name in it.
     @ViewBuilder
     private var myLessonsCard: some View {
+        if session.isSignedIn, model.schedule?.linkSuggestion != nil {
+            suggestionCard
+        }
         if session.isSignedIn {
-            if let name = session.scheduleName {
-                let mine = model.days.flatMap { day in
-                    day.rows.filter { isMine($0) }.map { (date: day.dateKey, row: $0) }
-                }
+            let mine = model.days.flatMap { day in
+                day.rows.filter { isMine(day.dateKey, $0) }.map { (date: day.dateKey, row: $0) }
+            }
+            if !mine.isEmpty || session.scheduleName != nil {
+                let name = session.scheduleName ?? ""
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -184,7 +231,7 @@ struct ScheduleScreen: View {
                     }
                 }
                 .card()
-            } else {
+            } else if model.schedule?.linkSuggestion == nil {
                 Button {
                     isLinking = true
                 } label: {
@@ -192,7 +239,7 @@ struct ScheduleScreen: View {
                         Image(systemName: "link.circle.fill").font(.title2).foregroundStyle(Theme.accent)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Propoj se s rozpisem").font(.subheadline.weight(.bold)).foregroundStyle(Theme.ink)
-                            Text("Napiš, jak tě trenér v rozpisu píše, a uvidíš tu své lekce.")
+                            Text("Najdeme tě podle příjmení z profilu, nebo napiš, jak tě trenér v rozpisu píše.")
                                 .font(.caption)
                                 .foregroundStyle(Theme.inkMuted)
                         }

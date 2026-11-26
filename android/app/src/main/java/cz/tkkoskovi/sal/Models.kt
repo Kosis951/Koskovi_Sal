@@ -144,6 +144,10 @@ data class PublicScheduleResponse(
     val published: Boolean = false,
     val publishedAt: String? = null,
     val title: String = "",
+    // For a signed-in dancer: their lessons ("date|start", partner's too) and,
+    // until they answer, a row found by their name to confirm.
+    val mine: List<String>? = null,
+    val linkSuggestion: String? = null,
 )
 
 // --- Account ---
@@ -151,6 +155,8 @@ data class PublicScheduleResponse(
 @Serializable
 data class Profile(
     val displayName: String? = null,
+    val firstName: String? = null,
+    val lastName: String? = null,
     val email: String? = null,
     val partnerName: String? = null,
     val phone: String? = null,
