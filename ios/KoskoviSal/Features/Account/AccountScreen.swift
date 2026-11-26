@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountScreen: View {
     @Environment(SessionModel.self) private var session
     @Environment(PushModel.self) private var push
+    @Environment(\.refreshApp) private var refreshApp
     @State private var isSigningIn = false
     @State private var isEditingProfile = false
     @State private var isChangingPassword = false
@@ -43,6 +44,7 @@ struct AccountScreen: View {
                 BrandHeader(title: "Účet", subtitle: session.isSignedIn ? session.displayName : "Nepřihlášen/a")
             }
             .toolbar(.hidden, for: .navigationBar)
+            .refreshable { await refreshApp() }
             .fullScreenCover(isPresented: $isSigningIn) {
                 LoginView()
             }
@@ -55,7 +57,8 @@ struct AccountScreen: View {
             .sheet(isPresented: $isChangingPassword) {
                 PasswordView { message in notice = message }
             }
-            .confirmationDialog("Odhlásit se?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
+            .alert("Odhlásit se?", isPresented: $isConfirmingSignOut) {
+                Button("Zpět", role: .cancel) {}
                 Button("Odhlásit se", role: .destructive) {
                     Task { await session.signOut() }
                 }

@@ -80,11 +80,11 @@ struct BookingDetailView: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .confirmationDialog(
+        .alert(
             booking.isTraining ? "Zrušit trénink \(booking.title)?" : "Smazat \(booking.title)?",
-            isPresented: $isConfirmingDelete,
-            titleVisibility: .visible
+            isPresented: $isConfirmingDelete
         ) {
+            Button("Zpět", role: .cancel) {}
             Button(booking.isTraining ? "Zrušit trénink" : "Smazat", role: .destructive) {
                 Task { await delete() }
             }

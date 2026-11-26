@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LessonsScreen: View {
     @Environment(SessionModel.self) private var session
+    @Environment(\.refreshApp) private var refreshApp
     @State private var trainers: [TrainerInfo] = []
     @State private var selected: String?
     @State private var calendar: TrainerCalendar?
@@ -56,7 +57,11 @@ struct LessonsScreen: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .task(id: session.isSignedIn) { await loadTrainers() }
-            .refreshable { await loadCalendar() }
+            .refreshable {
+                async let lessons: Void = loadCalendar()
+                async let app: Void = refreshApp()
+                _ = await (lessons, app)
+            }
             .sheet(item: $requestSlot) { slot in
                 LessonRequestView(slot: slot, calendar: calendar, partner: calendar?.viewerPartner ?? "") { message in
                     notice = message
@@ -177,19 +182,8 @@ struct LessonsScreen: View {
             }
         }
 
+        // Dancers make their own account in the app, no invite needed.
         VStack(alignment: .leading, spacing: 10) {
-            Label("Pozvánka pro tanečníky", systemImage: "link")
-                .font(.headline)
-                .foregroundStyle(Theme.ink)
-            let link = AppConfig.webURL("/pozvanka/\(API.segment(calendar.trainer.lowercased()))")
-            Text(link.absoluteString)
-                .font(.footnote.monospaced())
-                .foregroundStyle(Theme.inkMuted)
-                .textSelection(.enabled)
-            ShareLink(item: link) {
-                Label("Poslat pozvánku", systemImage: "square.and.arrow.up")
-            }
-            .buttonStyle(SecondaryButtonStyle())
             Link(destination: AppConfig.webURL("/lekce/\(API.segment(calendar.trainer))")) {
                 Label("Časy výuky upravíš na webu", systemImage: "safari")
                     .font(.footnote.weight(.semibold))
@@ -288,7 +282,7 @@ struct SignInPrompt: View {
             Button("Přihlásit se", action: onSignIn)
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top, 4)
-            Text("Účet dostaneš přes pozvánku od svého trenéra.")
+            Text("Nemáš účet? Založíš si ho v přihlášení.")
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -385,7 +379,8 @@ struct LessonCard: View {
             }
         }
         .card()
-        .confirmationDialog("Zrušit lekci \(Dates.dayTitle(lesson.date)) \(lesson.start)?", isPresented: $isConfirming, titleVisibility: .visible) {
+        .alert("Zrušit lekci \(Dates.dayTitle(lesson.date)) \(lesson.start)?", isPresented: $isConfirming) {
+            Button("Zpět", role: .cancel) {}
             Button("Zrušit lekci", role: .destructive, action: onCancel)
         }
     }

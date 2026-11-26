@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     body: "Upozornění fungují. Takhle vám dáme vědět, když bude sál obsazený.",
     tag: "test",
     title: "Koškovi sál",
-    url: "/aplikace",
+    url: "/",
   });
 
   return delivered > 0

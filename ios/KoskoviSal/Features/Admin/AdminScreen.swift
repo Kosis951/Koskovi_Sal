@@ -4,6 +4,7 @@ import SwiftUI
 // managers; users only for the main administrator.
 struct AdminScreen: View {
     @Environment(SessionModel.self) private var session
+    @Environment(\.refreshApp) private var refreshApp
 
     var body: some View {
         NavigationStack {
@@ -45,6 +46,7 @@ struct AdminScreen: View {
                 BrandHeader(title: "Správa", subtitle: session.role?.label)
             }
             .toolbar(.hidden, for: .navigationBar)
+            .refreshable { await refreshApp() }
         }
     }
 }

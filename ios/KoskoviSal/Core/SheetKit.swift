@@ -55,7 +55,10 @@ struct BrandSheet<Content: View>: View {
         .background(Theme.page.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let primaryTitle, let onPrimary {
-                Button(action: onPrimary) {
+                Button {
+                    Keyboard.hide()
+                    onPrimary()
+                } label: {
                     if isWorking {
                         ProgressView().tint(.white)
                     } else {
@@ -72,6 +75,7 @@ struct BrandSheet<Content: View>: View {
         }
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(26)
+        .onDisappear { Keyboard.hide() }
     }
 }
 

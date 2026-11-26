@@ -54,11 +54,27 @@ struct RootView: View {
                 .tag(AppTab.account)
         }
         .task { await schedule.load() }
+        // Pulling any screen down also checks the account and whether the
+        // visiting trainer's schedule was published (its tab shows up then).
+        .environment(\.refreshApp, refreshApp)
+        .onAppear(perform: Keyboard.installTapToHide)
+        .onChange(of: tab) { Keyboard.hide() }
         // A schedule published while the app was away shows its tab without a restart.
         .onChange(of: scenePhase) {
             if scenePhase == .active {
+                Keyboard.installTapToHide()
                 Task { await schedule.load() }
             }
         }
     }
+
+    private func refreshApp() async {
+        async let account: Void = session.refresh()
+        async let published: Void = schedule.load()
+        _ = await (account, published)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var refreshApp: @MainActor () async -> Void = {}
 }

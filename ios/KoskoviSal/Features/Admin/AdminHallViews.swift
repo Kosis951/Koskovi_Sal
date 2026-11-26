@@ -203,7 +203,8 @@ struct TrainingEditView: View {
                 DangerButton(title: "Smazat trénink") { isConfirmingDelete = true }
             }
         }
-        .confirmationDialog("Smazat trénink \(training?.title ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+        .alert("Smazat trénink \(training?.title ?? "")?", isPresented: $isConfirmingDelete) {
+            Button("Zpět", role: .cancel) {}
             Button("Smazat", role: .destructive) { Task { await delete() } }
         } message: {
             Text("Trénink zmizí z kalendáře ve všech týdnech.")
@@ -331,7 +332,8 @@ struct AdminHolidaysView: View {
         .sheet(isPresented: $isAdding) {
             HolidayAddView { Task { await load() } }
         }
-        .confirmationDialog("Smazat \(deleting?.label ?? "")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+        .alert("Smazat \(deleting?.label ?? "")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Zpět", role: .cancel) {}
             Button("Smazat", role: .destructive) {
                 if let holiday = deleting { Task { await delete(holiday) } }
             }
@@ -519,7 +521,8 @@ struct AdminHistoryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task { await load() }
-        .confirmationDialog("Vrátit tuhle změnu?", isPresented: Binding(get: { undoing != nil }, set: { if !$0 { undoing = nil } }), titleVisibility: .visible) {
+        .alert("Vrátit tuhle změnu?", isPresented: Binding(get: { undoing != nil }, set: { if !$0 { undoing = nil } })) {
+            Button("Zpět", role: .cancel) {}
             Button("Vrátit změnu") {
                 if let entry = undoing { Task { await undo(entry) } }
             }

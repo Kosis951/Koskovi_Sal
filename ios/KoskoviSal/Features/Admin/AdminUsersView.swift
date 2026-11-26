@@ -173,7 +173,8 @@ struct AdminUserEditView: View {
                 DangerButton(title: "Smazat účet") { isConfirmingDelete = true }
             }
         }
-        .confirmationDialog("Smazat účet \(user?.username ?? "")?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+        .alert("Smazat účet \(user?.username ?? "")?", isPresented: $isConfirmingDelete) {
+            Button("Zpět", role: .cancel) {}
             Button("Smazat", role: .destructive) { Task { await delete() } }
         } message: {
             Text("Účet se už nepřihlásí. Jeho lekce a akce zůstanou.")

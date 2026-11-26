@@ -71,6 +71,7 @@ h3 { margin: 18px 0 6px; font-size: 1.02rem; }
   text-decoration: none;
 }
 .btn:hover, .btn:focus-visible { background: var(--brand-2); }
+.btn.soon { background: transparent; color: var(--muted); border: 2px dashed var(--muted); cursor: default; }
 .btn.secondary { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
 .muted { color: var(--muted); font-size: .92rem; }
 ul { padding-left: 1.2rem; }

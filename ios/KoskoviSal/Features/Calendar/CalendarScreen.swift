@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CalendarScreen: View {
     @Environment(SessionModel.self) private var session
+    @Environment(\.refreshApp) private var refreshApp
     @State private var model = HallModel()
     // In the screenshot demo: Wednesday of this week, the day with the most going on.
     @State private var selectedDay = Demo.isOn ? Dates.addDays(2, to: Dates.weekStart(Dates.todayKey())) : Dates.todayKey()
@@ -49,7 +50,11 @@ struct CalendarScreen: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await model.load() }
+            .refreshable {
+                async let hall: Void = model.load()
+                async let app: Void = refreshApp()
+                _ = await (hall, app)
+            }
             .task { await model.load() }
             .onChange(of: session.isSignedIn) {
                 Task { await model.load() }
