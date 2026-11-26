@@ -108,21 +108,37 @@ async function sendApns(tokens, payload, results) {
     },
     url: payload.url,
   });
-  const session = http2.connect(`https://${apns.host}`);
+  // An app installed from Xcode has a token of Apple's test servers (sandbox),
+  // one from TestFlight or the App Store of the real ones. Each server calls
+  // the other's tokens "BadDeviceToken", so those are tried on the other one.
+  const otherHost = apns.host === "api.push.apple.com" ? "api.sandbox.push.apple.com" : "api.push.apple.com";
+  const retry = [];
 
-  session.on("error", (error) => console.error("[relay] spojení s APNs selhalo:", error.message));
+  await sendApnsVia(apns.host, tokens, body, payload, results, retry);
+
+  if (retry.length > 0) {
+    await sendApnsVia(otherHost, retry, body, payload, results, null);
+  }
+}
+
+async function sendApnsVia(host, tokens, body, payload, results, retry) {
+  const session = http2.connect(`https://${host}`);
+
+  session.on("error", (error) => console.error(`[relay] spojení s APNs (${host}) selhalo:`, error.message));
 
   try {
     // A few at a time, so a long list does not open hundreds of streams.
     for (let index = 0; index < tokens.length; index += 50) {
-      await Promise.all(tokens.slice(index, index + 50).map((token) => sendOneApns(session, token, body, payload, results)));
+      await Promise.all(
+        tokens.slice(index, index + 50).map((token) => sendOneApns(session, host, token, body, payload, results, retry)),
+      );
     }
   } finally {
     session.close();
   }
 }
 
-function sendOneApns(session, token, body, payload, results) {
+function sendOneApns(session, host, token, body, payload, results, retry) {
   return new Promise((resolve) => {
     let status = 0;
     let response = "";
@@ -164,13 +180,18 @@ function sendOneApns(session, token, body, payload, results) {
         // Not JSON: keep the status only.
       }
 
+      const device = `…${token.slice(-6)} (${host})`;
+
       if (status === 200) {
         results.set(token, "delivered");
+      } else if (reason === "BadDeviceToken" && retry) {
+        retry.push(token);
       } else if (status === 410 || reason === "BadDeviceToken" || reason === "Unregistered") {
         results.set(token, "gone");
+        console.warn("[relay] APNs: zařízení neplatí:", device, status, reason);
       } else {
         results.set(token, "failed");
-        console.error("[relay] APNs odmítl:", status || "bez odpovědi", reason);
+        console.error("[relay] APNs odmítl:", device, status || "bez odpovědi", reason);
       }
 
       resolve();
