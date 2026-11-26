@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
   const topics = parseTopics(body?.topics);
 
   if (topics.length === 0) {
+    console.info(`[push] aplikace ${device.platform} …${device.token.slice(-6)}: odhlášeno`);
     deleteNativeDevice(device.token);
     return NextResponse.json({ subscribed: false, topics });
   }
@@ -59,12 +60,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Kapacita upozornění je plná." }, { status: 507 });
   }
 
+  // In `pm2 logs`: which phone (end of its token) subscribed to what.
+  console.info(`[push] aplikace ${device.platform} …${device.token.slice(-6)}: ${topics.join(", ")}`);
+
   if (body?.test === true) {
     const delivered = await sendToNativeDevice(device.token, {
       body: "Upozornění fungují. Takhle vám dáme vědět, když bude sál obsazený.",
       tag: "test",
       title: "Koškovi sál",
     });
+
+    console.info(`[push] aplikace ${device.platform} …${device.token.slice(-6)}: zkouška ${delivered ? "doručena" : "NEDORUČENA"}`);
 
     if (delivered === 0) {
       return NextResponse.json({ message: "Zkušební upozornění se nepodařilo doručit." }, { status: 502 });

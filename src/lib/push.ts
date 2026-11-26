@@ -172,14 +172,18 @@ export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
         row.topics.split(",").includes(topic),
       )
     : [];
-  const delivered = (await sendToRows(rows, payload)) + (await sendToNativeDevices(devices, payload));
+  const toBrowsers = await sendToRows(rows, payload);
+  const toApps = await sendToNativeDevices(devices, payload);
 
-  // Visible in `pm2 logs`, e.g. "[push] hall: Dnes je sál obsazený → 12/12".
+  // Visible in `pm2 logs`, e.g.
+  // "[push] hall: Dnes je sál obsazený → web 12/12, aplikace 3/3".
   if (rows.length + devices.length > 0) {
-    console.info(`[push] ${topic}: ${payload.title} → ${delivered}/${rows.length + devices.length}`);
+    console.info(
+      `[push] ${topic}: ${payload.title} → web ${toBrowsers}/${rows.length}, aplikace ${toApps}/${devices.length}`,
+    );
   }
 
-  return delivered;
+  return toBrowsers + toApps;
 }
 
 // --- Devices with the native app (iPhone: APNs token, Android: its
@@ -248,6 +252,9 @@ async function sendToNativeDevices(rows: NativeDeviceRow[], payload: PushPayload
     if (result === "delivered") {
       delivered += 1;
     } else if (result === "gone" || row.failures + 1 >= maxFailures) {
+      console.warn(
+        `[push] aplikace ${row.platform} …${row.token.slice(-6)}: ${result === "gone" ? "zařízení už neexistuje" : "opakovaně nedoručeno"}, odebráno`,
+      );
       deleteNativeDevice(row.token);
     } else {
       getDb()
