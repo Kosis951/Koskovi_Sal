@@ -40,9 +40,12 @@
 
     <h3>Účet (jen pokud ho máš)</h3>
     <ul>
-      <li>Přihlašovací jméno, zobrazované jméno, jméno stálého partnera nebo partnerky a role (tanečník, trenér, správa).</li>
+      <li>Přihlašovací jméno, jméno a příjmení, e-mail, jméno partnera nebo partnerky bez účtu a role (tanečník, trenér, správa).</li>
+      <li>Podle jména a příjmení aplikace najde tvoje lekce v rozpisu externího trenéra – až když potvrdíš, že jsi to ty.</li>
+      <li>Partnerství s jiným účtem: kdo koho požádal a jestli to přijal. Při hledání partnera se ukazuje jen jméno, nic dalšího.
+        Partneři pak vidí lekce toho druhého.</li>
       <li>Heslo jen jako bezpečný otisk (scrypt), nikdy samotné heslo.</li>
-      <li>Telefon, pokud ho sám vyplníš v profilu. Vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.</li>
+      <li>Telefon je nepovinný. Když ho vyplníš v profilu, vidí ho jen trenér, u kterého máš lekci, aby ti mohl napsat přes WhatsApp.</li>
       <li>Přihlášení drží soubor cookie s podepsanou relací (nezbytný pro fungování, žádné sledování).</li>
     </ul>
 
@@ -56,9 +59,10 @@
     <p>Zprávy přes WhatsApp aplikace jen připraví a otevře WhatsApp. Odeslání je na tobě, nic se neposílá ze serveru.</p>
 
     <h3>Upozornění</h3>
-    <p>Když zapneš upozornění, uloží se identifikátor zařízení pro doručení (na iPhonu token od Applu, na Androidu adresa
-      v aplikaci ntfy, v prohlížeči adresa push služby) a vybraná témata. Upozornění obsahují jen to, co je vidět ve veřejném
-      kalendáři. Na iPhony je doručuje Apple (Apple Push Notification service), na Androidy náš vlastní server ntfy.</p>
+    <p>Když zapneš upozornění, uloží se identifikátor zařízení pro doručení (na iPhonu token od Applu, na Androidu token od
+      Googlu, v prohlížeči adresa push služby), vybraná témata a u přihlášeného účtu, komu telefon patří (kvůli připomínkám
+      vlastních lekcí). Upozornění obsahují jen to, co je vidět ve veřejném kalendáři a rozpisu. Na iPhony je doručuje Apple
+      (Apple Push Notification service), na Androidy Google (Firebase Cloud Messaging).</p>
 
     <h3>Technické údaje</h3>
     <p>Kvůli ochraně proti zneužití se krátkodobě v paměti serveru drží IP adresa a počet pokusů (např. při přihlášení).
@@ -91,12 +95,15 @@
       analytics, no tracking, no selling of data.</p>
     <ul>
       <li>Without an account the app only reads the public calendar and schedule.</li>
-      <li>With an account we store your username, display name, partner's name, role, a scrypt hash of your password, and
-        optionally your phone number (visible only to your trainer). A signed session cookie keeps you signed in.</li>
+      <li>With an account we store your username, first name and surname, e-mail, partner's name, role, a scrypt hash of your
+        password, and optionally your phone number (visible only to your trainer). A signed session cookie keeps you signed in.</li>
       <li>Bookings, lessons and cancel/move requests contain names, times, notes and optionally phone numbers, used only to run
         the hall and lessons.</li>
-      <li>If you enable notifications we store the device's push identifier and chosen topics. iPhone notifications are
-        delivered by Apple Push Notification service, Android ones by our own ntfy server.</li>
+      <li>If you enable notifications we store the device's push identifier, chosen topics and, when signed in, which account
+        it belongs to (for reminders of your own lessons). iPhone notifications are delivered by Apple Push Notification
+        service, Android ones by Google (Firebase Cloud Messaging).</li>
+      <li>Your first name and surname are used to find your lessons in the visiting trainer's schedule, once you confirm it is
+        you. A partnership with another account lets both see each other's lessons; partner search shows names only.</li>
       <li>IP addresses are kept briefly in memory to prevent abuse, not stored.</li>
     </ul>
     <p>Data stays on the operator's servers and is kept while you use your account; past bookings are deleted automatically.

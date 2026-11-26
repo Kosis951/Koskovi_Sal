@@ -199,8 +199,8 @@ export async function sendToTopic(topic: PushTopic, payload: PushPayload) {
   return toBrowsers + toApps;
 }
 
-// --- Devices with the native app (iPhone: APNs token, Android: its
-// UnifiedPush address), sent through the relay on the NAS ---
+// --- Devices with the native app (iPhone: APNs token, Android: Firebase
+// token), sent through the relay on the NAS ---
 
 type NativeDeviceRow = {
   failures: number;

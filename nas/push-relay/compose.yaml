@@ -1,7 +1,8 @@
 # Push relay for the Koškovi sál apps on the Synology NAS (see README.md).
 # Container Manager → Project → Create → path /volume1/docker/koskovi-push.
-# Secrets live in ./secrets: AuthKey.p8 (Apple push key) and
-# relay-secret.txt (shared with the web as PUSH_RELAY_SECRET).
+# Secrets live in ./secrets: AuthKey.p8 (Apple push key), fcm.json (Firebase
+# service account for Android) and relay-secret.txt (shared with the web as
+# PUSH_RELAY_SECRET).
 services:
   relay:
     image: node:22-alpine
@@ -16,7 +17,6 @@ services:
       APNS_BUNDLE_ID: cz.tkkoskovi.sal
       APNS_KEY_PATH: /secrets/AuthKey.p8
       RELAY_SECRET_FILE: /secrets/relay-secret.txt
-      NTFY_INTERNAL_URL: http://ntfy:80
       DOWNLOADS_DIR: /downloads
       TZ: Europe/Prague
     volumes:
@@ -25,29 +25,11 @@ services:
     ports:
       # Only DSM's reverse proxy talks to it; HTTPS is done there.
       - "127.0.0.1:2587:8080"
-    depends_on:
-      - ntfy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/relay/health"]
       interval: 60s
       timeout: 10s
       retries: 3
-    restart: unless-stopped
-
-  ntfy:
-    image: binwiederhier/ntfy:v2.11.0
-    container_name: koskovi-ntfy
-    # The phones' "up…" topics are open to everyone (random per phone). The
-    # rule needs the user database the server creates, so it is set once the
-    # server runs (on every start; it changes nothing the next time).
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["ntfy serve & pid=$$!; trap 'kill $$pid' TERM INT; for i in $$(seq 1 30); do [ -f /var/lib/ntfy/user.db ] && break; sleep 1; done; ntfy access everyone 'up*' read-write; wait $$pid"]
-    environment:
-      TZ: Europe/Prague
-    volumes:
-      - ./ntfy/server.yml:/etc/ntfy/server.yml:ro
-      - ./ntfy-data:/var/lib/ntfy
-    # Not published: reachable only through the relay.
     restart: unless-stopped
 
 networks:

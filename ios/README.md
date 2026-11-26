@@ -39,7 +39,7 @@ Zbytek (sprava uzivatelu, pravidelne treninky, casy vyuky treneru, rozpis…) je
 
 ## Upozorneni
 
-Upozorneni chodi pres relay na NAS (`nas/push-relay`, adresa `push.tkkoskovi.cz`): tam je klic
+Upozorneni chodi pres relay na NAS (`nas/push-relay`, adresa `app.tkkoskovi.cz`): tam je klic
 od Applu, web na VPS posila zpravy jen relayi (`PUSH_RELAY_URL`, `PUSH_RELAY_SECRET` v
 `.env.local`). Navod je v `nas/push-relay/README.md`. V aplikaci pak Ucet → Upozorneni →
 zapnout → „Poslat zkusebni upozorneni“.

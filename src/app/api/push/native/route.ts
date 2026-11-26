@@ -9,7 +9,7 @@ import {
 } from "@/lib/push";
 import { cookies } from "next/headers";
 import { getAdminAccess } from "@/lib/auth";
-import { getRelayUrl, isApnsToken, isFcmToken, isLiveToken, isRelayEndpoint } from "@/lib/push-relay";
+import { getRelayUrl, isApnsToken, isFcmToken, isLiveToken } from "@/lib/push-relay";
 import { isRateLimited } from "@/lib/simple-rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +18,11 @@ export const dynamic = "force-dynamic";
 // Like web push, anyone may subscribe: the notifications only contain what
 // the public calendar shows.
 //   POST { platform: "ios", token, topics },
-//        { platform: "android", token, topics } (Firebase) or
-//        { platform: "android", endpoint, topics } (ntfy) – subscribe or change
+//        { platform: "android", token, topics } (Firebase) – subscribe or change
 //        topics (no topics = unsubscribe); `test: true` sends a test;
 //        `liveToken` (iPhone) starts the lesson countdown. The signed-in
 //        account is remembered for reminders of its own lessons.
-//   PUT { token } / { endpoint } – which topics this device receives.
+//   PUT { token } – which topics this device receives.
 
 function deviceKey(body: Record<string, unknown> | null) {
   if (body?.platform === "ios" && isApnsToken(body.token)) {
@@ -32,10 +31,6 @@ function deviceKey(body: Record<string, unknown> | null) {
 
   if (body?.platform === "android" && isFcmToken(body.token)) {
     return { platform: "android" as const, token: body.token };
-  }
-
-  if (body?.platform === "android" && isRelayEndpoint(body.endpoint)) {
-    return { platform: "android" as const, token: body.endpoint };
   }
 
   return null;
@@ -101,12 +96,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  const token =
-    isApnsToken(body?.token) || isFcmToken(body?.token)
-      ? body.token
-      : isRelayEndpoint(body?.endpoint)
-        ? body.endpoint
-        : null;
+  const token = isApnsToken(body?.token) || isFcmToken(body?.token) ? body.token : null;
 
   if (!token) {
     return NextResponse.json({ message: "Neplatné zařízení." }, { status: 400 });

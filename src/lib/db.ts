@@ -150,7 +150,7 @@ function migrate(db: Database) {
 }
 
 // Devices with the native app that receive notifications: iPhones by their
-// APNs token (platform "ios"), Android phones by their UnifiedPush address
+// APNs token (platform "ios"), Android phones by their Firebase token
 // ("android"); topics as in push_subscriptions.
 // First name and surname of the account (lessons in the visiting trainer's
 // schedule are linked by them), whether the dancer confirmed that link

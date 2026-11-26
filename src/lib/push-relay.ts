@@ -1,9 +1,9 @@
 import type { PushPayload } from "@/lib/push";
 
 // Notifications for the native apps go through the push relay on the NAS
-// (nas/push-relay): it holds the Apple key for iPhones and runs ntfy for
-// Android phones. In .env.local:
-//   PUSH_RELAY_URL=https://push.tkkoskovi.cz
+// (nas/push-relay): it holds the Apple key for iPhones and the Google
+// (Firebase) service account for Android phones. In .env.local:
+//   PUSH_RELAY_URL=https://app.tkkoskovi.cz
 //   PUSH_RELAY_SECRET=… (the relay's RELAY_SECRET)
 
 export type NativePlatform = "android" | "ios";
@@ -39,29 +39,6 @@ export function isLiveToken(value: unknown): value is string {
 
 export function isFcmToken(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_:-]{100,400}$/.test(value);
-}
-
-// An Android phone's UnifiedPush address: only on the relay's own ntfy, so
-// the server never sends to an address a phone made up.
-export function isRelayEndpoint(value: unknown): value is string {
-  const relay = getRelayUrl();
-
-  if (!relay || typeof value !== "string" || value.length > 300) {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-
-    return (
-      url.origin === relay.origin &&
-      /^\/up[A-Za-z0-9_-]{8,64}$/.test(url.pathname) &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
 }
 
 export async function sendThroughRelay(
