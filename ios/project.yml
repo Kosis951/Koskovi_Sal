@@ -19,6 +19,11 @@ targets:
     platform: iOS
     sources:
       - KoskoviSal
+      - Shared
+    dependencies:
+      # The lesson countdown on the lock screen and in the Dynamic Island.
+      - target: KoskoviWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cz.tkkoskovi.sal
@@ -42,6 +47,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         KoskoviHost: $(KOSKOVI_HOST)
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: LaunchBackground
@@ -49,3 +55,26 @@ targets:
           - UIInterfaceOrientationPortrait
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+  # Live Activity of the dancer's next lesson (started by the web through
+  # Apple an hour before it).
+  KoskoviWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - KoskoviWidgets
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cz.tkkoskovi.sal.widgets
+        PRODUCT_NAME: KoskoviWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: YES
+    info:
+      path: KoskoviWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: TK Koškovi
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension

@@ -7,21 +7,28 @@ private struct ScheduleDraft: Decodable {
     let cancelTrainings: Bool?
 }
 
-// The visiting trainer's schedule: plain text as the trainer sends it, with
-// a live preview; publishing puts it on the public page and into the hall
-// calendar.
+// The visiting trainer's schedule: plain text as the trainer sends it. The
+// text is edited in its own full-screen window, so the page never scrolls
+// inside the text; saving stays at the bottom of the screen.
 struct AdminScheduleView: View {
     @State private var title = ""
     @State private var text = ""
     @State private var published = false
     @State private var cancelTrainings = false
-    @State private var isLoaded = false
+    @State private var saved: ScheduleDraftState?
     @State private var isSaving = false
+    @State private var isEditingText = false
     @State private var showsPreview = false
     @State private var error: String?
     @State private var notice: String?
 
+    private var isLoaded: Bool { saved != nil }
+    private var current: ScheduleDraftState {
+        ScheduleDraftState(title: title, text: text, published: published, cancelTrainings: cancelTrainings)
+    }
+    private var hasChanges: Bool { saved != nil && saved != current }
     private var days: [ScheduleDay] { ScheduleParser.parse(text, todayKey: Dates.todayKey()) }
+    private var lessonCount: Int { days.reduce(0) { $0 + $1.rows.filter { $0.kind == .lesson }.count } }
 
     var body: some View {
         ScrollView {
@@ -32,21 +39,6 @@ struct AdminScheduleView: View {
                 VStack(spacing: 12) {
                     FieldBox(label: "Nadpis") {
                         TextField("Externí trenér", text: $title)
-                    }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Rozpis (jak ho trenér pošle)")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Theme.inkMuted)
-                        TextEditor(text: $text)
-                            .font(.callout.monospaced())
-                            .frame(minHeight: 260)
-                            .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.subtle))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.line, lineWidth: 1))
-                        Text("Řádek s datem (5.11.) začíná den, řádky „10:00–10:45 – Jméno“ jsou lekce. Oběd a pauza se poznají, GROUP je seminář.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkMuted)
                     }
                     Toggle(isOn: $published) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -66,42 +58,99 @@ struct AdminScheduleView: View {
                 .card()
                 .disabled(!isLoaded)
 
-                Button {
-                    Task { await save() }
-                } label: {
-                    if isSaving { ProgressView().tint(.white) } else { Text("Uložit") }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isSaving || !isLoaded)
+                Button { isEditingText = true } label: { textCard }
+                    .buttonStyle(.plain)
+                    .disabled(!isLoaded)
 
-                DisclosureGroup(isExpanded: $showsPreview) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(days) { day in
-                            if let date = day.dateKey {
-                                Text(Dates.dayTitle(date).capitalized(with: Dates.czech))
-                                    .font(.headline)
-                                    .foregroundStyle(Theme.ink)
-                                    .padding(.top, 6)
-                            }
-                            ForEach(day.rows) { row in
-                                ScheduleRowView(row: row, isPast: false, isNow: false, canRequest: false)
+                if !days.isEmpty {
+                    DisclosureGroup(isExpanded: $showsPreview) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(days) { day in
+                                if let date = day.dateKey {
+                                    Text(Dates.dayTitle(date).capitalized(with: Dates.czech))
+                                        .font(.headline)
+                                        .foregroundStyle(Theme.ink)
+                                        .padding(.top, 6)
+                                }
+                                ForEach(day.rows) { row in
+                                    ScheduleRowView(row: row, isPast: false, isNow: false, canRequest: false)
+                                }
                             }
                         }
+                        .padding(.top, 8)
+                    } label: {
+                        Label("Náhled, jak ho uvidí tanečníci", systemImage: "eye")
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
                     }
-                    .padding(.top, 8)
-                } label: {
-                    Label("Náhled (\(days.count) dní)", systemImage: "eye")
-                        .font(.headline)
-                        .foregroundStyle(Theme.ink)
+                    .card()
                 }
-                .card()
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
         .pageBackground()
+        .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
         .navigationTitle("Rozpis")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .sheet(isPresented: $isEditingText) {
+            ScheduleTextEditor(text: $text)
+        }
+    }
+
+    private var textCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Text rozpisu", systemImage: "doc.plaintext")
+                    .font(.headline)
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                Text(text.isEmpty ? "Vložit" : "Upravit")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.accent)
+            }
+            Text(text.isEmpty ? "Zatím prázdný. Klepni a vlož rozpis, jak ho trenér poslal." : text)
+                .font(.callout.monospaced())
+                .foregroundStyle(text.isEmpty ? Theme.inkSoft : Theme.inkMuted)
+                .lineLimit(5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !text.isEmpty {
+                HStack(spacing: 8) {
+                    Badge(text: days.count == 1 ? "1 den" : "\(days.count) dní", style: Theme.training)
+                    Badge(text: "\(lessonCount) lekcí", style: Theme.event)
+                }
+            }
+        }
+        .card()
+        .contentShape(Rectangle())
+    }
+
+    private var saveBar: some View {
+        VStack(spacing: 6) {
+            if hasChanges {
+                Text("Máš neuložené změny")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.cleanup.ink)
+            }
+            Button {
+                Task { await save() }
+            } label: {
+                if isSaving { ProgressView().tint(.white) } else { Text(saveTitle) }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isSaving || !isLoaded || !hasChanges)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(Theme.page.opacity(0.97).ignoresSafeArea(edges: .bottom))
+    }
+
+    private var saveTitle: String {
+        if published && saved?.published == false { return "Uložit a zveřejnit" }
+        if !published && saved?.published == true { return "Uložit a skrýt" }
+        return "Uložit"
     }
 
     private func load() async {
@@ -111,7 +160,7 @@ struct AdminScheduleView: View {
             text = draft.body
             published = draft.published
             cancelTrainings = draft.cancelTrainings ?? false
-            isLoaded = true
+            saved = current
         } catch {
             self.error = error.localizedDescription
         }
@@ -133,11 +182,69 @@ struct AdminScheduleView: View {
                 ],
                 as: MessageResponse.self
             )
+            saved = current
             notice = response.message ?? "Uloženo."
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+private struct ScheduleDraftState: Equatable {
+    let title: String
+    let text: String
+    let published: Bool
+    let cancelTrainings: Bool
+}
+
+// The schedule's text on the whole screen: only the text scrolls here.
+private struct ScheduleTextEditor: View {
+    @Binding var text: String
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                Text("Řádek s datem (5.11.) začíná den, „10:00–10:45 – Jméno“ je lekce. Oběd a pauza se poznají, GROUP je seminář.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.subtle)
+                TextEditor(text: $text)
+                    .font(.callout.monospaced())
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 12)
+                    .focused($isFocused)
+            }
+            .background(Theme.surface.ignoresSafeArea())
+            .navigationTitle("Text rozpisu")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    PasteButton(payloadType: String.self) { strings in
+                        if let pasted = strings.first {
+                            text = pasted
+                        }
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .buttonBorderShape(.capsule)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hotovo") { dismiss() }.fontWeight(.bold)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Schovat klávesnici") { isFocused = false }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
     }
 }
 

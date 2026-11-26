@@ -1,17 +1,21 @@
+import ActivityKit
 import Foundation
 import Observation
 import UIKit
 import UserNotifications
 
 // What the device is subscribed to, as on the web: "hall" (the hall is taken
-// today, trainings cancelled) and "cleanup" (the hall waits for cleanup).
+// today, trainings cancelled), "cleanup" (the hall waits for cleanup) and
+// "lessons" (an hour before the account's own lesson in the schedule, with a
+// countdown on the lock screen and in the Dynamic Island).
 enum PushTopic: String, CaseIterable, Identifiable {
-    case hall, cleanup
+    case lessons, hall, cleanup
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .lessons: return "Moje lekce z rozpisu (hodinu předem)"
         case .hall: return "Obsazený sál a zrušené tréninky"
         case .cleanup: return "Sál čeká na úklid"
         }
@@ -32,6 +36,9 @@ final class PushModel {
     private static let topicsKey = "push.topics"
 
     private(set) var token: String?
+    // Apple's token for starting the lesson countdown from the server.
+    private(set) var liveToken: String?
+    private var isWatchingLiveToken = false
     private(set) var topics: Set<PushTopic>
     private(set) var isAuthorized = false
     private(set) var isBusy = false
@@ -53,6 +60,32 @@ final class PushModel {
 
         if isAuthorized && !topics.isEmpty {
             UIApplication.shared.registerForRemoteNotifications()
+        }
+
+        watchLiveToken()
+    }
+
+    // The signed-in account changed: the server links the phone to it (for
+    // reminders of the account's own lessons).
+    func accountChanged() async {
+        if token != nil && !topics.isEmpty {
+            await sync(test: false)
+        }
+    }
+
+    private func watchLiveToken() {
+        guard #available(iOS 17.2, *), !isWatchingLiveToken else { return }
+        isWatchingLiveToken = true
+
+        Task {
+            for await data in Activity<LessonActivityAttributes>.pushToStartTokenUpdates {
+                let hex = data.map { String(format: "%02x", $0) }.joined()
+                guard hex != liveToken else { continue }
+                liveToken = hex
+                if token != nil && topics.contains(.lessons) {
+                    await sync(test: false)
+                }
+            }
         }
     }
 
@@ -102,18 +135,18 @@ final class PushModel {
         isBusy = true
         defer { isBusy = false }
 
+        var body: [String: Any] = [
+            "platform": "ios",
+            "test": test,
+            "token": token,
+            "topics": topics.map(\.rawValue),
+        ]
+        if let liveToken {
+            body["liveToken"] = liveToken
+        }
+
         do {
-            _ = try await API.send(
-                "POST",
-                "/api/push/native",
-                body: [
-                    "platform": "ios",
-                    "test": test,
-                    "token": token,
-                    "topics": topics.map(\.rawValue),
-                ],
-                as: Empty.self
-            )
+            _ = try await API.send("POST", "/api/push/native", body: body, as: Empty.self)
             isAvailable = true
             message = test ? "Zkušební upozornění je na cestě." : nil
         } catch {

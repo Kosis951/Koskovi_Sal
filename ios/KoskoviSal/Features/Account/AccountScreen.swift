@@ -118,6 +118,14 @@ struct AccountScreen: View {
                 .tint(Theme.accent)
             }
 
+            if push.topics.contains(.lessons) && (!session.isSignedIn || session.scheduleName == nil) {
+                FieldNote(text: session.isSignedIn
+                    ? "Pro připomínky lekcí vyplň v profilu, jak tě píše trenér v rozpisu."
+                    : "Připomínky lekcí fungují s přihlášeným účtem a jménem v rozpisu.")
+            } else if push.topics.contains(.lessons) {
+                FieldNote(text: "Hodinu před tvou lekcí (\(session.scheduleName ?? "")) přijde upozornění a na zamčené obrazovce i v Dynamic Islandu se spustí odpočet.")
+            }
+
             if !push.topics.isEmpty && push.token != nil {
                 Button("Poslat zkušební upozornění") {
                     Task { await push.sendTest() }

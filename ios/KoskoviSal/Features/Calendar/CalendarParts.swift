@@ -51,10 +51,19 @@ enum CalendarMode: String {
 }
 
 // Week strip or month grid with navigation and the mode switch.
+// The week strip or month grid; swiping it (or the arrows) moves to the
+// next or previous week/month, and the days follow the finger.
 struct CalendarCard: View {
     @Binding var mode: CalendarMode
     @Binding var selectedDay: String
     let kinds: (String) -> [DayKind]
+    @State private var dragOffset: CGFloat = 0
+    @State private var forward = true
+
+    // Changes when another week/month is shown (for the slide and haptics).
+    private var period: String {
+        mode == .week ? Dates.weekStart(selectedDay) : String(selectedDay.prefix(7))
+    }
 
     private var weekDays: [String] {
         let start = Dates.weekStart(selectedDay)
@@ -65,7 +74,7 @@ struct CalendarCard: View {
         VStack(spacing: 12) {
             HStack(spacing: 8) {
                 Button {
-                    withAnimation(.snappy) { step(-1) }
+                    move(-1)
                 } label: {
                     Image(systemName: "chevron.left").frame(width: 32, height: 32)
                 }
@@ -77,7 +86,7 @@ struct CalendarCard: View {
                     .frame(maxWidth: .infinity)
 
                 Button {
-                    withAnimation(.snappy) { step(1) }
+                    move(1)
                 } label: {
                     Image(systemName: "chevron.right").frame(width: 32, height: 32)
                 }
@@ -100,17 +109,54 @@ struct CalendarCard: View {
                 }
             }
 
-            if mode == .week {
-                HStack(spacing: 4) {
-                    ForEach(weekDays, id: \.self) { day in
-                        DayCell(day: day, selectedDay: $selectedDay, kinds: kinds(day), showsWeekday: true, dimmed: false)
+            ZStack {
+                Group {
+                    if mode == .week {
+                        HStack(spacing: 4) {
+                            ForEach(weekDays, id: \.self) { day in
+                                DayCell(day: day, selectedDay: $selectedDay, kinds: kinds(day), showsWeekday: true, dimmed: false)
+                            }
+                        }
+                    } else {
+                        MonthGrid(selectedDay: $selectedDay, kinds: kinds)
                     }
                 }
-            } else {
-                MonthGrid(selectedDay: $selectedDay, kinds: kinds)
+                .id(period)
+                .transition(.asymmetric(
+                    insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)
+                ))
             }
+            .offset(x: dragOffset)
+            .clipped()
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 15)
+                    .onChanged { value in
+                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                        dragOffset = value.translation.width * 0.5
+                    }
+                    .onEnded { value in
+                        let width = value.translation.width
+                        let isSwipe = abs(width) > abs(value.translation.height) && abs(width) > 50
+                        if isSwipe {
+                            move(width < 0 ? 1 : -1)
+                        } else {
+                            withAnimation(.snappy) { dragOffset = 0 }
+                        }
+                    }
+            )
         }
         .card(padding: 12)
+        .sensoryFeedback(.selection, trigger: period)
+    }
+
+    private func move(_ direction: Int) {
+        forward = direction > 0
+        withAnimation(.snappy(duration: 0.3)) {
+            dragOffset = 0
+            step(direction)
+        }
     }
 
     private var weekTitle: String {

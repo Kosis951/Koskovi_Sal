@@ -23,6 +23,7 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(SessionModel.self) private var session
+    @Environment(PushModel.self) private var push
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = Demo.tab ?? .calendar
     @State private var schedule = ScheduleModel()
@@ -59,6 +60,10 @@ struct RootView: View {
         .environment(\.refreshApp, refreshApp)
         .onAppear(perform: Keyboard.installTapToHide)
         .onChange(of: tab) { Keyboard.hide() }
+        // The phone's notifications follow the signed-in account (own lessons).
+        .onChange(of: session.username) {
+            Task { await push.accountChanged() }
+        }
         // A schedule published while the app was away shows its tab without a restart.
         .onChange(of: scenePhase) {
             if scenePhase == .active {
