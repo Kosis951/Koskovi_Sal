@@ -137,9 +137,9 @@ extension View {
         }
     }
 
-    // Scrolls the tab's screen so what the guide points at is at the top (the
-    // bubble is at the bottom); extra room below lets even the last cards get
-    // up there.
+    // Scrolls the tab's screen so what the guide points at is at the top, with
+    // room for the bubble right under it; extra room below lets even the last
+    // cards get up there.
     func tourScroll(_ tab: AppTab) -> some View {
         scrollPosition(id: Binding(get: { TourModel.shared.scrollTarget(on: tab) }, set: { _ in }), anchor: .top)
             .contentMargins(.bottom, TourModel.shared.isActive ? 420 : 0, for: .scrollContent)
@@ -155,22 +155,19 @@ private struct TourLayer: View {
     var body: some View {
         if let step = tour.step, step.tab == tab, let index = tour.index {
             GeometryReader { proxy in
-                // The highlight stays above the bubble, never under it.
-                let free = CGRect(x: 0, y: 0, width: proxy.size.width, height: max(proxy.size.height - bubbleHeight - 24, 0))
-                let hole = step.target
-                    .flatMap { anchors[$0] }
-                    .map { proxy[$0].insetBy(dx: -8, dy: -8) }
-                    .map { $0.intersection(free.insetBy(dx: 4, dy: 4)) }
-                    .flatMap { $0.isNull || $0.height < 20 ? nil : $0 }
-                let shown = !tour.isMoving && hole != nil
+                let placed = place(
+                    step.target.flatMap { anchors[$0] }.map { proxy[$0] },
+                    in: proxy.size
+                )
+                let shown = !tour.isMoving && placed.hole != nil
 
-                ZStack(alignment: .bottom) {
+                ZStack(alignment: .top) {
                     Rectangle()
                         .fill(Color.black.opacity(0.62))
                         .mask {
                             ZStack {
                                 Rectangle()
-                                if let hole {
+                                if let hole = placed.hole {
                                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                                         .frame(width: hole.width, height: hole.height)
                                         .position(x: hole.midX, y: hole.midY)
@@ -183,7 +180,7 @@ private struct TourLayer: View {
                         .contentShape(Rectangle())
                         .onTapGesture {}
 
-                    if let hole {
+                    if let hole = placed.hole {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(Theme.accentSoft, lineWidth: 2.5)
                             .frame(width: hole.width, height: hole.height)
@@ -194,7 +191,6 @@ private struct TourLayer: View {
 
                     bubble(step: step, index: index)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
                         .background(
                             GeometryReader { bubble in
                                 Color.clear
@@ -202,12 +198,41 @@ private struct TourLayer: View {
                                     .onChange(of: bubble.size.height) { bubbleHeight = bubble.size.height }
                             }
                         )
+                        .offset(y: placed.bubbleTop + (tour.isMoving ? 10 : 0))
                         .opacity(tour.isMoving ? 0 : 1)
-                        .offset(y: tour.isMoving ? 12 : 0)
                 }
             }
             .transition(.opacity)
         }
+    }
+
+    // The bubble right next to what the guide points at: below it when there
+    // is room, else above it; a target too tall for both keeps its top part
+    // with the bubble under it. Without a target the bubble is in the middle.
+    private func place(_ target: CGRect?, in size: CGSize) -> (hole: CGRect?, bubbleTop: CGFloat) {
+        let screen = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 4)
+        let gap: CGFloat = 12
+        let needed = bubbleHeight + gap + 8
+
+        guard let target else {
+            return (nil, max((size.height - bubbleHeight) / 2, 0))
+        }
+
+        var hole = target.insetBy(dx: -8, dy: -8).intersection(screen)
+
+        guard !hole.isNull, hole.height >= 20 else {
+            return (nil, max((size.height - bubbleHeight) / 2, 0))
+        }
+
+        if size.height - hole.maxY >= needed {
+            return (hole, hole.maxY + gap)
+        }
+        if hole.minY >= needed {
+            return (hole, hole.minY - gap - bubbleHeight)
+        }
+
+        hole.size.height = max(size.height - needed - hole.minY, 40)
+        return (hole, hole.maxY + gap)
     }
 
     private func bubble(step: TourStep, index: Int) -> some View {
