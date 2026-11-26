@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { requireManager } from "@/lib/api-auth";
+import { requireScheduleEditor } from "@/lib/api-auth";
 import { appendAuditLog } from "@/lib/audit-log";
-import { canManageBookings, getAdminAccess } from "@/lib/auth";
+import { getAdminAccess } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { syncScheduleBookings } from "@/lib/bookings-db";
 import {
   getScheduleBlocks,
@@ -26,7 +27,7 @@ const shortDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "nume
 export async function GET() {
   const schedule = getPublicSchedule();
   const access = getAdminAccess(await cookies());
-  const canEdit = canManageBookings(access);
+  const canEdit = can.editSchedule(access);
   const days = access && schedule.published ? parseSchedule(schedule.body, pragueDate.format(new Date())) : [];
 
   return NextResponse.json(
@@ -46,7 +47,7 @@ export async function GET() {
 // published schedule puts one block per day into the hall calendar; an
 // unpublished one takes them out again.
 export async function PUT(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireScheduleEditor();
 
   if (auth.error) {
     return auth.error;

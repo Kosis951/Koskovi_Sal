@@ -30,7 +30,7 @@ export default async function InviteRoute({ params }: { params: Promise<{ token:
 
   return (
     <InvitePage
-      initialSession={access ? { role: access.role, username: access.username } : null}
+      initialSession={access ? { permissions: access.permissions, role: access.role, username: access.username } : null}
       token={token}
       trainer={trainer}
       trainerName={trainer ? createNameLookup().name(trainer) : null}

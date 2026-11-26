@@ -26,12 +26,12 @@ import { NavDropdown } from "@/components/ui/nav-dropdown";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
 import {
-  canRoleManageBookings,
   getAdminSession,
   loginAdmin,
   logoutAdmin,
   type AdminRole,
 } from "@/lib/admin-auth-client";
+import { can, type Permissions } from "@/lib/permissions";
 
 export type AdminSection =
   | "overview"
@@ -42,7 +42,18 @@ export type AdminSection =
   | "users"
   | "history";
 
-type AdminAccess = { role: AdminRole; username: string };
+type AdminAccess = { permissions: Permissions; role: AdminRole; username: string };
+
+// Which sections of Správa an account sees (permissions.ts).
+const sectionAllowed: Record<AdminSection, (access: AdminAccess) => boolean> = {
+  bookings: can.manageHall,
+  history: can.seeStats,
+  holidays: can.manageHall,
+  overview: can.seeStats,
+  schedule: can.editSchedule,
+  trainings: can.manageHall,
+  users: can.manageUsers,
+};
 
 const AdminAccessContext = createContext<AdminAccess | null>(null);
 
@@ -57,7 +68,6 @@ export function useAdminAccess() {
 }
 
 const navItems: Array<{
-  adminOnly?: boolean;
   href: string;
   icon: LucideIcon;
   label: string;
@@ -68,7 +78,7 @@ const navItems: Array<{
   { href: "/admin/treninky", icon: Repeat, label: "Tréninky", section: "trainings" },
   { href: "/admin/prazdniny", icon: Palmtree, label: "Prázdniny", section: "holidays" },
   { href: "/admin/rozpis", icon: ClipboardList, label: "Rozpis", section: "schedule" },
-  { adminOnly: true, href: "/admin/users", icon: Users, label: "Uživatelé", section: "users" },
+  { href: "/admin/users", icon: Users, label: "Uživatelé", section: "users" },
   { href: "/admin/historie", icon: History, label: "Historie", section: "history" },
 ];
 
@@ -76,14 +86,12 @@ const navItems: Array<{
 // login / permission gate. Pages render inside once access is confirmed.
 export function AdminLayout({
   actions,
-  adminOnly = false,
   children,
   description,
   section,
   title,
 }: {
   actions?: ReactNode;
-  adminOnly?: boolean;
   children: ReactNode;
   description?: string;
   section: AdminSection;
@@ -97,8 +105,8 @@ export function AdminLayout({
     const session = await getAdminSession();
 
     setAccess(
-      session.authenticated && session.username && session.role
-        ? { role: session.role, username: session.username }
+      session.authenticated && session.username && session.role && session.permissions
+        ? { permissions: session.permissions, role: session.role, username: session.username }
         : null,
     );
     setIsLoading(false);
@@ -129,11 +137,11 @@ export function AdminLayout({
     setAccess(null);
   }
 
-  const canManage = canRoleManageBookings(access?.role);
-  const hasAccess = canManage && (!adminOnly || access?.role === "admin");
-  const visibleNavItems = navItems.filter(
-    (item) => !item.adminOnly || access?.role === "admin",
-  );
+  const canManage = can.administer(access);
+  const hasAccess = Boolean(access) && sectionAllowed[section](access!);
+  const visibleNavItems = access ? navItems.filter((item) => sectionAllowed[item.section](access)) : [];
+  // Where an account without this section goes instead.
+  const firstAllowed = visibleNavItems[0]?.href;
 
   return (
     <div className="min-h-screen bg-page text-ink">
@@ -163,14 +171,14 @@ export function AdminLayout({
             <h1 className="mt-3 text-xl font-black">Sem nemáš přístup</h1>
             <p className="mt-1 text-sm text-ink-muted">
               {canManage
-                ? "Tuto sekci spravuje jen hlavní správce."
-                : `Účet ${access.username} má přístup jen pro čtení.`}
+                ? "Tahle sekce pro tvůj účet není. O přístup požádej hlavního správce."
+                : `Účet ${access.username} do správy nemá přístup.`}
             </p>
             <Link
               className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-brand px-4 text-sm font-semibold text-on-brand transition hover:bg-brand-hover"
-              href={canManage ? "/admin" : "/"}
+              href={canManage && firstAllowed ? firstAllowed : "/"}
             >
-              {canManage ? "Zpět na přehled" : "Zpět na kalendář"}
+              {canManage && firstAllowed ? "Do správy" : "Zpět na kalendář"}
             </Link>
           </div>
         </div>

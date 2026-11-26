@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireManager, requireSession } from "@/lib/api-auth";
+import { requireHallManager, requireSession } from "@/lib/api-auth";
 import { parseBookingInput } from "@/lib/booking-validation";
 import { createBooking, getBookings } from "@/lib/bookings-db";
 
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;

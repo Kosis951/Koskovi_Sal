@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog, readAuditLog, type AuditLogEntry } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireStatsViewer } from "@/lib/api-auth";
 import type { AdminAccess } from "@/lib/auth";
 import {
   deleteBooking,
@@ -20,7 +20,7 @@ type UndoDetails = {
 };
 
 export async function POST(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireStatsViewer();
 
   if (auth.error) {
     return auth.error;

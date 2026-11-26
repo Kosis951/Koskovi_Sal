@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, KeyRound, Pencil, Trash2, UserPlus } from "lucide-react";
+import { Check, ChevronDown, GraduationCap, KeyRound, Pencil, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
 import { useState } from "react";
 import { sendJson, useAdminResource } from "@/components/admin/admin-data";
 import { Sheet } from "@/components/ui/sheet";
@@ -11,27 +11,54 @@ import {
   noticeTone,
 } from "@/components/ui/styles";
 import type { AdminRole } from "@/lib/admin-auth-client";
+import {
+  permissionSections,
+  rolePermissions,
+  type PermissionRole,
+  type Permissions,
+} from "@/lib/permissions";
 
 type AssignableRole = Exclude<AdminRole, "admin">;
-type AdminUser = { isStored: boolean; role: AdminRole; username: string };
+type AdminUser = {
+  displayName?: string;
+  email?: string;
+  isStored: boolean;
+  permissions: Permissions;
+  // The role whose preset the sections match; null: custom sections.
+  preset: PermissionRole | null;
+  role: AdminRole;
+  trainerRequest?: "pending" | "declined";
+  username: string;
+};
+type TrainerRequest = {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  requestedAt?: string;
+  username: string;
+};
 type SaveUser = (
   body: Record<string, unknown>,
   successMessage: string,
-  method?: "POST" | "DELETE",
+  method?: "POST" | "PATCH" | "DELETE",
 ) => Promise<boolean>;
 
-const noUsers: AdminUser[] = [];
+const noData = { trainerRequests: [] as TrainerRequest[], users: [] as AdminUser[] };
 
 function pickUsers(data: unknown) {
-  return (data as { users?: AdminUser[] }).users ?? noUsers;
+  const value = data as Partial<typeof noData>;
+  return { trainerRequests: value.trainerRequests ?? [], users: value.users ?? [] };
 }
+
+const requestDate = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", hour: "2-digit", minute: "2-digit", month: "numeric" });
 
 const roleBadge: Record<AdminRole, { className: string; label: string }> = {
   admin: { className: "bg-event text-event-ink", label: "Hlavní správce" },
   manager: { className: "bg-training text-training-ink", label: "Správa sálu" },
   trainer: { className: "bg-free text-free-ink", label: "Trenér" },
-  viewer: { className: "bg-subtle text-ink-muted", label: "Jen čtení" },
+  viewer: { className: "bg-subtle text-ink-muted", label: "Tanečník" },
 };
+const customBadge = { className: "bg-cleanup text-cleanup-ink", label: "Vlastní práva" };
 
 export function AdminUsersTable({
   isCreateOpen,
@@ -40,11 +67,8 @@ export function AdminUsersTable({
   isCreateOpen: boolean;
   onCreateOpenChange: (open: boolean) => void;
 }) {
-  const { data: users, isLoading, reload } = useAdminResource(
-    "/api/admin-users",
-    pickUsers,
-    noUsers,
-  );
+  const { data, isLoading, reload } = useAdminResource("/api/admin-users", pickUsers, noData);
+  const { trainerRequests, users } = data;
   const [expanded, setExpanded] = useState("");
   const [result, setResult] = useState<{ message: string; ok: boolean } | null>(null);
 
@@ -71,10 +95,57 @@ export function AdminUsersTable({
         </p>
       ) : null}
 
+      {trainerRequests.length > 0 ? (
+        <section className="overflow-hidden rounded-xl border border-accent bg-surface ring-1 ring-accent">
+          <h2 className="flex items-center gap-2 border-b border-line bg-subtle px-4 py-2.5 text-sm font-black">
+            <GraduationCap size={16} />
+            Žádosti o trenérský účet ({trainerRequests.length})
+          </h2>
+          <ul className="divide-y divide-line">
+            {trainerRequests.map((request) => (
+              <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" key={request.username}>
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">
+                    {[request.firstName, request.lastName].filter(Boolean).join(" ") || request.username}
+                  </p>
+                  <p className="text-xs text-ink-soft">
+                    {request.username}
+                    {request.email ? ` · ${request.email}` : ""}
+                    {request.requestedAt ? ` · ${requestDate.format(new Date(request.requestedAt))}` : ""}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className={buttonSecondary}
+                    onClick={() =>
+                      void save({ trainerRequest: "decline", username: request.username }, `Žádost ${request.username} je zamítnutá.`, "PATCH")
+                    }
+                    type="button"
+                  >
+                    <X size={15} />
+                    Zamítnout
+                  </button>
+                  <button
+                    className={buttonPrimary}
+                    onClick={() =>
+                      void save({ trainerRequest: "approve", username: request.username }, `${request.username} je teď trenér.`, "PATCH")
+                    }
+                    type="button"
+                  >
+                    <Check size={15} />
+                    Schválit
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <div className="overflow-hidden rounded-xl border border-line bg-surface">
         <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_40px] gap-3 border-b border-line bg-subtle px-4 py-2 text-xs font-semibold uppercase text-ink-muted md:grid">
           <span>Uživatel</span>
-          <span>Role</span>
+          <span>Práva</span>
           <span>Heslo</span>
           <span />
         </div>
@@ -94,9 +165,10 @@ export function AdminUsersTable({
         </ul>
       </div>
       <p className="text-xs text-ink-soft">
-        Správa sálu smí přidávat a měnit akce. Trenér má navíc vlastní kalendář lekcí, kde
-        nabízí časy a schvaluje žádosti. Účet jen pro čtení vidí kalendář sálu a může u trenérů
-        žádat o lekci.
+        Každý účet má práva po sekcích: kalendář sálu, lekce, rozpis, uživatelé, přehled a historie.
+        Předvolby: tanečník vidí vše a objednává lekce, trenér má vlastní kalendář lekcí a přidává své
+        akce do sálu, správa sálu upravuje kalendář sálu i rozpis. Kalendář sálu a rozpis vidí i
+        nepřihlášení, trenéry a jejich časy jen přihlášení.
       </p>
 
       <Sheet onClose={() => onCreateOpenChange(false)} open={isCreateOpen} title="Nový uživatel">
@@ -123,7 +195,7 @@ function UserRow({
   onToggle: () => void;
   user: AdminUser;
 }) {
-  const badge = roleBadge[user.role];
+  const badge = user.role === "admin" ? roleBadge.admin : user.preset ? roleBadge[user.preset] : customBadge;
 
   return (
     <li>
@@ -139,7 +211,11 @@ function UserRow({
           </span>
           <span className="min-w-0">
             <span className="block truncate font-semibold text-ink">{user.username}</span>
-            <span className="block text-xs text-ink-soft md:hidden">{badge.label}</span>
+            <span className="block truncate text-xs text-ink-soft">
+              {user.displayName && user.displayName !== user.username ? `${user.displayName} · ` : ""}
+              <span className="md:hidden">{badge.label}</span>
+              {user.trainerRequest === "pending" ? " · žádá o trenéra" : ""}
+            </span>
           </span>
         </span>
         <span className="hidden md:block">
@@ -161,8 +237,11 @@ function UserRow({
 
 function UserEditor({ onSave, user }: { onSave: SaveUser; user: AdminUser }) {
   const isAdmin = user.role === "admin";
-  const [role, setRole] = useState<AssignableRole>(isAdmin ? "manager" : user.role as AssignableRole);
+  const [role, setRole] = useState<AssignableRole>(isAdmin ? "manager" : (user.role as AssignableRole));
+  const [permissions, setPermissions] = useState<Permissions>(user.permissions);
   const [password, setPassword] = useState("");
+  const isChanged =
+    role !== user.role || permissionSections.some((section) => permissions[section.key] !== user.permissions[section.key]);
 
   return (
     <div className="grid grid-cols-1 gap-4 border-t border-line bg-subtle px-4 py-4 md:grid-cols-2">
@@ -170,16 +249,44 @@ function UserEditor({ onSave, user }: { onSave: SaveUser; user: AdminUser }) {
         className="grid content-start gap-3"
         onSubmit={(event) => {
           event.preventDefault();
-          void onSave({ role, username: user.username }, `Role uživatele ${user.username} je uložená.`);
+          void onSave({ permissions, role, username: user.username }, `Práva uživatele ${user.username} jsou uložená.`, "PATCH");
         }}
       >
         {isAdmin ? (
-          <p className="text-sm text-ink-muted">Hlavnímu správci nejde roli změnit.</p>
+          <p className="flex items-center gap-2 text-sm text-ink-muted">
+            <ShieldCheck size={16} />
+            Hlavní správce smí všechno, jeho práva měnit nejde.
+          </p>
         ) : (
           <>
-            <RoleSelect onChange={setRole} value={role} />
-            <button className={buttonPrimary} disabled={role === user.role} type="submit">
-              Uložit roli
+            <RoleSelect
+              onChange={(next) => {
+                setRole(next);
+                // The preset fills in the sections; they can be changed after.
+                setPermissions(rolePermissions(next));
+              }}
+              value={role}
+            />
+            <div className="grid gap-2 rounded-lg border border-line bg-surface p-3">
+              {permissionSections.map((section) => (
+                <label className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-3 text-sm" key={section.key}>
+                  <span className="font-semibold text-ink">{section.label}</span>
+                  <select
+                    className="field-input min-h-9"
+                    onChange={(event) => setPermissions((current) => ({ ...current, [section.key]: event.target.value }))}
+                    value={permissions[section.key]}
+                  >
+                    {section.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <button className={buttonPrimary} disabled={!isChanged} type="submit">
+              Uložit práva
             </button>
           </>
         )}
@@ -307,15 +414,15 @@ function RoleSelect({
 }) {
   return (
     <label className="field-label">
-      Role
+      Předvolba
       <select
         className="field-input mt-1 min-h-10"
         onChange={(event) => onChange(event.target.value as AssignableRole)}
         value={value}
       >
-        <option value="manager">Správa sálu</option>
+        <option value="viewer">Tanečník</option>
         <option value="trainer">Trenér (vlastní kalendář lekcí)</option>
-        <option value="viewer">Jen čtení (tanečník)</option>
+        <option value="manager">Správa sálu</option>
       </select>
     </label>
   );

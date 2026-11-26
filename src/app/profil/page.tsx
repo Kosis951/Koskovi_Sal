@@ -14,7 +14,7 @@ export default async function ProfileRoute() {
   return (
     <ProfilePage
       initialProfile={access ? getUserProfile(access.username) : {}}
-      initialSession={access ? { role: access.role, username: access.username } : null}
+      initialSession={access ? { permissions: access.permissions, role: access.role, username: access.username } : null}
     />
   );
 }

@@ -38,7 +38,7 @@ export default async function LessonsPage() {
 
   return (
     <LessonsIndex
-      initialSession={{ role: access.role, username: access.username }}
+      initialSession={{ permissions: access.permissions, role: access.role, username: access.username }}
       trainers={trainers}
     />
   );

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireBookingEditor, requireManager } from "@/lib/api-auth";
+import { requireBookingEditor, requireHallManager } from "@/lib/api-auth";
 import { parseBookingInput } from "@/lib/booking-validation";
 import {
   deleteBooking,
@@ -13,7 +13,7 @@ type RouteContext = {
 };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;

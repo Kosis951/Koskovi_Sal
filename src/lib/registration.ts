@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isEmailTaken, registerUser } from "@/lib/admin-users-db";
+import { getAdminUsers, isEmailTaken, registerUser } from "@/lib/admin-users-db";
+import { sendToUsers } from "@/lib/push";
 import { adminSessionCookie, createAdminSession, getAdminSessionCookieOptions } from "@/lib/auth";
 
 // Letters (with diacritics), digits, space, dot, dash, underscore; 3–40 chars.
@@ -33,6 +34,8 @@ export async function registerFromPayload(
   const displayName = text("displayName").replace(/\s+/g, " ").trim() || [firstName, lastName].filter(Boolean).join(" ");
   const email = text("email").trim().toLowerCase();
   const scheduleName = text("scheduleName").replace(/\s+/g, " ").trim();
+  // "I am a trainer": the main administrator approves it later.
+  const trainerRequest = payload?.trainerRequest === true;
 
   if (!usernamePattern.test(username)) {
     return NextResponse.json(
@@ -76,6 +79,7 @@ export async function registerFromPayload(
     lastName: lastName || undefined,
     password,
     scheduleName: scheduleName || undefined,
+    trainerRequest,
     username,
   });
 
@@ -90,7 +94,29 @@ export async function registerFromPayload(
     return NextResponse.json({ message }, { status: 409 });
   }
 
-  const response = NextResponse.json({ registered: true, trainer: options.invitedBy ?? null, username: result.username });
+  // Whoever manages the accounts learns about a trainer request on their phone.
+  if (trainerRequest) {
+    void getAdminUsers()
+      .then((users) =>
+        sendToUsers(
+          users.filter((user) => user.permissions.users === "manage").map((user) => user.username),
+          {
+            body: `${displayName || result.username} chce trenérský účet. Schválíš ve Správě → Uživatelé.`,
+            tag: "trainer-request",
+            title: "Nová žádost o trenéra",
+            url: "/admin/users",
+          },
+        ),
+      )
+      .catch(() => undefined);
+  }
+
+  const response = NextResponse.json({
+    registered: true,
+    trainer: options.invitedBy ?? null,
+    trainerRequest,
+    username: result.username,
+  });
 
   response.cookies.set(adminSessionCookie, createAdminSession(result.username), getAdminSessionCookieOptions());
 

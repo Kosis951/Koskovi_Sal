@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { PublicSchedulePage } from "@/components/schedule/public-schedule-page";
-import { canManageBookings, getAdminAccess } from "@/lib/auth";
+import { getAdminAccess } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { parseSchedule } from "@/lib/public-schedule";
 import { getPublicSchedule } from "@/lib/public-schedule-db";
 import { getPendingLessonKeys } from "@/lib/schedule-requests-db";
@@ -20,7 +21,7 @@ const pragueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" 
 // unpublished draft here.
 export default async function RozpisPage() {
   const access = getAdminAccess(await cookies());
-  const canEdit = canManageBookings(access);
+  const canEdit = can.editSchedule(access);
   const schedule = getPublicSchedule();
   const isVisible = schedule.published || canEdit;
 
@@ -28,7 +29,7 @@ export default async function RozpisPage() {
     <PublicSchedulePage
       canEdit={canEdit}
       days={isVisible ? parseSchedule(schedule.body, pragueDate.format(new Date())) : []}
-      initialSession={access ? { role: access.role, username: access.username } : null}
+      initialSession={access ? { permissions: access.permissions, role: access.role, username: access.username } : null}
       isDraft={canEdit && !schedule.published && Boolean(schedule.body)}
       pendingKeys={schedule.published ? getPendingLessonKeys() : []}
       requestsOpen={schedule.published}

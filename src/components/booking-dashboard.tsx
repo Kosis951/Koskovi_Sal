@@ -36,10 +36,9 @@ import { AppHeader } from "@/components/ui/app-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { Sheet } from "@/components/ui/sheet";
+import { can, type Permissions } from "@/lib/permissions";
 import { pageContainer } from "@/components/ui/styles";
 import {
-  canRoleAddBookings,
-  canRoleManageBookings,
   getAdminSession,
   loginAdmin,
   logoutAdmin,
@@ -81,6 +80,7 @@ type BookingDashboardProps = {
   initialRecurringOverrides: RecurringOverrideNotice[];
   initialSession: {
     authenticated: boolean;
+    permissions?: Permissions | null;
     role: AdminRole | null;
     username: string | null;
   };
@@ -109,6 +109,7 @@ export function BookingDashboard({
   const toastTimeoutRef = useRef<number | null>(null);
   const [session, setSession] = useState({
     isAuthenticated: initialSession.authenticated,
+    permissions: initialSession.permissions ?? null,
     role: initialSession.role,
     username: initialSession.username,
   });
@@ -124,9 +125,9 @@ export function BookingDashboard({
   const actions = useBookingActions(syncCalendar);
 
   const { isAuthenticated } = session;
-  const canManageBookings = isAuthenticated && canRoleManageBookings(session.role);
+  const canManageBookings = isAuthenticated && can.manageHall(session);
   // Trainers add bookings too, but change only the ones they added.
-  const canAddBookings = isAuthenticated && canRoleAddBookings(session.role);
+  const canAddBookings = isAuthenticated && can.addHallEvents(session);
   // Anonymous visitors see the button too; it leads them to the login.
   const canStartBooking = !isAuthenticated || canAddBookings;
   const currentDateKey = now ? formatDateKey(now) : "";
@@ -347,16 +348,16 @@ export function BookingDashboard({
   }
 
   async function login(username: string, password: string) {
-    let role: AdminRole | null = null;
+    let next: { permissions: Permissions | null; role: AdminRole | null } = { permissions: null, role: null };
 
     try {
       await loginAdmin(username, password);
       const nextSession = await getAdminSession();
 
-      role = nextSession.role ?? null;
+      next = { permissions: nextSession.permissions ?? null, role: nextSession.role ?? null };
       setSession({
         isAuthenticated: true,
-        role,
+        ...next,
         username: nextSession.username ?? username.trim(),
       });
     } catch (error) {
@@ -365,7 +366,7 @@ export function BookingDashboard({
 
     void syncCalendar();
 
-    if (openBookingAfterLogin && canRoleAddBookings(role)) {
+    if (openBookingAfterLogin && can.addHallEvents(next)) {
       setOpenBookingAfterLogin(false);
       setSubmitMessage("");
       setRequest((current) => ({ ...current, date: selectedDate, eventType: "seminar", name: "" }));
@@ -379,7 +380,7 @@ export function BookingDashboard({
 
   async function logout() {
     await logoutAdmin();
-    setSession({ isAuthenticated: false, role: null, username: null });
+    setSession({ isAuthenticated: false, permissions: null, role: null, username: null });
     setExpandedBookingId("");
     setSheet(null);
     void syncCalendar();

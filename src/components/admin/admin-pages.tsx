@@ -103,8 +103,7 @@ export function AdminUsersPage() {
           Nový uživatel
         </button>
       }
-      adminOnly
-      description="Kdo se může přihlásit a co smí v kalendáři měnit."
+      description="Kdo se může přihlásit a co smí v jednotlivých sekcích – a žádosti o trenérský účet."
       section="users"
       title="Uživatelé"
     >

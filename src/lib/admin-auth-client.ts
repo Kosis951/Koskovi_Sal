@@ -1,21 +1,17 @@
+import type { Permissions } from "@/lib/permissions";
+
 export type AdminRole = "admin" | "manager" | "trainer" | "viewer";
 
 export type AdminSession = {
   authenticated: boolean;
   displayName?: string | null;
+  // What the account may do (permissions.ts); checks use `can`.
+  permissions?: Permissions | null;
   role?: AdminRole | null;
+  // A trainer request from the registration still waits.
+  trainerRequest?: "pending" | "declined" | null;
   username?: string | null;
 };
-
-// Mirrors the server-side check; the server still enforces it on every call.
-export function canRoleManageBookings(role: AdminRole | null | undefined) {
-  return role === "admin" || role === "manager";
-}
-
-// Trainers add hall bookings too, and may change the ones they added.
-export function canRoleAddBookings(role: AdminRole | null | undefined) {
-  return canRoleManageBookings(role) || role === "trainer";
-}
 
 export async function loginAdmin(username: string, password: string) {
   const response = await fetch("/api/auth/login", {

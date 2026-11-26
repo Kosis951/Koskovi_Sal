@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/api-auth";
 import { normalizeUsername, readStoredAdminUsersSync, type AdminAccess } from "@/lib/auth";
 import { findTrainer } from "@/lib/lessons-db";
+import { can } from "@/lib/permissions";
 
 // The account name as its owner typed it ("Jana Nováková"); the session only
 // carries the normalized lower-case form.
@@ -14,10 +15,10 @@ export function getDisplayName(username: string) {
   );
 }
 
-// The trainer's own calendar is managed by the trainer and by the main
-// administrator; dancers and hall managers may look and request lessons.
+// The trainer's own calendar is managed by the trainer and by accounts that
+// manage all calendars; others may look and request lessons.
 export function canManageLessons(access: AdminAccess, trainer: string) {
-  return access.role === "admin" || normalizeUsername(access.username) === normalizeUsername(trainer);
+  return can.manageAllLessons(access) || normalizeUsername(access.username) === normalizeUsername(trainer);
 }
 
 // Session + existing trainer for the /api/lessons/[trainer] routes.
@@ -26,6 +27,10 @@ export async function requireTrainerAccess(trainerParam: string) {
 
   if (auth.error) {
     return { error: auth.error };
+  }
+
+  if (!can.seeLessons(auth.access)) {
+    return { error: NextResponse.json({ message: "Tento účet nemá přístup k lekcím." }, { status: 403 }) };
   }
 
   const trainer = await findTrainer(decodeURIComponent(trainerParam));
@@ -37,7 +42,7 @@ export async function requireTrainerAccess(trainerParam: string) {
   const canManage = canManageLessons(auth.access, trainer);
 
   // A trainer has only their own calendar; other trainers' are not for them.
-  if (auth.access.role === "trainer" && !canManage) {
+  if (can.haveLessonCalendar(auth.access) && !canManage) {
     return {
       error: NextResponse.json(
         { message: "Jako trenér vidíš jen svůj kalendář lekcí." },

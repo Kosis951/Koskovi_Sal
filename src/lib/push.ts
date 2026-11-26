@@ -279,6 +279,22 @@ export async function sendLessonReminder(rows: NativeDeviceRow[], payload: PushP
   return started.length + (others.length > 0 ? await sendToNativeDevices(others, payload) : 0);
 }
 
+// The phones (with the app) of the given accounts, whatever their topics:
+// for messages about the account itself.
+export async function sendToUsers(usernames: string[], payload: PushPayload) {
+  const keys = new Set(usernames.map((username) => username.trim().toLocaleLowerCase("cs-CZ")));
+
+  if (keys.size === 0) {
+    return 0;
+  }
+
+  const rows = (
+    getDb().prepare("SELECT * FROM native_push_devices WHERE username IS NOT NULL").all() as NativeDeviceRow[]
+  ).filter((row) => keys.has(row.username!.trim().toLocaleLowerCase("cs-CZ")));
+
+  return rows.length > 0 ? sendToNativeDevices(rows, payload) : 0;
+}
+
 export function deleteNativeDevice(token: string) {
   getDb().prepare("DELETE FROM native_push_devices WHERE token = ?").run(token);
 }

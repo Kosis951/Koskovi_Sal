@@ -1,5 +1,6 @@
 import {
   getAdminRole,
+  getPermissions,
   hashPassword,
   listAdminUsernames,
   normalizeUsername,
@@ -8,6 +9,7 @@ import {
   type StoredAdminUser,
 } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { presetOf, rolePermissions, type Permissions } from "@/lib/permissions";
 
 let usersQueue = Promise.resolve();
 
@@ -25,13 +27,22 @@ export async function getAdminUsers() {
     .map((username) => {
       const storedUser = storedByUsername.get(normalizeUsername(username));
 
+      const permissions = getPermissions(username, storedUsers);
+
       return {
         createdAt: storedUser?.createdAt,
         createdBy: storedUser?.createdBy,
         displayName: storedUser?.displayName,
         email: storedUser?.email,
+        firstName: storedUser?.firstName,
         isStored: Boolean(storedUser?.passwordHash),
+        lastName: storedUser?.lastName,
+        permissions,
+        // The role whose preset the sections match (null: custom).
+        preset: presetOf(permissions),
         role: getAdminRole(username, storedUsers),
+        trainerRequest: storedUser?.trainerRequest,
+        trainerRequestAt: storedUser?.trainerRequestAt,
         username: storedUser?.username ?? username,
       };
     })
@@ -53,13 +64,12 @@ export async function upsertAdminUserPassword(input: {
     const previousUser = existingIndex >= 0 ? users[existingIndex] : null;
     const isRestored = Boolean(previousUser?.deleted);
     const nextUser: StoredAdminUser = {
+      // The profile and sections stay (a restored account starts afresh).
+      ...(isRestored ? {} : previousUser),
       createdAt: isRestored ? now : previousUser?.createdAt ?? now,
       createdBy: isRestored ? input.actor : previousUser?.createdBy ?? input.actor,
       // Setting a password (re)activates a previously deleted account.
       deleted: false,
-      displayName: previousUser?.displayName,
-      partnerName: previousUser?.partnerName,
-      phone: previousUser?.phone,
       lessonFilter: previousUser?.lessonFilter,
       passwordHash: await hashPassword(input.password),
       role: isRestored ? undefined : previousUser?.role,
@@ -182,6 +192,8 @@ export async function registerUser(input: {
   invitedBy?: string;
   password: string;
   scheduleName?: string;
+  // Asks to be a trainer; the account is a dancer's until approved.
+  trainerRequest?: boolean;
   username: string;
 }) {
   return withUsersLock(async () => {
@@ -223,6 +235,8 @@ export async function registerUser(input: {
         scheduleName: input.scheduleName || undefined,
         passwordHash: await hashPassword(input.password),
         role: "viewer",
+        trainerRequest: input.trainerRequest ? "pending" : undefined,
+        trainerRequestAt: input.trainerRequest ? now : undefined,
         updatedAt: now,
         updatedBy: username,
         username,
@@ -250,7 +264,12 @@ export async function upsertAdminUserRole(input: {
       ...previousUser,
       createdAt: previousUser?.createdAt ?? now,
       createdBy: previousUser?.createdBy ?? input.actor,
+      // A new role brings its preset sections.
+      permissions: undefined,
       role: input.role,
+      // Made a trainer: the request is settled.
+      trainerRequest: input.role === "trainer" ? undefined : previousUser?.trainerRequest,
+      trainerRequestAt: input.role === "trainer" ? undefined : previousUser?.trainerRequestAt,
       updatedAt: now,
       updatedBy: input.actor,
       username: previousUser?.username ?? input.username.trim(),
@@ -267,6 +286,84 @@ export async function upsertAdminUserRole(input: {
     return { role: getAdminRole(nextUser.username, users), username: nextUser.username };
   });
 }
+
+// The sections the account may use (Správa → Uživatelé). Saved as the role's
+// preset when they match one, so later preset changes reach them.
+export async function setUserPermissions(input: {
+  actor: string;
+  permissions: Permissions;
+  role: AdminRole;
+  username: string;
+}) {
+  return withUsersLock(async () => {
+    const now = new Date().toISOString();
+    const key = normalizeUsername(input.username);
+    const users = await readStoredUsers();
+    const previousUser = users.find((user) => normalizeUsername(user.username) === key);
+    const matchesRole = presetOf(input.permissions) === input.role;
+
+    await writeStoredUsers([
+      {
+        ...previousUser,
+        createdAt: previousUser?.createdAt ?? now,
+        createdBy: previousUser?.createdBy ?? input.actor,
+        permissions: matchesRole ? undefined : input.permissions,
+        role: input.role,
+        trainerRequest: input.permissions.lessons === "trainer" ? undefined : previousUser?.trainerRequest,
+        trainerRequestAt: input.permissions.lessons === "trainer" ? undefined : previousUser?.trainerRequestAt,
+        updatedAt: now,
+        updatedBy: input.actor,
+        username: previousUser?.username ?? input.username.trim(),
+      },
+    ]);
+
+    return { permissions: getPermissions(input.username), username: previousUser?.username ?? input.username };
+  });
+}
+
+// The main administrator's answer to a trainer request from the registration:
+// yes makes the account a trainer (own lesson calendar, own hall events).
+export async function decideTrainerRequest(input: { actor: string; approve: boolean; username: string }) {
+  return withUsersLock(async () => {
+    const now = new Date().toISOString();
+    const key = normalizeUsername(input.username);
+    const users = await readStoredUsers();
+    const previousUser = users.find((user) => !user.deleted && normalizeUsername(user.username) === key);
+
+    if (!previousUser || previousUser.trainerRequest !== "pending") {
+      return null;
+    }
+
+    await writeStoredUsers([
+      {
+        ...previousUser,
+        permissions: input.approve ? undefined : previousUser.permissions,
+        role: input.approve ? "trainer" : previousUser.role,
+        trainerRequest: input.approve ? undefined : "declined",
+        trainerRequestAt: input.approve ? undefined : previousUser.trainerRequestAt,
+        updatedAt: now,
+        updatedBy: input.actor,
+      },
+    ]);
+
+    return { username: previousUser.username };
+  });
+}
+
+// Accounts waiting for the main administrator's yes to be a trainer.
+export function getTrainerRequests() {
+  return readStoredAdminUsersSync()
+    .filter((user) => !user.deleted && user.trainerRequest === "pending")
+    .map((user) => ({
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      requestedAt: user.trainerRequestAt,
+      username: user.username,
+    }));
+}
+
+export { rolePermissions };
 
 // The account can no longer log in and its sessions stop working right away.
 // Accounts from server configuration stay hidden until a new password is set.
@@ -309,8 +406,8 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
   const upsert = db.prepare(`
     INSERT INTO admin_users (username_key, username, password_hash, role, lesson_filter,
       deleted, created_at, created_by, updated_at, updated_by, display_name, partner_name, phone, email,
-      schedule_name, first_name, last_name, schedule_link)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      schedule_name, first_name, last_name, schedule_link, permissions, trainer_request, trainer_request_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username_key) DO UPDATE SET
       username = excluded.username, password_hash = excluded.password_hash,
       role = excluded.role, lesson_filter = excluded.lesson_filter,
@@ -318,6 +415,8 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
       partner_name = excluded.partner_name, phone = excluded.phone, email = excluded.email,
       schedule_name = excluded.schedule_name, first_name = excluded.first_name,
       last_name = excluded.last_name, schedule_link = excluded.schedule_link,
+      permissions = excluded.permissions, trainer_request = excluded.trainer_request,
+      trainer_request_at = excluded.trainer_request_at,
       created_at = excluded.created_at, created_by = excluded.created_by,
       updated_at = excluded.updated_at, updated_by = excluded.updated_by
   `);
@@ -343,6 +442,9 @@ async function writeStoredUsers(users: StoredAdminUser[]) {
         user.firstName ?? null,
         user.lastName ?? null,
         user.scheduleLink ?? null,
+        user.permissions ? JSON.stringify(user.permissions) : null,
+        user.trainerRequest ?? null,
+        user.trainerRequestAt ?? null,
       );
     }
   })();

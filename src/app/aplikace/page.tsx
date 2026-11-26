@@ -22,7 +22,7 @@ export default async function AplikacePage() {
 
   return (
     <AppInstallPage
-      initialSession={access ? { role: access.role, username: access.username } : null}
+      initialSession={access ? { permissions: access.permissions, role: access.role, username: access.username } : null}
       qrSvg={qrSvg}
     />
   );

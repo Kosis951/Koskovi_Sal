@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireManager, requireSession } from "@/lib/api-auth";
+import { requireHallManager, requireSession } from "@/lib/api-auth";
 import {
   getTimeRangeError,
   isDateKey,
@@ -32,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;
@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;

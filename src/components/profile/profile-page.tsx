@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { LoginForm } from "@/components/dashboard/login-form";
 import { AppHeader, profileChangeEvent, type HeaderSession } from "@/components/ui/app-header";
+import { can } from "@/lib/permissions";
+import { RegisterForm } from "@/components/profile/register-form";
 import { DeleteAccountForm } from "@/components/ui/delete-account-form";
 import { PasswordChangeForm } from "@/components/ui/password-change-form";
 import { buttonPrimary, eyebrow, noticeTone, pageContainer } from "@/components/ui/styles";
@@ -50,15 +52,25 @@ export function ProfilePage({
             <h1 className="mt-1 text-2xl font-black sm:text-3xl">Můj profil</h1>
           </div>
           {!initialSession ? (
-            <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
-              <LoginForm onLogin={login} />
-            </section>
+            <>
+              <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+                <LoginForm onLogin={login} />
+              </section>
+              <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+                <h2 className="text-lg font-black">Nemáš účet?</h2>
+                <p className="mb-3 mt-1 text-sm text-ink-muted">
+                  Kalendář sálu a rozpis vidíš i bez něj. S účtem uvidíš trenéry, objednáš lekce a budeš mít přehled o
+                  svých lekcích.
+                </p>
+                <RegisterForm onRegistered={() => router.refresh()} />
+              </section>
+            </>
           ) : (
             <>
               <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
                 <ProfileForm
                   initialProfile={initialProfile}
-                  isTrainer={initialSession.role === "trainer"}
+                  isTrainer={can.haveLessonCalendar(initialSession)}
                 />
               </section>
               <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">

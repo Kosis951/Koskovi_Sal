@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireManager } from "@/lib/api-auth";
+import { requireScheduleEditor } from "@/lib/api-auth";
 import { setScheduleRequestStatus } from "@/lib/schedule-requests-db";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 // { status: "done" | "pending" } – mark a request dealt with (or reopen it).
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const auth = await requireManager();
+  const auth = await requireScheduleEditor();
 
   if (auth.error) {
     return auth.error;

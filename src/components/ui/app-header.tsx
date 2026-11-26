@@ -22,10 +22,13 @@ import { NavDropdown } from "@/components/ui/nav-dropdown";
 import { pageContainer } from "@/components/ui/styles";
 import { getAdminSession, type AdminRole } from "@/lib/admin-auth-client";
 import { appSiteUrl } from "@/lib/app-site";
+import { can, type Permissions } from "@/lib/permissions";
 
 export type HeaderSession = {
   // Profile name; the header fetches it itself when a page does not pass it.
   displayName?: string | null;
+  // What the account may do; without it, the role's preset.
+  permissions?: Permissions | null;
   role: AdminRole | null;
   username: string | null;
 } | null;
@@ -45,7 +48,8 @@ export function AppHeader({
   onLogout: () => void;
   session: HeaderSession;
 }) {
-  const canManage = session?.role === "admin" || session?.role === "manager";
+  const canManage = Boolean(session?.username) && can.administer(session);
+  const seesLessons = Boolean(session?.username) && can.seeLessons(session);
   // From 640px the sections are tabs; phones get them as a dropdown.
   const tabClass = (isActive: boolean) =>
     `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm font-semibold transition ${
@@ -53,7 +57,7 @@ export function AppHeader({
     }`;
   const phoneSections = [
     { active: activeTab === "hall", href: "/", icon: CalendarDays, label: "Kalendář sálu" },
-    ...(session ? [{ active: activeTab === "lessons", href: "/lekce", icon: GraduationCap, label: "Lekce" }] : []),
+    ...(seesLessons ? [{ active: activeTab === "lessons", href: "/lekce", icon: GraduationCap, label: "Lekce" }] : []),
     { active: activeTab === "schedule", href: "/rozpis", icon: ClipboardList, label: "Externí trenér" },
     {
       active: activeTab === "app",
@@ -95,7 +99,7 @@ export function AppHeader({
             Kalendář sálu
           </Link>
           {/* Trainers' lesson calendars are for signed-in people only. */}
-          {session ? (
+          {seesLessons ? (
             <Link className={tabClass(activeTab === "lessons")} href="/lekce">
               Lekce
             </Link>
@@ -137,6 +141,7 @@ export function AppHeader({
               displayName={session.displayName ?? undefined}
               onChangePassword={onChangePassword}
               onLogout={onLogout}
+              permissions={session.permissions ?? null}
               role={session.role}
               username={session.username}
             />
@@ -163,12 +168,14 @@ function AccountMenu({
   displayName,
   onChangePassword,
   onLogout,
+  permissions,
   role,
   username,
 }: {
   displayName?: string;
   onChangePassword?: () => void;
   onLogout: () => void;
+  permissions: Permissions | null;
   role: AdminRole | null;
   username: string;
 }) {
@@ -176,7 +183,8 @@ function AccountMenu({
   // The profile name for this account, fetched here unless the page passed it.
   const [fetched, setFetched] = useState<{ name: string; username: string } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const canManage = role === "admin" || role === "manager";
+  const canManage = can.administer({ permissions, role });
+  const canManageUsers = can.manageUsers({ permissions, role });
   const itemClass =
     "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-ink transition hover:bg-subtle";
   const shownName = displayName ?? (fetched?.username === username ? fetched.name : username);
@@ -271,7 +279,7 @@ function AccountMenu({
               Správa
             </Link>
           ) : null}
-          {role === "admin" ? (
+          {canManageUsers ? (
             <Link
               className={itemClass}
               href="/admin/users"

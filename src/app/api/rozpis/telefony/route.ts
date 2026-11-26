@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireManager } from "@/lib/api-auth";
+import { requireScheduleEditor } from "@/lib/api-auth";
 import { getContactPhones, setContactPhone } from "@/lib/contact-phones-db";
 import { maxPhoneInputLength, normalizePhone } from "@/lib/whatsapp";
 
@@ -9,7 +9,7 @@ const maxNameLength = 60;
 
 // Phone numbers of the people in the public schedule – hall managers only.
 export async function GET() {
-  const auth = await requireManager();
+  const auth = await requireScheduleEditor();
 
   if (auth.error) {
     return auth.error;
@@ -23,7 +23,7 @@ export async function GET() {
 
 // { name, phone } – an empty phone removes the number.
 export async function PUT(request: NextRequest) {
-  const auth = await requireManager();
+  const auth = await requireScheduleEditor();
 
   if (auth.error) {
     return auth.error;

@@ -7,6 +7,7 @@ import {
   isMainAdmin,
   type AdminAccess,
 } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 
 type AuthResult =
   | { access: AdminAccess; error?: never }
@@ -26,19 +27,35 @@ export async function requireSession(): Promise<AuthResult> {
   return { access };
 }
 
-export async function requireManager(): Promise<AuthResult> {
+// The signed-in account, if it may use that part (permissions.ts).
+async function requirePermission(allowed: (access: AdminAccess) => boolean, message: string): Promise<AuthResult> {
   const result = await requireSession();
 
-  if (result.error || canManageBookings(result.access)) {
+  if (result.error || allowed(result.access)) {
     return result;
   }
 
-  return {
-    error: NextResponse.json(
-      { message: "Tento účet nemá přístup ke správě akcí." },
-      { status: 403 },
-    ),
-  };
+  return { error: NextResponse.json({ message }, { status: 403 }) };
+}
+
+// Every hall event, the regular trainings and the holidays.
+export function requireHallManager() {
+  return requirePermission(canManageBookings, "Tento účet nemá přístup ke správě akcí.");
+}
+
+// The visiting trainer's schedule and the dancers' requests about it.
+export function requireScheduleEditor() {
+  return requirePermission(can.editSchedule, "Tento účet nemůže upravovat rozpis.");
+}
+
+// The overview and the history of changes.
+export function requireStatsViewer() {
+  return requirePermission(can.seeStats, "Tento účet nemá přístup k historii změn.");
+}
+
+// Accounts, their sections and trainer requests.
+export function requireUserManager() {
+  return requirePermission(can.manageUsers, "Tento účet nemůže spravovat uživatele.");
 }
 
 // Hall managers and trainers may add bookings to the hall calendar.

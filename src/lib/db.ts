@@ -17,7 +17,7 @@ export type Database = {
   transaction: <T extends (...args: never[]) => unknown>(fn: T) => T;
 };
 
-const schemaVersion = 18;
+const schemaVersion = 19;
 
 // Regular trainings that existed before they became editable. `weekday` is
 // ISO (1 = Monday … 7 = Sunday); `alternate_title` is used every other week.
@@ -145,6 +145,10 @@ function migrate(db: Database) {
       migrateToV18(db);
     }
 
+    if (version < 19) {
+      migrateToV19(db);
+    }
+
     db.pragma(`user_version = ${schemaVersion}`);
   })();
 }
@@ -152,6 +156,16 @@ function migrate(db: Database) {
 // Devices with the native app that receive notifications: iPhones by their
 // APNs token (platform "ios"), Android phones by their Firebase token
 // ("android"); topics as in push_subscriptions.
+// What each account may do, section by section (see permissions.ts; empty:
+// the role's preset), and a trainer's request from the registration.
+function migrateToV19(db: Database) {
+  db.exec(`
+    ALTER TABLE admin_users ADD COLUMN permissions TEXT;
+    ALTER TABLE admin_users ADD COLUMN trainer_request TEXT;
+    ALTER TABLE admin_users ADD COLUMN trainer_request_at TEXT;
+  `);
+}
+
 // First name and surname of the account (lessons in the visiting trainer's
 // schedule are linked by them), whether the dancer confirmed that link
 // ("confirmed" / "declined"), and partnerships between two accounts that then

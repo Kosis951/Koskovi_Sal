@@ -9,6 +9,7 @@ import {
 import { promisify } from "node:util";
 import type { ReadonlyRequestCookies } from "next/dist/server/web/spec-extension/adapters/request-cookies";
 import { getDb } from "@/lib/db";
+import { can, rolePermissions, sanitizePermissions, type Permissions } from "@/lib/permissions";
 
 export const adminSessionCookie = "koskovi_admin_session";
 export const adminSessionMaxAgeSeconds = 60 * 60 * 8;
@@ -65,13 +66,20 @@ export type StoredAdminUser = {
   phone?: string;
   lessonFilter?: LessonFilter;
   passwordHash?: string;
+  // Sections set by the main administrator; without them the role's preset.
+  permissions?: Permissions;
   role?: AdminRole;
+  // Asked at registration to be a trainer: "pending" until the main
+  // administrator decides, "declined" after a no.
+  trainerRequest?: "pending" | "declined";
+  trainerRequestAt?: string;
   updatedAt?: string;
   updatedBy?: string;
   username: string;
 };
 
 export type AdminAccess = {
+  permissions: Permissions;
   role: AdminRole;
   username: string;
 };
@@ -253,24 +261,46 @@ export function getAdminAccessFromSession(value?: string): AdminAccess | null {
   }
 
   return {
+    permissions: getPermissions(username, storedUsers),
     role: getAdminRole(username, storedUsers),
     username,
   };
+}
+
+// What the account may do: the main administrator everything, others their
+// stored sections or their role's preset.
+export function getPermissions(
+  username: string,
+  storedUsers: StoredAdminUser[] = readStoredAdminUsersSync(),
+): Permissions {
+  const role = getAdminRole(username, storedUsers);
+
+  if (role === "admin") {
+    return rolePermissions("admin");
+  }
+
+  const key = normalizeUsername(username);
+  const stored = storedUsers.find((user) => normalizeUsername(user.username) === key)?.permissions;
+
+  return stored ? sanitizePermissions(stored, rolePermissions(role)) : rolePermissions(role);
 }
 
 export function getAdminAccess(cookies: ReadonlyRequestCookies) {
   return getAdminAccessFromSession(cookies.get(adminSessionCookie)?.value);
 }
 
+// Every event in the hall calendar, the regular trainings and the holidays.
 export function canManageBookings(access: AdminAccess | null) {
-  return access?.role === "admin" || access?.role === "manager";
+  return can.manageHall(access);
 }
 
-// Trainers may add hall bookings and change the ones they added themselves.
+// Adds hall events and changes the ones the account added itself.
 export function canAddBookings(access: AdminAccess | null) {
-  return canManageBookings(access) || access?.role === "trainer";
+  return can.addHallEvents(access);
 }
 
+// The one account defined as the main administrator (it cannot be changed or
+// deleted by others).
 export function isMainAdmin(access: AdminAccess | null) {
   return access?.role === "admin";
 }
@@ -427,7 +457,10 @@ type AdminUserRow = {
   phone: string | null;
   lesson_filter: string | null;
   password_hash: string | null;
+  permissions: string | null;
   role: AdminRole | null;
+  trainer_request: string | null;
+  trainer_request_at: string | null;
   updated_at: string | null;
   updated_by: string | null;
   username: string;
@@ -453,7 +486,11 @@ export function readStoredAdminUsersSync(): StoredAdminUser[] {
     phone: row.phone ?? undefined,
     lessonFilter: row.lesson_filter ? (JSON.parse(row.lesson_filter) as LessonFilter) : undefined,
     passwordHash: row.password_hash ?? undefined,
+    permissions: row.permissions ? (JSON.parse(row.permissions) as Permissions) : undefined,
     role: row.role ?? undefined,
+    trainerRequest:
+      row.trainer_request === "pending" || row.trainer_request === "declined" ? row.trainer_request : undefined,
+    trainerRequestAt: row.trainer_request_at ?? undefined,
     updatedAt: row.updated_at ?? undefined,
     updatedBy: row.updated_by ?? undefined,
     username: row.username,

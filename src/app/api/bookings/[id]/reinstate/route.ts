@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { appendAuditLog } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireHallManager } from "@/lib/api-auth";
 import { reinstateRecurringBooking } from "@/lib/bookings-db";
 
 type RouteContext = {
@@ -10,7 +10,7 @@ type RouteContext = {
 export const dynamic = "force-dynamic";
 
 export async function POST(_request: Request, context: RouteContext) {
-  const auth = await requireManager();
+  const auth = await requireHallManager();
 
   if (auth.error) {
     return auth.error;

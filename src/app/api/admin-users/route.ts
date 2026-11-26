@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireMainAdmin } from "@/lib/api-auth";
-import { getAdminRole, normalizeUsername, sanitizeRole } from "@/lib/auth";
+import { requireUserManager } from "@/lib/api-auth";
+import { getAdminRole, isMainAdmin, normalizeUsername, sanitizeRole } from "@/lib/auth";
 import {
+  decideTrainerRequest,
   deleteAdminUser,
   getAdminUsers,
+  getTrainerRequests,
+  setUserPermissions,
   upsertAdminUserPassword,
   upsertAdminUserRole,
 } from "@/lib/admin-users-db";
+import { rolePermissions, sanitizePermissions } from "@/lib/permissions";
+import { sendToUsers } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -14,20 +19,77 @@ const maxUsernameLength = 60;
 const maxPasswordLength = 200;
 
 export async function GET() {
-  const auth = await requireMainAdmin();
+  const auth = await requireUserManager();
 
   if (auth.error) {
     return auth.error;
   }
 
   return NextResponse.json(
-    { users: await getAdminUsers() },
+    { trainerRequests: getTrainerRequests(), users: await getAdminUsers() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
 
+// { username, role, permissions } – the account's sections (role: the preset
+// it is based on); or { username, trainerRequest: "approve" | "decline" }.
+// The main administrator's account and one's own stay as they are.
+export async function PATCH(request: NextRequest) {
+  const auth = await requireUserManager();
+
+  if (auth.error) {
+    return auth.error;
+  }
+
+  const actor = auth.access.username;
+  const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const username = typeof payload?.username === "string" ? payload.username.trim() : "";
+
+  if (!username) {
+    return NextResponse.json({ message: "Zadej uživatele." }, { status: 400 });
+  }
+
+  if (getAdminRole(username) === "admin" || normalizeUsername(username) === normalizeUsername(actor)) {
+    return NextResponse.json({ message: "Práva hlavního správce ani svoje měnit nejde." }, { status: 400 });
+  }
+
+  if (payload?.trainerRequest === "approve" || payload?.trainerRequest === "decline") {
+    const approve = payload.trainerRequest === "approve";
+    const decided = await decideTrainerRequest({ actor, approve, username });
+
+    if (!decided) {
+      return NextResponse.json({ message: "Žádost už nečeká." }, { status: 404 });
+    }
+
+    // Tell the trainer on their phone (when they have the app).
+    void sendToUsers([decided.username], {
+      body: approve
+        ? "Máš svůj kalendář lekcí: v záložce Lekce nastav časy výuky."
+        : "Žádost o trenérský účet nebyla schválena. Účet ti zůstává jako tanečníkovi.",
+      tag: "trainer-request",
+      title: approve ? "Jsi trenér v TK Koškovi" : "Trenérský účet",
+      url: "/lekce",
+    }).catch(() => undefined);
+
+    return NextResponse.json({
+      message: approve ? `${decided.username} je teď trenér.` : `Žádost ${decided.username} je zamítnutá.`,
+    });
+  }
+
+  const role = sanitizeRole(payload?.role);
+
+  if (!role) {
+    return NextResponse.json({ message: "Neplatná role." }, { status: 400 });
+  }
+
+  const permissions = sanitizePermissions(payload?.permissions, rolePermissions(role));
+  const user = await setUserPermissions({ actor, permissions, role, username });
+
+  return NextResponse.json({ message: "Práva jsou uložená.", user });
+}
+
 export async function POST(request: NextRequest) {
-  const auth = await requireMainAdmin();
+  const auth = await requireUserManager();
 
   if (auth.error) {
     return auth.error;
@@ -53,6 +115,11 @@ export async function POST(request: NextRequest) {
 
   if (payload.role !== undefined && !role) {
     return NextResponse.json({ message: "Neplatná role." }, { status: 400 });
+  }
+
+  // Only the main administrator may touch their own account.
+  if (getAdminRole(username) === "admin" && !isMainAdmin(auth.access)) {
+    return NextResponse.json({ message: "Účet hlavního správce měnit nejde." }, { status: 403 });
   }
 
   if (role && normalizeUsername(username) === normalizeUsername(actor)) {
@@ -97,7 +164,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireMainAdmin();
+  const auth = await requireUserManager();
 
   if (auth.error) {
     return auth.error;

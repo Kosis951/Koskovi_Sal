@@ -1,3 +1,4 @@
+import { can, type Permissions } from "@/lib/permissions";
 import { randomUUID } from "node:crypto";
 import { getAdminUsers } from "@/lib/admin-users-db";
 import { createNameLookup, normalizeUsername, readStoredAdminUsersSync } from "@/lib/auth";
@@ -139,18 +140,22 @@ const pragueFormatter = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
 });
 
-// Accounts with the trainer role, by their display name.
+// Accounts with an own lesson calendar (permissions.ts), by their name.
 export async function getTrainers() {
   return (await getAdminUsers())
-    .filter((user) => user.role === "trainer")
+    .filter((user) => user.permissions.lessons === "trainer")
     .map((user) => user.username);
 }
 
 // Trainers with the name to show (profile name, else the account name), as
 // the viewer may see them: a trainer only gets their own calendar.
-export async function getTrainerList(viewer?: { role: string; username: string }) {
+export async function getTrainerList(viewer?: { permissions: Permissions; username: string }) {
   const names = createNameLookup();
-  const viewerKey = viewer?.role === "trainer" ? normalizeUsername(viewer.username) : null;
+  const viewerKey = can.haveLessonCalendar(viewer) ? normalizeUsername(viewer!.username) : null;
+
+  if (viewer && !can.seeLessons(viewer)) {
+    return [];
+  }
 
   return (await getTrainers())
     .filter((trainer) => !viewerKey || normalizeUsername(trainer) === viewerKey)

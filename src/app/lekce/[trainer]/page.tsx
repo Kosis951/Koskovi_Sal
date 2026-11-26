@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { TrainerCalendarPage } from "@/components/lessons/trainer-calendar";
 import { getAdminAccess, normalizeUsername } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,13 @@ export default async function TrainerLessonsPage({
   const trainer = decodeURIComponent((await params).trainer);
 
   // A trainer has only their own calendar.
-  if (access?.role === "trainer" && normalizeUsername(trainer) !== normalizeUsername(access.username)) {
+  if (access && can.haveLessonCalendar(access) && normalizeUsername(trainer) !== normalizeUsername(access.username)) {
     redirect(`/lekce/${encodeURIComponent(access.username)}`);
   }
 
   return (
     <TrainerCalendarPage
-      initialSession={access ? { role: access.role, username: access.username } : null}
+      initialSession={access ? { permissions: access.permissions, role: access.role, username: access.username } : null}
       trainer={trainer}
     />
   );

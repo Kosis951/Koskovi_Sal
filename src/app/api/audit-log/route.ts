@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { readAuditLog } from "@/lib/audit-log";
-import { requireManager } from "@/lib/api-auth";
+import { requireStatsViewer } from "@/lib/api-auth";
 
 export async function GET() {
-  const auth = await requireManager();
+  const auth = await requireStatsViewer();
 
   if (auth.error) {
     return auth.error;

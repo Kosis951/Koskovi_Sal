@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireManager } from "@/lib/api-auth";
+import { requireScheduleEditor } from "@/lib/api-auth";
 import { getClientIp } from "@/lib/login-rate-limit";
 import {
   cancelUntilKey,
@@ -30,7 +30,7 @@ const pragueNow = new Intl.DateTimeFormat("en-CA", {
 
 // All requests – hall managers only.
 export async function GET() {
-  const auth = await requireManager();
+  const auth = await requireScheduleEditor();
 
   if (auth.error) {
     return auth.error;
