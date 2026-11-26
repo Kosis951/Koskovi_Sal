@@ -25,6 +25,8 @@ Bez nich se APK podepíše ladicím klíčem stroje, na kterém se sestavuje.
 
 ## Upozornění (Firebase Cloud Messaging)
 
+Projekt ve Firebase: `tk-koskovi` (účet klubu, tarif Spark zdarma).
+
 Upozornění chodí přes Google, stejně jako na iPhonu přes Apple; nic dalšího se
 do telefonu instalovat nemusí.
 
