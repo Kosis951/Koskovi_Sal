@@ -29,8 +29,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 
 class ScheduleModel {
     var schedule by mutableStateOf<PublicScheduleResponse?>(null)
@@ -44,11 +42,16 @@ class ScheduleModel {
     // The server's list of the dancer's lessons (null: an older web).
     val mineKeys: Set<String>? get() = schedule?.mine?.toSet()
 
-    // Requests to cancel or move a lesson are accepted a day from publishing.
-    val requestsUntil: Instant?
-        get() = schedule?.publishedAt?.let { Dates.instant(it) }?.plus(1, ChronoUnit.DAYS)
+    // A lesson can be asked to be cancelled until a week before the visiting
+    // trainer's first day, and to be moved until two days before it (the
+    // organiser may not manage it). Later only in person with the organiser.
+    // The web checks the same.
+    val cancelUntil: String?
+        get() = days.mapNotNull { it.dateKey }.minOrNull()?.let { Dates.addDays(-7, it) }
 
-    val canRequest get() = requestsUntil?.let { Instant.now() < it } == true
+    val canCancel get() = cancelUntil?.let { Dates.todayKey() <= it } == true
+
+    fun canMove(date: String) = Dates.todayKey() <= Dates.addDays(-2, date)
 
     suspend fun load() {
         runCatching { Api.get<PublicScheduleResponse>("/api/rozpis") }
@@ -168,16 +171,15 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
             }
         }
 
-        val until = model.requestsUntil
-        if (until != null) {
+        if (model.days.isNotEmpty()) {
             item {
                 Card {
                     Muted(
-                        if (model.canRequest) {
-                            "Nemůžeš na lekci? Klepni na svůj řádek a pošli žádost o zrušení nebo přesun – jde to do ${Dates.dateTime(until.toString())}."
+                        (if (model.canCancel) {
+                            "Nemůžeš na lekci? Klepni na svůj řádek: zrušit ji jde do ${model.cancelUntil?.let { Dates.dayTitle(it) }} (týden před příjezdem trenéra), "
                         } else {
-                            "Zrušit nebo přesunout lekci šlo den od zveřejnění rozpisu. Teď se ozvi přímo správcům."
-                        },
+                            "Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra). "
+                        }) + "o přesun můžeš požádat nejpozději 2 dny před lekcí – nemusí ale vyjít. Potom už jen po osobní domluvě s organizátorem.",
                     )
                 }
             }
@@ -196,7 +198,8 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
                         val past = isPast(day, row)
                         val current = day.dateKey == today && row.start != null && row.end != null &&
                             Dates.minutes(row.start) <= now && now < Dates.minutes(row.end)
-                        val canRequest = model.canRequest && row.kind == RowKind.Lesson && !past
+                        val canRequest = row.kind == RowKind.Lesson && !past && day.dateKey != null &&
+                            (model.canCancel || model.canMove(day.dateKey))
                         ScheduleRowView(row, past, current, isMine(day, row)) {
                             if (canRequest) requesting = RowRef(day, row)
                         }
@@ -207,7 +210,8 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
     }
 
     requesting?.let { ref ->
-        ScheduleRequestSheet(ref, session, onDismiss = { requesting = null }) { message ->
+        val date = ref.day.dateKey.orEmpty()
+        ScheduleRequestSheet(ref, session, model.canCancel, model.canMove(date), onDismiss = { requesting = null }) { message ->
             notice = message
             requesting = null
         }
@@ -260,9 +264,17 @@ internal fun ScheduleRowView(row: ScheduleRow, past: Boolean, current: Boolean, 
 }
 
 @Composable
-private fun ScheduleRequestSheet(ref: RowRef, session: SessionModel, onDismiss: () -> Unit, onDone: (String) -> Unit) {
+private fun ScheduleRequestSheet(
+    ref: RowRef,
+    session: SessionModel,
+    canCancel: Boolean,
+    canMove: Boolean,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit,
+) {
     val scope = rememberCoroutineScope()
-    var kind by remember { mutableStateOf("cancel") }
+    var kind by remember { mutableStateOf(if (canCancel) "cancel" else "move") }
+    val kinds = listOfNotNull(if (canCancel) "cancel" to "Zrušit" else null, if (canMove) "move" to "Přesunout" else null)
     var preferred by remember { mutableStateOf("") }
     var name by remember { mutableStateOf(session.displayName) }
     var phone by remember { mutableStateOf("") }
@@ -303,8 +315,23 @@ private fun ScheduleRequestSheet(ref: RowRef, session: SessionModel, onDismiss: 
         },
     ) {
         Card {
-            ChoicePills(listOf("cancel" to "Zrušit", "move" to "Přesunout"), kind) { kind = it }
+            if (kinds.size > 1) {
+                ChoicePills(kinds, kind) { kind = it }
+            }
+            if (!canCancel) {
+                Muted("Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra) – jen po osobní domluvě s organizátorem.")
+            }
             if (kind == "move") {
+                Text(
+                    "Přesun nemusí jít – záleží na volných časech trenéra. Dokud ho nepotvrdíme, lekce platí.",
+                    color = P.cleanup.ink,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(P.cleanup.background, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                )
                 Field("Kdy by ti to šlo", preferred, { preferred = it }, placeholder = "např. po 16:00")
             }
         }

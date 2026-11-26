@@ -6,8 +6,7 @@ export type PublicSchedule = {
   // The blocks in the hall calendar cancel regular trainings at that time.
   cancelTrainings: boolean;
   published: boolean;
-  // When it was last made public; requests to cancel or move a lesson are
-  // accepted for a day from then (see scheduleRequestDeadline).
+  // When it was last made public.
   publishedAt?: string;
   title: string;
   updatedAt?: string;

@@ -9,16 +9,17 @@ import { AppHeader, type HeaderSession } from "@/components/ui/app-header";
 import { Sheet } from "@/components/ui/sheet";
 import { buttonPrimary, chipClass, eyebrow, noticeTone, pageContainer } from "@/components/ui/styles";
 import { logoutAdmin } from "@/lib/admin-auth-client";
-import { lessonKey, type ScheduleDay } from "@/lib/public-schedule";
+import {
+  cancelUntilKey,
+  formatDayKey,
+  lessonKey,
+  lessonRequestKinds,
+  type LessonRequestKinds,
+  type ScheduleDay,
+} from "@/lib/public-schedule";
 
 const lessonDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "long" });
-const deadlineFormatter = new Intl.DateTimeFormat("cs-CZ", {
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  month: "numeric",
-  weekday: "short",
-});
+const pragueDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" });
 
 // /rozpis: a visiting trainer's lessons for everyone, without signing in.
 export function PublicSchedulePage({
@@ -27,7 +28,7 @@ export function PublicSchedulePage({
   initialSession,
   isDraft,
   pendingKeys: initialPendingKeys,
-  requestsUntil,
+  requestsOpen,
   title,
 }: {
   canEdit: boolean;
@@ -37,9 +38,9 @@ export function PublicSchedulePage({
   isDraft: boolean;
   // Lessons someone already asked to cancel or move (lessonKey).
   pendingKeys: string[];
-  // Until when lessons can be asked to be cancelled or moved (a day from
-  // publishing); null when not at all.
-  requestsUntil: string | null;
+  // Whether lessons can be asked to be cancelled or moved (published); which
+  // of the two depends on the date (lessonRequestKinds).
+  requestsOpen: boolean;
   title: string;
 }) {
   const [session, setSession] = useState(initialSession);
@@ -48,8 +49,10 @@ export function PublicSchedulePage({
   const [requestLesson, setRequestLesson] = useState<ScheduleLesson | null>(null);
   const [notice, setNotice] = useState("");
   const now = useNow();
-  const deadline = requestsUntil ? new Date(requestsUntil) : null;
-  const canRequest = !isDraft && Boolean(now && deadline && now < deadline);
+  const canRequest = !isDraft && requestsOpen && Boolean(now);
+  const todayKey = now ? pragueDate.format(now) : "";
+  const kindsFor = (date: string) => lessonRequestKinds(days, date, todayKey);
+  const cancelUntil = cancelUntilKey(days);
 
   async function logout() {
     await logoutAdmin();
@@ -95,15 +98,21 @@ export function PublicSchedulePage({
                 </p>
               ) : null}
               <ScheduleView
+                canRequest={(lesson) => {
+                  const kinds = kindsFor(lesson.date);
+                  return kinds.cancel || kinds.move;
+                }}
                 days={days}
                 onRequest={canRequest ? setRequestLesson : undefined}
                 pendingKeys={pendingKeys}
               />
-              {isDraft || !now || !deadline ? null : (
+              {!canRequest ? null : (
                 <p className="text-xs text-ink-soft">
-                  {canRequest
-                    ? `Nemůžeš na lekci? Klikni na křížek u svého řádku a pošli žádost o zrušení nebo přesun – jde to do ${deadlineFormatter.format(deadline)}.`
-                    : "Zrušit nebo přesunout lekci šlo den od zveřejnění rozpisu. Teď se ozvi přímo správcům."}
+                  {cancelUntil && todayKey <= cancelUntil
+                    ? `Nemůžeš na lekci? Klikni na křížek u svého řádku: zrušit ji jde do ${formatDayKey(cancelUntil)} (týden před příjezdem trenéra), `
+                    : "Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra). "}
+                  o přesun můžeš požádat nejpozději 2 dny před lekcí – nemusí ale vyjít. Potom už jen po osobní domluvě s
+                  organizátorem.
                 </p>
               )}
             </>
@@ -121,6 +130,7 @@ export function PublicSchedulePage({
         {requestLesson ? (
           <RequestForm
             key={lessonKey(requestLesson)}
+            kinds={kindsFor(requestLesson.date)}
             lesson={requestLesson}
             onSent={(message) => {
               setPendingKeys((current) => new Set(current).add(lessonKey(requestLesson)));
@@ -136,8 +146,16 @@ export function PublicSchedulePage({
 
 // Asks the hall managers to cancel a lesson or move it; nothing in the
 // schedule changes until they do.
-function RequestForm({ lesson, onSent }: { lesson: ScheduleLesson; onSent: (message: string) => void }) {
-  const [kind, setKind] = useState<"cancel" | "move">("cancel");
+function RequestForm({
+  kinds,
+  lesson,
+  onSent,
+}: {
+  kinds: LessonRequestKinds;
+  lesson: ScheduleLesson;
+  onSent: (message: string) => void;
+}) {
+  const [kind, setKind] = useState<"cancel" | "move">(kinds.cancel ? "cancel" : "move");
   const [preferred, setPreferred] = useState("");
   const [requesterName, setRequesterName] = useState(lesson.lessonName);
   const [phone, setPhone] = useState("");
@@ -190,13 +208,27 @@ function RequestForm({ lesson, onSent }: { lesson: ScheduleLesson; onSent: (mess
         </p>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        <button aria-pressed={kind === "cancel"} className={chipClass(kind === "cancel")} onClick={() => setKind("cancel")} type="button">
-          Zrušit lekci
-        </button>
-        <button aria-pressed={kind === "move"} className={chipClass(kind === "move")} onClick={() => setKind("move")} type="button">
-          Přesunout na jiný čas
-        </button>
+        {kinds.cancel ? (
+          <button aria-pressed={kind === "cancel"} className={chipClass(kind === "cancel")} onClick={() => setKind("cancel")} type="button">
+            Zrušit lekci
+          </button>
+        ) : null}
+        {kinds.move ? (
+          <button aria-pressed={kind === "move"} className={chipClass(kind === "move")} onClick={() => setKind("move")} type="button">
+            Přesunout na jiný čas
+          </button>
+        ) : null}
       </div>
+      {!kinds.cancel ? (
+        <p className="text-xs text-ink-soft">
+          Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra) – jen po osobní domluvě s organizátorem.
+        </p>
+      ) : null}
+      {kind === "move" ? (
+        <p className={`rounded-lg border px-3 py-2 text-sm font-semibold ${noticeTone.warning}`}>
+          Přesun nemusí jít – záleží na volných časech trenéra. Dokud ho nepotvrdíme, lekce platí.
+        </p>
+      ) : null}
       {kind === "move" ? (
         <label className="field-label">
           Kdy by se ti hodilo

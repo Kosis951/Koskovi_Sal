@@ -14,14 +14,21 @@ final class ScheduleModel {
     // The server's list of the dancer's lessons (nil: an older web).
     var mineKeys: Set<String>? { schedule?.mine.map(Set.init) }
 
-    // Requests to cancel or move a lesson are accepted a day from publishing.
-    var requestsUntil: Date? {
-        schedule?.publishedAt.flatMap(Dates.isoDate).map { $0.addingTimeInterval(24 * 60 * 60) }
+    // A lesson can be asked to be cancelled until a week before the visiting
+    // trainer's first day, and to be moved until two days before it (the
+    // organiser may not manage it). Later only in person with the organiser.
+    // The web checks the same.
+    var cancelUntil: String? {
+        days.compactMap(\.dateKey).min().map { Dates.addDays(-7, to: $0) }
     }
 
-    var canRequest: Bool {
-        guard let requestsUntil else { return false }
-        return Date() < requestsUntil
+    var canCancel: Bool {
+        guard let cancelUntil else { return false }
+        return Dates.todayKey() <= cancelUntil
+    }
+
+    func canMove(_ date: String) -> Bool {
+        Dates.todayKey() <= Dates.addDays(-2, to: date)
     }
 
     func load() async {
@@ -93,18 +100,14 @@ struct ScheduleScreen: View {
                         .tourTarget(.scheduleMine)
                     }
 
-                    if let until = model.requestsUntil {
+                    if model.isPublished, !model.days.isEmpty {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: model.canRequest ? "arrow.left.arrow.right.circle.fill" : "info.circle.fill")
+                            Image(systemName: "arrow.left.arrow.right.circle.fill")
                                 .font(.title3)
                                 .foregroundStyle(Theme.accent)
-                            Text(
-                                model.canRequest
-                                    ? "Nemůžeš na lekci? Klepni na svůj řádek a pošli žádost o zrušení nebo přesun – jde to do \(until.formatted(.dateTime.weekday(.abbreviated).day().month(.defaultDigits).hour().minute().locale(Dates.czech)))."
-                                    : "Zrušit nebo přesunout lekci šlo den od zveřejnění rozpisu. Teď se ozvi přímo správcům."
-                            )
-                            .font(.footnote)
-                            .foregroundStyle(Theme.inkMuted)
+                            Text(requestRules)
+                                .font(.footnote)
+                                .foregroundStyle(Theme.inkMuted)
                         }
                         .card(padding: 14)
                     }
@@ -161,7 +164,12 @@ struct ScheduleScreen: View {
                 }
             }
             .sheet(item: $requestRow) { target in
-                ScheduleRequestView(date: target.date, row: target.row) { message in
+                ScheduleRequestView(
+                    date: target.date,
+                    row: target.row,
+                    canCancel: model.canCancel,
+                    canMove: model.canMove(target.date)
+                ) { message in
                     notice = message
                 }
             }
@@ -291,7 +299,16 @@ struct ScheduleScreen: View {
     }
 
     private func canAsk(day: String?, row: ScheduleRow) -> Bool {
-        model.canRequest && row.kind == .lesson && !isPast(day: day, row: row)
+        guard model.isPublished, let day, row.kind == .lesson, !isPast(day: day, row: row) else { return false }
+        return model.canCancel || model.canMove(day)
+    }
+
+    private var requestRules: String {
+        let cancel = model.cancelUntil.map(Dates.dayTitle) ?? ""
+        let start = model.canCancel
+            ? "Nemůžeš na lekci? Klepni na svůj řádek: zrušit ji jde do \(cancel) (týden před příjezdem trenéra), "
+            : "Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra). "
+        return start + "o přesun můžeš požádat nejpozději 2 dny před lekcí – nemusí ale vyjít. Potom už jen po osobní domluvě s organizátorem."
     }
 }
 
@@ -364,9 +381,11 @@ struct ScheduleRowView: View {
 struct ScheduleRequestView: View {
     let date: String
     let row: ScheduleRow
+    let canCancel: Bool
+    let canMove: Bool
     let onDone: (String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var kind = "cancel"
+    @State private var kind: String
     @State private var name: String
     @State private var preferred = ""
     @State private var phone = ""
@@ -374,16 +393,23 @@ struct ScheduleRequestView: View {
     @State private var isSending = false
     @State private var error: String?
 
-    init(date: String, row: ScheduleRow, onDone: @escaping (String) -> Void) {
+    init(date: String, row: ScheduleRow, canCancel: Bool, canMove: Bool, onDone: @escaping (String) -> Void) {
         self.date = date
         self.row = row
+        self.canCancel = canCancel
+        self.canMove = canMove
         self.onDone = onDone
+        _kind = State(initialValue: canCancel ? "cancel" : "move")
         _name = State(initialValue: row.text)
+    }
+
+    private var kinds: [(String, String)] {
+        (canCancel ? [("cancel", "Zrušit")] : []) + (canMove ? [("move", "Přesunout")] : [])
     }
 
     var body: some View {
         BrandSheet(
-            title: "Zrušit nebo přesunout",
+            title: canCancel ? "Zrušit nebo přesunout" : "Přesunout lekci",
             subtitle: row.text,
             primaryTitle: "Odeslat žádost",
             primaryDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -401,9 +427,20 @@ struct ScheduleRequestView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.training.background))
 
-            VStack(spacing: 14) {
-                ChoicePills(options: [("cancel", "Zrušit"), ("move", "Přesunout")], selection: $kind)
+            VStack(alignment: .leading, spacing: 14) {
+                if kinds.count > 1 {
+                    ChoicePills(options: kinds, selection: $kind)
+                }
+                if !canCancel {
+                    FieldNote(text: "Zrušit lekci už přes rozpis nejde (šlo týden před příjezdem trenéra) – jen po osobní domluvě s organizátorem.")
+                }
                 if kind == "move" {
+                    Label("Přesun nemusí jít – záleží na volných časech trenéra. Dokud ho nepotvrdíme, lekce platí.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.cleanup.ink)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.cleanup.background))
                     FieldBox(label: "Kdy by ti to šlo") {
                         TextField("např. odpoledne po 15:00", text: $preferred)
                     }

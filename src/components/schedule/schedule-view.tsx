@@ -24,14 +24,16 @@ function toDateKey(date: Date) {
 }
 
 // The schedule as one table per day. Today's card is marked, and the row
-// that is on right now gets "Teď". With `onRequest`, lessons still ahead
-// get a cross for asking to cancel or move them; `pendingKeys` (lessonKey)
-// are the ones already asked about.
+// that is on right now gets "Teď". With `onRequest`, lessons still ahead (that
+// `canRequest` allows) get a cross for asking to cancel or move them;
+// `pendingKeys` (lessonKey) are the ones already asked about.
 export function ScheduleView({
+  canRequest,
   days,
   onRequest,
   pendingKeys,
 }: {
+  canRequest?: (lesson: ScheduleLesson) => boolean;
   days: ScheduleDay[];
   onRequest?: (lesson: ScheduleLesson) => void;
   pendingKeys?: Set<string>;
@@ -83,7 +85,7 @@ export function ScheduleView({
                           <span className="whitespace-nowrap rounded-full bg-cleanup px-2 py-0.5 text-[11px] font-semibold text-cleanup-ink">
                             žádost odeslána
                           </span>
-                        ) : (
+                        ) : canRequest && !canRequest(lesson) ? null : (
                           <button
                             aria-label={`Zrušit nebo přesunout lekci ${lesson.start}–${lesson.end} ${lesson.lessonName}`}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition hover:bg-busy hover:text-busy-ink"

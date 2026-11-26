@@ -26,14 +26,51 @@ export type ScheduleDay = {
 export const maxScheduleTitleLength = 80;
 export const maxScheduleBodyLength = 8000;
 
-// Requests to cancel or move a lesson are accepted this long after the
-// schedule is published.
-export const scheduleRequestWindowMs = 24 * 60 * 60 * 1000;
+// A dancer can ask to cancel a lesson until a week before the visiting
+// trainer's first day, and to move one until two days before the lesson (the
+// organiser may not manage it). Later only in person with the organiser.
+export const cancelDaysBefore = 7;
+export const moveDaysBefore = 2;
 
-export function scheduleRequestDeadline(publishedAt?: string) {
-  const published = publishedAt ? Date.parse(publishedAt) : Number.NaN;
+export type LessonRequestKinds = { cancel: boolean; move: boolean };
 
-  return Number.isNaN(published) ? null : new Date(published + scheduleRequestWindowMs);
+export function addDaysToKey(key: string, days: number) {
+  const date = new Date(`${key}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+// The last day lessons can be asked to be cancelled (a week before the
+// schedule's first day); undefined without dates.
+export function cancelUntilKey(days: ScheduleDay[]) {
+  const first = days
+    .map((day) => day.dateKey)
+    .filter((key): key is string => Boolean(key))
+    .sort()[0];
+
+  return first ? addDaysToKey(first, -cancelDaysBefore) : undefined;
+}
+
+// The last day a lesson on `dateKey` can be asked to be moved.
+export function moveUntilKey(dateKey: string) {
+  return addDaysToKey(dateKey, -moveDaysBefore);
+}
+
+// What a dancer can still ask for a lesson on `dateKey`, today being `todayKey`.
+export function lessonRequestKinds(days: ScheduleDay[], dateKey: string, todayKey: string): LessonRequestKinds {
+  const cancelUntil = cancelUntilKey(days);
+
+  return {
+    cancel: Boolean(cancelUntil && todayKey <= cancelUntil),
+    move: todayKey <= moveUntilKey(dateKey),
+  };
+}
+
+const requestDay = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "numeric", weekday: "short" });
+
+// "pá 13. 11."
+export function formatDayKey(key: string) {
+  return requestDay.format(new Date(`${key}T12:00:00`));
 }
 
 const dateLine =

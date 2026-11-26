@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireManager } from "@/lib/api-auth";
 import { getClientIp } from "@/lib/login-rate-limit";
-import { nameKey, parseSchedule, scheduleRequestDeadline } from "@/lib/public-schedule";
+import {
+  cancelUntilKey,
+  formatDayKey,
+  lessonRequestKinds,
+  nameKey,
+  parseSchedule,
+} from "@/lib/public-schedule";
 import { getPublicSchedule } from "@/lib/public-schedule-db";
 import { addScheduleRequest, getScheduleRequests } from "@/lib/schedule-requests-db";
 import { isRateLimited } from "@/lib/simple-rate-limit";
@@ -38,8 +44,9 @@ export async function GET() {
 
 // From the public schedule, without signing in: { date, start, lessonName,
 // kind: "cancel" | "move", preferred?, requesterName, phone?, note? }. Only for
-// a lesson that is in the published schedule and still ahead, and only within
-// a day of publishing.
+// a lesson that is in the published schedule and still ahead: cancelling until
+// a week before the trainer's first day, moving until two days before the
+// lesson (see lessonRequestKinds).
 export async function POST(request: NextRequest) {
   if (isRateLimited(`schedule-request:${getClientIp(request.headers)}`, 10, 60 * 60 * 1000)) {
     return NextResponse.json(
@@ -82,22 +89,17 @@ export async function POST(request: NextRequest) {
 
   // The lesson has to be in the published schedule and not over yet.
   const schedule = getPublicSchedule();
-  const deadline = scheduleRequestDeadline(schedule.publishedAt);
 
-  if (!schedule.published || !deadline || Date.now() > deadline.getTime()) {
-    return NextResponse.json(
-      { message: "Zrušit nebo přesunout lekci šlo jen den od zveřejnění rozpisu. Ozvi se přímo správcům." },
-      { status: 403 },
-    );
+  if (!schedule.published) {
+    return NextResponse.json({ message: "Rozpis teď není zveřejněný." }, { status: 403 });
   }
 
   const parts = Object.fromEntries(pragueNow.formatToParts(new Date()).map((part) => [part.type, part.value]));
   const todayKey = `${parts.year}-${parts.month}-${parts.day}`;
   const nowTime = `${parts.hour}:${parts.minute}`;
   const lessonName = text("lessonName");
-  const day = schedule.published
-    ? parseSchedule(schedule.body, todayKey).find((item) => item.dateKey === payload?.date)
-    : undefined;
+  const days = parseSchedule(schedule.body, todayKey);
+  const day = days.find((item) => item.dateKey === payload?.date);
   const row = day?.rows.find(
     (item) =>
       item.kind === "lesson" &&
@@ -111,6 +113,25 @@ export async function POST(request: NextRequest) {
 
   if (day.dateKey < todayKey || (day.dateKey === todayKey && row.end <= nowTime)) {
     return NextResponse.json({ message: "Tahle lekce už proběhla." }, { status: 400 });
+  }
+
+  const kinds = lessonRequestKinds(days, day.dateKey, todayKey);
+
+  if (kind === "cancel" && !kinds.cancel) {
+    const until = cancelUntilKey(days);
+    return NextResponse.json(
+      {
+        message: `Zrušit lekci šlo nejpozději týden před příjezdem trenéra${until ? ` (do ${formatDayKey(until)})` : ""}. Teď už jen po osobní domluvě s organizátorem.`,
+      },
+      { status: 403 },
+    );
+  }
+
+  if (kind === "move" && !kinds.move) {
+    return NextResponse.json(
+      { message: "O přesun šlo požádat nejpozději 2 dny před lekcí. Teď už jen po osobní domluvě s organizátorem." },
+      { status: 403 },
+    );
   }
 
   const id = addScheduleRequest({
@@ -136,6 +157,6 @@ export async function POST(request: NextRequest) {
     message:
       kind === "cancel"
         ? "Žádost o zrušení je odeslaná. Lekce platí, dokud ti ji nepotvrdíme."
-        : "Žádost o přesun je odeslaná. Ozveme se s novým časem.",
+        : "Žádost o přesun je odeslaná. Přesun nemusí jít – ozveme se, jestli se podařil.",
   });
 }
