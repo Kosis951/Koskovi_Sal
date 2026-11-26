@@ -104,9 +104,11 @@ enum Demo {
 
     // --- The guide (after registration): made-up data, so it can show everything ---
 
-    // The guide's "now": today at 17:00, just after a seminar that waits for cleanup.
-    static var tourClock: Date {
-        Dates.calendar.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    // The guide's "now" today: at 12:00 the hall is free, at 17:00 the seminar
+    // before waits for cleanup.
+    static func tourClock(_ time: String) -> Date {
+        let minutes = Dates.minutes(time)
+        return Dates.calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: Date()) ?? Date()
     }
 
     static var tourAvailability: AvailabilityResponse {
@@ -117,7 +119,8 @@ enum Demo {
             booking("recurring-tour-b-\(today)", today, "18:00", "19:30", "Společná LAT"),
         ]
         let cancelled = (week.recurringCancellations ?? []).filter { $0.date != today }
-        return AvailabilityResponse(bookings: bookings, hall: week.hall, recurringCancellations: cancelled)
+        let hours = (0...6).map { OpeningHours(day: $0, label: "", start: "10:30", end: "22:00") }
+        return AvailabilityResponse(bookings: bookings, hall: HallSettings(openingHours: hours), recurringCancellations: cancelled)
     }
 
     // The schedule with two of "your" lessons highlighted.

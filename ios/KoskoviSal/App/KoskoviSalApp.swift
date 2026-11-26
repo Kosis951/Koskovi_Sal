@@ -74,15 +74,6 @@ struct RootView: View {
         .onChange(of: TourModel.shared.isActive) {
             Task { await schedule.load() }
         }
-        // After registration, once the sign-in window has closed.
-        .onChange(of: session.isSignedIn) {
-            guard session.isSignedIn, TourModel.shared.startsAfterRegistration else { return }
-            TourModel.shared.startsAfterRegistration = false
-            Task {
-                try? await Task.sleep(for: .seconds(1))
-                TourModel.shared.start()
-            }
-        }
         // A schedule published while the app was away shows up without a restart.
         .onChange(of: scenePhase) {
             if scenePhase == .active {

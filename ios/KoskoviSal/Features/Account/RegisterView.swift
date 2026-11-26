@@ -108,9 +108,9 @@ struct RegisterView: View {
                 as: Empty.self
             )
             await session.refresh()
-            TourModel.shared.startsAfterRegistration = true
             dismiss()
             onRegistered()
+            TourModel.shared.startAfterRegistration()
         } catch {
             self.error = error.localizedDescription
         }

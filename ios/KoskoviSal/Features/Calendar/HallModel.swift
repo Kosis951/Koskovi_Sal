@@ -42,8 +42,18 @@ final class HallModel {
     private(set) var openingHours: [OpeningHours] = []
     private(set) var isLoading = false
     private(set) var hasLoaded = false
-    // The guide's made-up "now" while it shows its data; nil: the real time.
-    private(set) var clock: Date?
+    // Showing the guide's made-up data.
+    private var showsTour = false
+
+    // The guide's made-up "now" (set by its step); nil: the real time.
+    var clock: Date? {
+        #if !WIDGET
+        if showsTour {
+            return Demo.tourClock(TourModel.shared.step?.hallTime ?? "17:00")
+        }
+        #endif
+        return nil
+    }
     var error: String?
 
     // Minutes before closing reserved for leaving the hall (as on the web).
@@ -59,15 +69,15 @@ final class HallModel {
             bookings = response.bookings
             cancellations = response.recurringCancellations ?? []
             openingHours = response.hall?.openingHours ?? []
-            clock = isTour ? Demo.tourClock : nil
+            showsTour = isTour
             hasLoaded = true
             return
         }
         #endif
 
         // The guide is over: its made-up day goes, even if loading fails.
-        if clock != nil {
-            clock = nil
+        if showsTour {
+            showsTour = false
             bookings = []
             cancellations = []
             openingHours = []

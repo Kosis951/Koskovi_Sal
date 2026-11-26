@@ -14,6 +14,8 @@ struct TourStep {
     let target: TourTarget?
     let title: String
     let text: String
+    // The made-up time of day the hall calendar shows (default 17:00).
+    var hallTime: String? = nil
 }
 
 @MainActor
@@ -23,8 +25,6 @@ final class TourModel {
 
     private(set) var steps: [TourStep] = []
     private(set) var index: Int?
-    // Set by the registration; the guide starts once the sign-in window is gone.
-    var startsAfterRegistration = false
 
     var step: TourStep? {
         guard let index, steps.indices.contains(index) else { return nil }
@@ -34,6 +34,14 @@ final class TourModel {
     var isLast: Bool { index == steps.count - 1 }
     // While on, the screens show made-up data (Demo.tour…).
     var isActive: Bool { index != nil }
+
+    // After registration, once the sign-in windows have closed.
+    func startAfterRegistration() {
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            start()
+        }
+    }
 
     func start() {
         steps = Self.steps
@@ -63,11 +71,13 @@ final class TourModel {
 
     private static let steps = [
         TourStep(tab: .calendar, target: nil, title: "Vítej v TK Koškovi!",
-                 text: "Za minutku ti ukážu, kde co najdeš – na smyšlených ukázkových datech, tvoje skutečná se vrátí hned po průvodci. Můžeš ho kdykoli přeskočit a pustit si ho znovu v Účtu."),
+                 text: "Za minutku ti ukážu, kde co najdeš – na smyšlených ukázkových datech, tvoje skutečná se vrátí hned po průvodci. Můžeš ho kdykoli přeskočit a pustit si ho znovu v Účtu.",
+                 hallTime: "12:00"),
         TourStep(tab: .calendar, target: .hallStatus, title: "Je sál volný?",
-                 text: "Tady hned vidíš, co je v sále právě teď: zelená = volno, červená = obsazeno, šedá = zavřeno."),
-        TourStep(tab: .calendar, target: .hallStatus, title: "„Čeká na úklid“ není obsazeno",
-                 text: "Žlutá znamená, že sál je volný a klidně můžeš jít trénovat. Jen po předchozí akci ještě nikdo nepotvrdil úklid. Kdo sál uklidí, klepne na „Uklidil jsem sál“."),
+                 text: "Tady hned vidíš, co je v sále právě teď. Zelená = sál je volný a můžeš přijít trénovat. Červená = obsazeno, šedá = zavřeno.",
+                 hallTime: "12:00"),
+        TourStep(tab: .calendar, target: .hallStatus, title: "A co je „Čeká na úklid“?",
+                 text: "Tohle není obsazeno! Akce už skončila a sál je volný, klidně můžeš trénovat. Jen po ní ještě nikdo nepotvrdil úklid – kdo sál uklidí, klepne na „Uklidil jsem sál“."),
         TourStep(tab: .calendar, target: .calendarCard, title: "Kalendář sálu",
                  text: "Klepni na den a uvidíš jeho program. Přetažením prstem doleva nebo doprava přepneš týden či měsíc."),
         TourStep(tab: .calendar, target: .dayCard, title: "Program dne",
