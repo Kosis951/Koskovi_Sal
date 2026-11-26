@@ -133,59 +133,112 @@ private struct PartnerSearchView: View {
     @State private var query = ""
     @State private var people: [FoundPeople.Person] = []
     @State private var hasSearched = false
+    @State private var isSearching = false
+    @State private var sending: String?
     @State private var error: String?
 
     var body: some View {
-        BrandSheet(title: "Najít partnera/ku", subtitle: "Podle příjmení, vidíš jen jména") {
+        BrandSheet(title: "Najít partnera/ku", subtitle: "Napiš aspoň 3 písmena jména nebo příjmení") {
             VStack(spacing: 12) {
-                FieldBox(label: "Příjmení") {
-                    TextField("např. Dvořáková", text: $query)
-                        .textContentType(.familyName)
-                        .autocorrectionDisabled()
-                        .submitLabel(.search)
-                        .onSubmit { Task { await search() } }
+                FieldBox(label: "Jméno nebo příjmení") {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(Theme.inkSoft)
+                        TextField("např. Dvořáková", text: $query)
+                            .textContentType(.name)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
+                        if isSearching {
+                            ProgressView().controlSize(.small)
+                        } else if !query.isEmpty {
+                            Button {
+                                query = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.inkSoft)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Smazat")
+                        }
+                    }
                 }
-                Button("Hledat") { Task { await search() } }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(query.trimmingCharacters(in: .whitespaces).count < 2)
+                FieldNote(text: "Na velikosti písmen ani háčcích a čárkách nezáleží.")
             }
             .card()
 
-            if hasSearched && people.isEmpty {
-                EmptyCard(icon: "person.crop.circle.badge.questionmark", title: "Nikoho jsme nenašli", text: "Partner/ka si musí v profilu vyplnit příjmení.")
+            if hasSearched && people.isEmpty && !isSearching {
+                EmptyCard(icon: "person.crop.circle.badge.questionmark", title: "Nikoho jsme nenašli", text: "Partner/ka si musí v profilu vyplnit jméno a příjmení.")
             }
 
-            ForEach(people) { person in
-                HStack {
-                    Text(person.name).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
-                    Spacer()
-                    Button("Poslat žádost") { Task { await request(person) } }
-                        .font(.subheadline.weight(.bold))
+            if !people.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(people.enumerated()), id: \.element.id) { index, person in
+                        if index > 0 { Divider() }
+                        HStack(spacing: 12) {
+                            Text(initials(person.name))
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(Circle().fill(Theme.gradient))
+                            Text(person.name).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
+                            Spacer()
+                            Button("Poslat žádost") { Task { await request(person) } }
+                                .font(.subheadline.weight(.bold))
+                                .disabled(sending != nil)
+                        }
+                        .padding(.vertical, 10)
+                    }
                 }
                 .card(padding: 14)
+                .transition(.opacity)
             }
 
             if let error {
                 ErrorBanner(text: error)
             }
         }
+        // Suggestions while typing: a short pause after the last letter, then ask.
+        .task(id: query) {
+            let wanted = query.trimmingCharacters(in: .whitespaces)
+            guard wanted.count >= 3 else {
+                withAnimation(.snappy) {
+                    people = []
+                    hasSearched = false
+                }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await search(wanted)
+        }
     }
 
-    private func search() async {
-        let wanted = query.trimmingCharacters(in: .whitespaces)
-        guard wanted.count >= 2 else { return }
+    private func initials(_ name: String) -> String {
+        name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
+    }
+
+    private func search(_ wanted: String) async {
+        isSearching = true
+        defer { isSearching = false }
 
         do {
             let encoded = wanted.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? wanted
-            people = try await API.get("/api/account/partners/search?q=\(encoded)", as: FoundPeople.self).people
-            hasSearched = true
+            let found = try await API.get("/api/account/partners/search?q=\(encoded)", as: FoundPeople.self).people
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) {
+                people = found
+                hasSearched = true
+            }
             error = nil
         } catch {
+            guard !Task.isCancelled else { return }
             self.error = error.localizedDescription
         }
     }
 
     private func request(_ person: FoundPeople.Person) async {
+        sending = person.username
+        defer { sending = nil }
+
         do {
             let response = try await API.send("POST", "/api/account/partners", body: ["username": person.username], as: Partnerships.self)
             onSent(response.message ?? "Žádost je odeslaná.")

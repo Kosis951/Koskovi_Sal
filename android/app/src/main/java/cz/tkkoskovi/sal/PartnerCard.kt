@@ -2,13 +2,18 @@ package cz.tkkoskovi.sal
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,9 +25,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.net.URLEncoder
@@ -148,48 +157,73 @@ private fun PartnerSearchSheet(onDismiss: () -> Unit, onSent: (String) -> Unit) 
     var query by remember { mutableStateOf("") }
     var people by remember { mutableStateOf<List<PartnerPerson>>(emptyList()) }
     var searched by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    // Suggestions while typing: a short pause after the last letter, then ask.
+    LaunchedEffect(query) {
+        val wanted = query.trim()
+        if (wanted.length < 3) {
+            people = emptyList()
+            searched = false
+            return@LaunchedEffect
+        }
+        delay(300)
+        runCatching { Api.get<FoundPeople>("/api/account/partners/search?q=${URLEncoder.encode(wanted, "UTF-8")}").people }
+            .onSuccess {
+                people = it
+                searched = true
+                error = null
+            }
+            .onFailure { if (it !is CancellationException) error = it.message }
+    }
 
     BrandSheet(
         title = "Najít partnera/ku",
-        subtitle = "Podle příjmení, vidíš jen jména",
+        subtitle = "Napiš aspoň 3 písmena jména nebo příjmení",
         onDismiss = onDismiss,
-        primaryTitle = "Hledat",
-        primaryEnabled = query.trim().length >= 2,
-        onPrimary = {
-            scope.launch {
-                val wanted = URLEncoder.encode(query.trim(), "UTF-8")
-                runCatching { Api.get<FoundPeople>("/api/account/partners/search?q=$wanted").people }
-                    .onSuccess {
-                        people = it
-                        searched = true
-                        error = null
-                    }
-                    .onFailure { error = it.message }
-            }
-        },
     ) {
-        Card { Field("Příjmení", query, { query = it }, placeholder = "např. Dvořáková") }
-        if (searched && people.isEmpty()) {
-            EmptyCard("Nikoho jsme nenašli. Partner/ka si musí v profilu vyplnit příjmení.")
+        Card {
+            Field("Jméno nebo příjmení", query, { query = it }, placeholder = "např. Dvořáková")
+            FieldNote("Na velikosti písmen ani háčcích a čárkách nezáleží.")
         }
-        people.forEach { person ->
+        if (searched && people.isEmpty()) {
+            EmptyCard("Nikoho jsme nenašli. Partner/ka si musí v profilu vyplnit jméno a příjmení.")
+        }
+        if (people.isNotEmpty()) {
             Card(padding = 14) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(person.name, color = P.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.padding(4.dp))
-                    Text(
-                        "Poslat žádost",
-                        color = P.accent,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable {
-                            scope.launch {
-                                runCatching { Api.send<Partnerships>("POST", "/api/account/partners", mapOf("username" to person.username)) }
-                                    .onSuccess { onSent(it.message ?: "Žádost je odeslaná.") }
-                                    .onFailure { error = it.message }
-                            }
-                        },
-                    )
+                people.forEachIndexed { index, person ->
+                    if (index > 0) HorizontalDivider(color = P.line)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 10.dp)) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(36.dp).clip(CircleShape).background(Brush.linearGradient(P.gradient)),
+                        ) {
+                            Text(
+                                person.name.split(" ").filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }.uppercase(),
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(person.name, color = P.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Poslat žádost",
+                            color = P.accent,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable(enabled = !sending) {
+                                sending = true
+                                scope.launch {
+                                    runCatching { Api.send<Partnerships>("POST", "/api/account/partners", mapOf("username" to person.username)) }
+                                        .onSuccess { onSent(it.message ?: "Žádost je odeslaná.") }
+                                        .onFailure { error = it.message }
+                                    sending = false
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

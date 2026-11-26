@@ -5,7 +5,7 @@ import { isRateLimited } from "@/lib/simple-rate-limit";
 
 export const dynamic = "force-dynamic";
 
-// ?q=surname – accounts with that surname, by name only (no e-mail, phone).
+// ?q=name – suggestions while typing, by name only (no e-mail, phone).
 export async function GET(request: NextRequest) {
   const auth = await requireSession();
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     return auth.error;
   }
 
-  if (isRateLimited(`partner-search:${auth.access.username}`, 60, 10 * 60 * 1000)) {
+  if (isRateLimited(`partner-search:${auth.access.username}`, 300, 10 * 60 * 1000)) {
     return NextResponse.json({ message: "Příliš mnoho hledání, zkus to za chvíli." }, { status: 429 });
   }
 

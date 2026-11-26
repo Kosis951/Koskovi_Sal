@@ -60,11 +60,13 @@ export function getPartnerships(username: string) {
   };
 }
 
-// Accounts with this surname (or starting with it), by name only.
+// Suggestions while typing: every typed word starts a word of the first name
+// or surname ("dvo", "jan dvo", "dvorakova"), case and diacritics do not
+// matter. Names only, surname matches first.
 export function searchPartners(username: string, query: string) {
-  const wanted = fold(query);
+  const words = fold(query).split(/\s+/).filter(Boolean);
 
-  if (wanted.length < 2) {
+  if (words.join("").length < 2) {
     return [];
   }
 
@@ -72,12 +74,21 @@ export function searchPartners(username: string, query: string) {
 
   return readStoredAdminUsersSync()
     .filter((user) => !user.deleted && !same(user.username, username))
-    .filter((user) => {
-      const surname = fold(user.lastName ?? "");
-      return surname !== "" && surname.startsWith(wanted);
+    .map((user) => {
+      const first = fold(user.firstName ?? "");
+      const last = fold(user.lastName ?? "");
+      const parts = `${first} ${last}`.split(/[\s-]+/).filter(Boolean);
+      const matches = last !== "" && words.every((word) => parts.some((part) => part.startsWith(word)));
+      return { first, last, matches, surnameFirst: words.some((word) => last.startsWith(word)), user };
     })
-    .slice(0, 10)
-    .map((user) => ({ name: names.name(user.username), username: user.username }));
+    .filter((row) => row.matches)
+    .sort((left, right) =>
+      Number(right.surnameFirst) - Number(left.surnameFirst) ||
+      left.last.localeCompare(right.last, "cs") ||
+      left.first.localeCompare(right.first, "cs"),
+    )
+    .slice(0, 8)
+    .map(({ user }) => ({ name: names.name(user.username), username: user.username }));
 }
 
 export function requestPartnership(from: string, to: string) {
