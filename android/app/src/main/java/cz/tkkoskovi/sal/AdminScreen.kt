@@ -819,6 +819,7 @@ private fun AdminUsers(onBack: () -> Unit) {
     if (adding) UserSheet(null, onDismiss = { adding = false }, onDone = done)
 }
 
+@Composable
 private fun roleStyle(role: Role?): KindStyle = when (role) {
     Role.admin -> P.busy
     Role.manager -> P.event
