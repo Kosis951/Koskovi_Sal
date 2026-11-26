@@ -48,7 +48,7 @@ struct CalendarScreen: View {
             .pageBackground()
             .safeAreaInset(edge: .top, spacing: 0) {
                 BrandHeader(title: "Kalendář sálu", subtitle: Dates.monthTitle(selectedDay)) {
-                    if session.role?.canAddBookings == true {
+                    if session.canAddHallEvents {
                         HeaderButton(systemImage: "plus", label: "Přidat akci") { isAdding = true }
                     }
                 }
@@ -77,7 +77,7 @@ struct CalendarScreen: View {
                 }
             }
             .sheet(item: $openCancellation) { cancellation in
-                CancellationDetailView(notice: cancellation, model: model, canReinstate: session.role?.canManageBookings == true)
+                CancellationDetailView(notice: cancellation, model: model, canReinstate: session.canManageHall)
             }
             .sheet(isPresented: $isAdding) {
                 AddBookingView(model: model, date: selectedDay)

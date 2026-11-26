@@ -43,25 +43,46 @@ final class TourModel {
         }
     }
 
+    // Between two steps: the highlight and the bubble are hidden while the
+    // screen scrolls (or the tab changes), then fade in at the new place.
+    private(set) var isMoving = false
+    private var move = 0
+
     func start() {
         steps = Self.steps
-        withAnimation(.snappy) { index = 0 }
+        isMoving = false
+        withAnimation(.easeInOut(duration: 0.3)) { index = 0 }
     }
 
     func next() {
         guard let index else { return }
-        withAnimation(.snappy) {
-            self.index = index + 1 < steps.count ? index + 1 : nil
+        if index + 1 < steps.count {
+            go(to: index + 1)
+        } else {
+            finish()
         }
     }
 
     func back() {
         guard let index, index > 0 else { return }
-        withAnimation(.snappy) { self.index = index - 1 }
+        go(to: index - 1)
     }
 
     func finish() {
-        withAnimation(.snappy) { index = nil }
+        isMoving = false
+        withAnimation(.easeInOut(duration: 0.3)) { index = nil }
+    }
+
+    private func go(to newIndex: Int) {
+        move += 1
+        let current = move
+        withAnimation(.easeOut(duration: 0.15)) { isMoving = true }
+        withAnimation(.smooth(duration: 0.45)) { index = newIndex }
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard current == move else { return }
+            withAnimation(.easeOut(duration: 0.25)) { isMoving = false }
+        }
     }
 
     // Where the screen of `tab` should scroll to for the current step.
@@ -116,76 +137,77 @@ extension View {
         }
     }
 
-    // Scrolls the tab's screen to what the guide points at.
+    // Scrolls the tab's screen so what the guide points at is at the top (the
+    // bubble is at the bottom); extra room below lets even the last cards get
+    // up there.
     func tourScroll(_ tab: AppTab) -> some View {
-        scrollPosition(id: Binding(get: { TourModel.shared.scrollTarget(on: tab) }, set: { _ in }), anchor: .center)
+        scrollPosition(id: Binding(get: { TourModel.shared.scrollTarget(on: tab) }, set: { _ in }), anchor: .top)
+            .contentMargins(.bottom, TourModel.shared.isActive ? 420 : 0, for: .scrollContent)
     }
 }
 
 private struct TourLayer: View {
     let tab: AppTab
     let anchors: [TourTarget: Anchor<CGRect>]
+    @State private var bubbleHeight: CGFloat = 190
     private var tour: TourModel { TourModel.shared }
 
     var body: some View {
         if let step = tour.step, step.tab == tab, let index = tour.index {
             GeometryReader { proxy in
+                // The highlight stays above the bubble, never under it.
+                let free = CGRect(x: 0, y: 0, width: proxy.size.width, height: max(proxy.size.height - bubbleHeight - 24, 0))
                 let hole = step.target
                     .flatMap { anchors[$0] }
                     .map { proxy[$0].insetBy(dx: -8, dy: -8) }
-                    .map { $0.intersection(CGRect(origin: .zero, size: proxy.size).insetBy(dx: 4, dy: 4)) }
+                    .map { $0.intersection(free.insetBy(dx: 4, dy: 4)) }
                     .flatMap { $0.isNull || $0.height < 20 ? nil : $0 }
+                let shown = !tour.isMoving && hole != nil
 
-                ZStack(alignment: .topLeading) {
-                    Path { path in
-                        path.addRect(CGRect(origin: .zero, size: proxy.size))
-                        if let hole {
-                            path.addRoundedRect(in: hole, cornerSize: CGSize(width: 18, height: 18))
+                ZStack(alignment: .bottom) {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.62))
+                        .mask {
+                            ZStack {
+                                Rectangle()
+                                if let hole {
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .frame(width: hole.width, height: hole.height)
+                                        .position(x: hole.midX, y: hole.midY)
+                                        .blendMode(.destinationOut)
+                                        .opacity(shown ? 1 : 0)
+                                }
+                            }
+                            .compositingGroup()
                         }
-                    }
-                    .fill(Color.black.opacity(0.62), style: FillStyle(eoFill: true))
-                    .contentShape(Rectangle())
-                    .onTapGesture {}
+                        .contentShape(Rectangle())
+                        .onTapGesture {}
 
                     if let hole {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(Theme.accentSoft, lineWidth: 2.5)
                             .frame(width: hole.width, height: hole.height)
-                            .offset(x: hole.minX, y: hole.minY)
+                            .position(x: hole.midX, y: hole.midY)
+                            .opacity(shown ? 1 : 0)
                             .allowsHitTesting(false)
                     }
 
-                    let top = topPadding(hole, in: proxy.size)
-                    let bottom = bottomPadding(hole, in: proxy.size)
-
                     bubble(step: step, index: index)
                         .padding(.horizontal, 16)
-                        .frame(
-                            width: proxy.size.width,
-                            height: max(proxy.size.height - top - bottom, 0),
-                            alignment: bubbleAlignment(hole, in: proxy.size)
+                        .padding(.bottom, 12)
+                        .background(
+                            GeometryReader { bubble in
+                                Color.clear
+                                    .onAppear { bubbleHeight = bubble.size.height }
+                                    .onChange(of: bubble.size.height) { bubbleHeight = bubble.size.height }
+                            }
                         )
-                        .offset(y: top)
+                        .opacity(tour.isMoving ? 0 : 1)
+                        .offset(y: tour.isMoving ? 12 : 0)
                 }
             }
             .transition(.opacity)
         }
-    }
-
-    // Below the highlighted thing when it is in the upper part, else above.
-    private func bubbleAlignment(_ hole: CGRect?, in size: CGSize) -> Alignment {
-        guard let hole else { return .center }
-        return hole.midY < size.height * 0.5 ? .top : .bottom
-    }
-
-    private func topPadding(_ hole: CGRect?, in size: CGSize) -> CGFloat {
-        guard let hole, hole.midY < size.height * 0.5 else { return 0 }
-        return min(hole.maxY + 12, size.height - 240)
-    }
-
-    private func bottomPadding(_ hole: CGRect?, in size: CGSize) -> CGFloat {
-        guard let hole, hole.midY >= size.height * 0.5 else { return 0 }
-        return min(size.height - hole.minY + 12, size.height - 240)
     }
 
     private func bubble(step: TourStep, index: Int) -> some View {

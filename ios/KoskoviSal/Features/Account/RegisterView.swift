@@ -7,6 +7,7 @@ struct RegisterView: View {
     let onRegistered: () -> Void
     @State private var firstName = ""
     @State private var lastName = ""
+    @State private var wantsTrainer = false
     @State private var email = ""
     @State private var username = ""
     @State private var password = ""
@@ -71,6 +72,19 @@ struct RegisterView: View {
             }
             .card()
 
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: $wantsTrainer) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Jsem trenér").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                        Text("Vlastní kalendář lekcí dostaneš, až to schválí správce. Do té doby máš účet tanečníka.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkMuted)
+                    }
+                }
+                .tint(Theme.accent)
+            }
+            .card()
+
             if let error {
                 ErrorBanner(text: error)
             }
@@ -103,6 +117,7 @@ struct RegisterView: View {
                     "firstName": firstName.trimmingCharacters(in: .whitespaces),
                     "lastName": lastName.trimmingCharacters(in: .whitespaces),
                     "password": password,
+                    "trainerRequest": wantsTrainer,
                     "username": username.trimmingCharacters(in: .whitespaces),
                 ],
                 as: Empty.self

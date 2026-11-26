@@ -10,6 +10,7 @@ struct AdminScreen: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    if session.canManageHall {
                     SectionTitle(text: "Sál", systemImage: "building.columns")
                     VStack(spacing: 0) {
                         AdminLink(icon: "calendar", title: "Akce", detail: "Nadcházející akce v sále") { AdminBookingsView() }
@@ -19,7 +20,9 @@ struct AdminScreen: View {
                         AdminLink(icon: "beach.umbrella", title: "Prázdniny", detail: "Období bez tréninků") { AdminHolidaysView() }
                     }
                     .card(padding: 6)
+                    }
 
+                    if session.canEditSchedule {
                     SectionTitle(text: "Externí trenér", systemImage: "list.bullet.rectangle")
                     VStack(spacing: 0) {
                         AdminLink(icon: "square.and.pencil", title: "Rozpis", detail: "Text rozpisu a zveřejnění") { AdminScheduleView() }
@@ -27,16 +30,23 @@ struct AdminScreen: View {
                         AdminLink(icon: "tray.full", title: "Žádosti o zrušení a přesun", detail: "Z veřejného rozpisu") { AdminScheduleRequestsView() }
                     }
                     .card(padding: 6)
+                    }
 
+                    if session.canManageUsers || session.canSeeStats {
                     SectionTitle(text: "Lidé a historie", systemImage: "person.2")
                     VStack(spacing: 0) {
-                        if session.role == .admin {
-                            AdminLink(icon: "person.2.badge.gearshape", title: "Uživatelé", detail: "Účty, role, hesla") { AdminUsersView() }
+                        if session.canManageUsers {
+                            AdminLink(icon: "person.2.badge.gearshape", title: "Uživatelé", detail: "Práva, žádosti trenérů, hesla") { AdminUsersView() }
+                        }
+                        if session.canManageUsers && session.canSeeStats {
                             Divider().padding(.leading, 52)
                         }
-                        AdminLink(icon: "clock.arrow.circlepath", title: "Historie změn", detail: "Kdo co změnil, vrácení změny") { AdminHistoryView() }
+                        if session.canSeeStats {
+                            AdminLink(icon: "clock.arrow.circlepath", title: "Historie změn", detail: "Kdo co změnil, vrácení změny") { AdminHistoryView() }
+                        }
                     }
                     .card(padding: 6)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -93,13 +103,33 @@ struct AdminUser: Decodable, Identifiable, Hashable {
     let createdAt: String?
     let createdBy: String?
     let isStored: Bool?
+    // Sections; `preset` the role they match (nil: custom).
+    var permissions: Permissions?
+    var preset: String?
+    var trainerRequest: String?
 
     var id: String { username }
     var roleValue: Role? { Role(rawValue: role) }
 }
 
+struct TrainerRequest: Decodable, Identifiable, Hashable {
+    let username: String
+    let firstName: String?
+    let lastName: String?
+    let email: String?
+    let requestedAt: String?
+
+    var id: String { username }
+    var name: String { [firstName, lastName].compactMap { $0 }.joined(separator: " ").ifEmpty(username) }
+}
+
 struct AdminUsersResponse: Decodable {
     let users: [AdminUser]
+    var trainerRequests: [TrainerRequest]?
+}
+
+extension String {
+    func ifEmpty(_ other: String) -> String { isEmpty ? other : self }
 }
 
 struct TrainingStatus: Decodable, Hashable {

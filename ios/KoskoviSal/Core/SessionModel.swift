@@ -9,6 +9,17 @@ final class SessionModel {
 
     var isSignedIn: Bool { info?.authenticated == true }
     var role: Role? { info?.role.flatMap(Role.init(rawValue:)) }
+    var permissions: Permissions { info?.permissions ?? Permissions.preset(role) }
+    var hasTrainerRequest: Bool { info?.trainerRequest == "pending" }
+
+    // What the account may do (permissions.ts on the web; the server checks it).
+    var canManageHall: Bool { isSignedIn && permissions.hall == "all" }
+    var canAddHallEvents: Bool { isSignedIn && permissions.hall != "view" }
+    var seesLessons: Bool { !isSignedIn || permissions.lessons != "none" }
+    var canEditSchedule: Bool { isSignedIn && permissions.schedule == "edit" }
+    var canManageUsers: Bool { isSignedIn && permissions.users == "manage" }
+    var canSeeStats: Bool { isSignedIn && permissions.stats == "view" }
+    var canAdminister: Bool { canManageHall || canEditSchedule || canManageUsers || canSeeStats }
     var username: String? { info?.username }
     var displayName: String { info?.displayName ?? info?.username ?? "" }
     var scheduleName: String? {
@@ -55,8 +66,8 @@ final class SessionModel {
     // Trainers may change only what they added themselves; trainings are
     // changed by hall managers only.
     func canEdit(_ booking: Booking) -> Bool {
-        guard let role, role.canAddBookings else { return false }
-        if role.canManageBookings { return true }
+        guard canAddHallEvents else { return false }
+        if canManageHall { return true }
         guard !booking.isTraining, let createdBy = booking.createdBy, let username else { return false }
         return createdBy.compare(username, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
     }

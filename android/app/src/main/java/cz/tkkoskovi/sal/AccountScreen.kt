@@ -93,6 +93,18 @@ fun AccountScreen(session: SessionModel) {
                         session.scheduleName?.let { Muted("V rozpisu: $it", 13) }
                     }
                 }
+                if (session.hasTrainerRequest) {
+                    Text(
+                        "Žádost o trenérský účet čeká na schválení správcem. Do té doby máš účet tanečníka.",
+                        color = P.cleanup.ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(P.cleanup.background, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                    )
+                }
             }
         }
 
@@ -337,6 +349,7 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordAgain by remember { mutableStateOf("") }
+    var wantsTrainer by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -362,6 +375,7 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
                                 "firstName" to firstName.trim(),
                                 "lastName" to lastName.trim(),
                                 "password" to password,
+                                "trainerRequest" to wantsTrainer,
                                 "username" to username.trim(),
                             ),
                         )
@@ -385,6 +399,13 @@ private fun RegisterSheet(session: SessionModel, onDismiss: () -> Unit) {
             FieldNote("Malá písmena, číslice, tečka, pomlčka.")
             Field("Heslo", password, { password = it }, password = true)
             Field("Heslo znovu", passwordAgain, { passwordAgain = it }, password = true)
+        }
+        Card {
+            ToggleRow(
+                "Jsem trenér",
+                wantsTrainer,
+                "Vlastní kalendář lekcí dostaneš, až to schválí správce. Do té doby máš účet tanečníka.",
+            ) { wantsTrainer = it }
         }
         error?.let { ErrorBanner(it) }
     }

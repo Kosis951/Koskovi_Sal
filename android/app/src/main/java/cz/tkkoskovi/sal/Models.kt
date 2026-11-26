@@ -12,16 +12,64 @@ data class SessionInfo(
     val username: String? = null,
     // How the dancer is written in the visiting trainer's schedule.
     val scheduleName: String? = null,
+    // What the account may do (an older web sends only the role).
+    val permissions: Permissions? = null,
+    // "pending" while the trainer request from the registration waits.
+    val trainerRequest: String? = null,
 )
+
+// What an account may do, section by section (as permissions.ts on the web).
+@Serializable
+data class Permissions(
+    val hall: String = "view",
+    val lessons: String = "view",
+    val schedule: String = "view",
+    val users: String = "none",
+    val stats: String = "none",
+) {
+    fun get(key: String) = when (key) {
+        "hall" -> hall
+        "lessons" -> lessons
+        "schedule" -> schedule
+        "users" -> users
+        else -> stats
+    }
+
+    fun with(key: String, value: String) = when (key) {
+        "hall" -> copy(hall = value)
+        "lessons" -> copy(lessons = value)
+        "schedule" -> copy(schedule = value)
+        "users" -> copy(users = value)
+        else -> copy(stats = value)
+    }
+
+    fun asMap() = mapOf("hall" to hall, "lessons" to lessons, "schedule" to schedule, "stats" to stats, "users" to users)
+
+    data class Section(val key: String, val label: String, val options: List<Pair<String, String>>)
+
+    companion object {
+        fun preset(role: Role?) = when (role) {
+            Role.admin -> Permissions("all", "all", "edit", "manage", "view")
+            Role.manager -> Permissions("all", "view", "edit", "none", "view")
+            Role.trainer -> Permissions("own", "trainer", "view", "none", "none")
+            else -> Permissions()
+        }
+
+        val sections = listOf(
+            Section("hall", "Kalendář sálu", listOf("view" to "Vidí", "own" to "Přidává své", "all" to "Upravuje vše")),
+            Section("lessons", "Lekce", listOf("none" to "Nevidí", "view" to "Vidí trenéry", "trainer" to "Vlastní kalendář", "all" to "Spravuje všechny")),
+            Section("schedule", "Rozpis", listOf("view" to "Vidí", "edit" to "Upravuje")),
+            Section("users", "Uživatelé", listOf("none" to "Nevidí", "manage" to "Spravuje")),
+            Section("stats", "Přehled a historie", listOf("none" to "Nevidí", "view" to "Vidí")),
+        )
+    }
+}
 
 enum class Role(val label: String) {
     admin("Hlavní správce"),
     manager("Správa sálu"),
     trainer("Trenér"),
     viewer("Tanečník");
-
-    val canManageBookings get() = this == admin || this == manager
-    val canAddBookings get() = canManageBookings || this == trainer
 
     companion object {
         fun of(value: String?) = entries.firstOrNull { it.name == value }
@@ -124,8 +172,23 @@ data class LessonSlot(
     val requester: String? = null,
 )
 
+// A time the trainer teaches: every week (weekday 1 = Monday … 7) or one day.
+@Serializable
+data class TrainerWindow(
+    val id: String,
+    val start: String,
+    val end: String,
+    val lessonMinutes: Int = 45,
+    val weekday: Int? = null,
+    val date: String? = null,
+    val validFrom: String? = null,
+    val validUntil: String? = null,
+)
+
 @Serializable
 data class TrainerCalendar(
+    // Only for the trainer (and whoever manages all calendars).
+    val windows: List<TrainerWindow> = emptyList(),
     val canManage: Boolean = false,
     val lessons: List<TrainerLesson> = emptyList(),
     val mine: List<TrainerLesson> = emptyList(),

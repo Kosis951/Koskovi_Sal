@@ -15,12 +15,30 @@ data class AdminUser(
     val email: String? = null,
     val createdAt: String? = null,
     val createdBy: String? = null,
+    // Sections; `preset` the role they match (null: custom).
+    val permissions: Permissions? = null,
+    val preset: String? = null,
+    val trainerRequest: String? = null,
 ) {
     val roleValue get() = Role.of(role)
 }
 
 @Serializable
-data class AdminUsersResponse(val users: List<AdminUser> = emptyList())
+data class TrainerRequest(
+    val username: String,
+    val firstName: String? = null,
+    val lastName: String? = null,
+    val email: String? = null,
+    val requestedAt: String? = null,
+) {
+    val name get() = listOfNotNull(firstName, lastName).joinToString(" ").ifEmpty { username }
+}
+
+@Serializable
+data class AdminUsersResponse(
+    val users: List<AdminUser> = emptyList(),
+    val trainerRequests: List<TrainerRequest> = emptyList(),
+)
 
 @Serializable
 data class TrainingStatus(

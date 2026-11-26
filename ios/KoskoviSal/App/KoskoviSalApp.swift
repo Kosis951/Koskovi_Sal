@@ -34,9 +34,11 @@ struct RootView: View {
                 .tabItem { Label("Kalendář", systemImage: "calendar") }
                 .tag(AppTab.calendar)
 
-            LessonsScreen()
-                .tabItem { Label("Lekce", systemImage: "figure.dance") }
-                .tag(AppTab.lessons)
+            if session.seesLessons {
+                LessonsScreen()
+                    .tabItem { Label("Lekce", systemImage: "figure.dance") }
+                    .tag(AppTab.lessons)
+            }
 
             // Always there; without a published schedule it says no visiting
             // trainer is planned.
@@ -44,7 +46,7 @@ struct RootView: View {
                 .tabItem { Label("Rozpis", systemImage: "list.bullet.rectangle") }
                 .tag(AppTab.schedule)
 
-            if session.role?.canManageBookings == true {
+            if session.canAdminister {
                 AdminScreen()
                     .tabItem { Label("Správa", systemImage: "gearshape.2") }
                     .tag(AppTab.admin)

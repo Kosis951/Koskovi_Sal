@@ -71,6 +71,17 @@ class SessionModel {
 
     val isSignedIn get() = info?.authenticated == true
     val role get() = Role.of(info?.role)
+    val permissions get() = info?.permissions ?: Permissions.preset(role)
+    val hasTrainerRequest get() = info?.trainerRequest == "pending"
+
+    // What the account may do (permissions.ts on the web; the server checks it).
+    val canManageHall get() = isSignedIn && permissions.hall == "all"
+    val canAddHallEvents get() = isSignedIn && permissions.hall != "view"
+    val seesLessons get() = !isSignedIn || permissions.lessons != "none"
+    val canEditSchedule get() = isSignedIn && permissions.schedule == "edit"
+    val canManageUsers get() = isSignedIn && permissions.users == "manage"
+    val canSeeStats get() = isSignedIn && permissions.stats == "view"
+    val canAdminister get() = canManageHall || canEditSchedule || canManageUsers || canSeeStats
     val username get() = info?.username
     val displayName get() = info?.displayName ?: info?.username.orEmpty()
     val scheduleName get() = info?.scheduleName?.trim()?.takeIf { it.isNotEmpty() }
@@ -94,9 +105,8 @@ class SessionModel {
     // Trainers may change only what they added themselves; trainings are
     // changed by hall managers only.
     fun canEdit(booking: Booking): Boolean {
-        val role = role ?: return false
-        if (!role.canAddBookings) return false
-        if (role.canManageBookings) return true
+        if (!canAddHallEvents) return false
+        if (canManageHall) return true
         val createdBy = booking.createdBy ?: return false
         val username = username ?: return false
         return !booking.isTraining && fold(createdBy) == fold(username)
@@ -144,7 +154,8 @@ fun App() {
 
     val tabs = Tab.entries.filter {
         when (it) {
-            Tab.Admin -> session.role?.canManageBookings == true
+            Tab.Admin -> session.canAdminister
+            Tab.Lessons -> session.seesLessons
             else -> true
         }
     }

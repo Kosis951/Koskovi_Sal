@@ -9,6 +9,43 @@ struct SessionInfo: Decodable {
     let username: String?
     // How the dancer is written in the visiting trainer's schedule.
     var scheduleName: String?
+    // What the account may do (an older web sends only the role).
+    var permissions: Permissions?
+    // "pending" while the trainer request from the registration waits.
+    var trainerRequest: String?
+}
+
+// What an account may do, section by section (as permissions.ts on the web).
+struct Permissions: Codable, Hashable {
+    var hall: String
+    var lessons: String
+    var schedule: String
+    var users: String
+    var stats: String
+
+    static func preset(_ role: Role?) -> Permissions {
+        switch role {
+        case .admin: return Permissions(hall: "all", lessons: "all", schedule: "edit", users: "manage", stats: "view")
+        case .manager: return Permissions(hall: "all", lessons: "view", schedule: "edit", users: "none", stats: "view")
+        case .trainer: return Permissions(hall: "own", lessons: "trainer", schedule: "view", users: "none", stats: "none")
+        default: return Permissions(hall: "view", lessons: "view", schedule: "view", users: "none", stats: "none")
+        }
+    }
+
+    struct Section: Identifiable {
+        let key: WritableKeyPath<Permissions, String>
+        let label: String
+        let options: [(String, String)]
+        var id: String { label }
+    }
+
+    static let sections: [Section] = [
+        Section(key: \.hall, label: "Kalendář sálu", options: [("view", "Vidí"), ("own", "Přidává své akce"), ("all", "Upravuje vše")]),
+        Section(key: \.lessons, label: "Lekce", options: [("none", "Nevidí"), ("view", "Vidí trenéry"), ("trainer", "Vlastní kalendář"), ("all", "Spravuje všechny")]),
+        Section(key: \.schedule, label: "Rozpis", options: [("view", "Vidí"), ("edit", "Upravuje")]),
+        Section(key: \.users, label: "Uživatelé", options: [("none", "Nevidí"), ("manage", "Spravuje")]),
+        Section(key: \.stats, label: "Přehled a historie", options: [("none", "Nevidí"), ("view", "Vidí")]),
+    ]
 }
 
 enum Role: String {
@@ -23,8 +60,6 @@ enum Role: String {
         }
     }
 
-    var canManageBookings: Bool { self == .admin || self == .manager }
-    var canAddBookings: Bool { canManageBookings || self == .trainer }
 }
 
 // --- Hall calendar ---
@@ -128,7 +163,21 @@ struct LessonSlot: Decodable, Hashable {
     let requester: String?
 }
 
+// A time the trainer teaches: every week (weekday 1 = Monday … 7) or one day.
+struct TrainerWindow: Decodable, Identifiable, Hashable {
+    let id: String
+    let start: String
+    let end: String
+    let lessonMinutes: Int
+    let weekday: Int?
+    let date: String?
+    let validFrom: String?
+    let validUntil: String?
+}
+
 struct TrainerCalendar: Decodable {
+    // Only for the trainer (and whoever manages all calendars).
+    var windows: [TrainerWindow]?
     let canManage: Bool
     let lessons: [TrainerLesson]
     let mine: [TrainerLesson]

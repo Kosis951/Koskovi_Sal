@@ -192,14 +192,26 @@ struct LessonsScreen: View {
             }
         }
 
-        // Dancers make their own account in the app, no invite needed.
-        VStack(alignment: .leading, spacing: 10) {
-            Link(destination: AppConfig.webURL("/lekce/\(API.segment(calendar.trainer))")) {
-                Label("Časy výuky upravíš na webu", systemImage: "safari")
-                    .font(.footnote.weight(.semibold))
+        // When the trainer teaches; dancers then see the free slots.
+        NavigationLink {
+            TrainerWindowsView(trainer: calendar.trainer, windows: calendar.windows ?? []) {
+                Task { await loadCalendar() }
             }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.badge.checkmark").font(.title2).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Časy výuky").font(.subheadline.weight(.bold)).foregroundStyle(Theme.ink)
+                    Text("\(calendar.windows?.count ?? 0) nabídek · kdy učíš a jak dlouhé jsou lekce")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.inkSoft)
+            }
+            .card(padding: 14)
         }
-        .card()
+        .buttonStyle(.plain)
     }
 
     private func choose(_ trainer: String) {

@@ -98,6 +98,15 @@ struct AccountScreen: View {
                 Spacer(minLength: 0)
             }
 
+            if session.hasTrainerRequest {
+                Label("Žádost o trenérský účet čeká na schválení správcem. Do té doby máš účet tanečníka.", systemImage: "hourglass")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.cleanup.ink)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.cleanup.background))
+            }
+
             VStack(spacing: 0) {
                 AccountRow(icon: "person.text.rectangle", title: "Můj profil", detail: "Jméno, příjmení, e-mail, telefon") {
                     isEditingProfile = true
@@ -170,7 +179,7 @@ struct AccountScreen: View {
 
     private var linksCard: some View {
         VStack(spacing: 0) {
-            if session.role?.canManageBookings == true {
+            if session.canAdminister {
                 LinkRow(icon: "gearshape", title: "Správa sálu na webu", url: AppConfig.webURL("/admin"))
                 Divider().padding(.leading, 44)
             }

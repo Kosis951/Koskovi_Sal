@@ -45,6 +45,8 @@ fun LessonsScreen(session: SessionModel, onSignIn: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var requesting by remember { mutableStateOf<LessonSlot?>(null) }
+    var addingWindow by remember { mutableStateOf(false) }
+    var deletingWindow by remember { mutableStateOf<TrainerWindow?>(null) }
 
     suspend fun loadCalendar() {
         val trainer = selected ?: return
@@ -142,6 +144,18 @@ fun LessonsScreen(session: SessionModel, onSignIn: () -> Unit) {
             }
         }
 
+        // When the trainer teaches; dancers then see the free slots.
+        if (data.canManage) {
+            item { SectionTitle("Časy výuky") }
+            item { PrimaryButton("Přidat čas výuky") { addingWindow = true } }
+            if (data.windows.isEmpty()) {
+                item { EmptyCard("Zatím žádné časy. Přidej, kdy učíš – tanečníci pak uvidí volné lekce a objednají si je.") }
+            }
+            data.windows.forEach { window ->
+                item(key = "window-${window.id}") { TrainerWindowCard(window) { deletingWindow = window } }
+            }
+        }
+
         if (data.canManage) {
             val upcoming = data.lessons.filter { it.status == "confirmed" && it.date >= Dates.todayKey() }
             if (upcoming.isNotEmpty()) {
@@ -194,6 +208,33 @@ fun LessonsScreen(session: SessionModel, onSignIn: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    val trainerKey = calendar?.trainer
+    if (addingWindow && trainerKey != null) {
+        TrainerWindowSheet(trainerKey, onDismiss = { addingWindow = false }) { message ->
+            notice = message
+            addingWindow = false
+            scope.launch { loadCalendar() }
+        }
+    }
+    deletingWindow?.let { window ->
+        ConfirmDialog(
+            title = "Smazat čas výuky?",
+            text = "${windowTitle(window)} ${window.start}–${window.end}. Objednané a potvrzené lekce zůstanou.",
+            confirm = "Smazat",
+            onDismiss = { deletingWindow = null },
+        ) {
+            scope.launch {
+                runCatching {
+                    Api.send<MessageResponse>("DELETE", "/api/lessons/${Api.segment(trainerKey.orEmpty())}/windows", mapOf("id" to window.id))
+                }
+                    .onSuccess { notice = it.message }
+                    .onFailure { error = it.message }
+                deletingWindow = null
+                loadCalendar()
             }
         }
     }

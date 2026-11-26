@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AdminUsersView: View {
     @State private var users: [AdminUser] = []
+    @State private var requests: [TrainerRequest] = []
+    @State private var deciding: String?
     @State private var isLoading = false
     @State private var error: String?
     @State private var notice: String?
@@ -25,6 +27,33 @@ struct AdminUsersView: View {
                 }
                 AdminState(isLoading: isLoading, error: error, isEmpty: users.isEmpty, emptyText: "Zatím žádní uživatelé.")
 
+                if !requests.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Žádosti o trenérský účet (\(requests.count))", systemImage: "graduationcap")
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
+                        ForEach(requests) { request in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(request.name).font(.body.weight(.semibold)).foregroundStyle(Theme.ink)
+                                Text([request.username, request.email, request.requestedAt.map(Dates.dateTime)].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkMuted)
+                                HStack(spacing: 10) {
+                                    Button("Zamítnout") { Task { await decide(request, approve: false) } }
+                                        .buttonStyle(SecondaryButtonStyle())
+                                    Button("Schválit") { Task { await decide(request, approve: true) } }
+                                        .buttonStyle(PrimaryButtonStyle())
+                                }
+                                .disabled(deciding != nil)
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.subtle))
+                        }
+                    }
+                    .card()
+                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.accent, lineWidth: 1.5))
+                }
+
                 ForEach(filtered) { user in
                     Button {
                         editing = user
@@ -43,7 +72,7 @@ struct AdminUsersView: View {
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Badge(text: user.roleValue?.label ?? user.role, style: style(for: user.roleValue))
+                            Badge(text: badge(user), style: user.preset == nil && user.roleValue != .admin ? Theme.cleanup : style(for: user.roleValue))
                         }
                         .card(padding: 12)
                     }
@@ -78,6 +107,30 @@ struct AdminUsersView: View {
         }
     }
 
+    private func badge(_ user: AdminUser) -> String {
+        if user.roleValue == .admin { return Role.admin.label }
+        if let preset = user.preset.flatMap(Role.init(rawValue:)) { return preset.label }
+        return user.permissions == nil ? (user.roleValue?.label ?? user.role) : "Vlastní práva"
+    }
+
+    private func decide(_ request: TrainerRequest, approve: Bool) async {
+        deciding = request.username
+        defer { deciding = nil }
+
+        do {
+            let response = try await API.send(
+                "PATCH",
+                "/api/admin-users",
+                body: ["trainerRequest": approve ? "approve" : "decline", "username": request.username],
+                as: MessageResponse.self
+            )
+            notice = response.message
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func style(for role: Role?) -> KindStyle {
         switch role {
         case .admin: return Theme.busy
@@ -92,7 +145,9 @@ struct AdminUsersView: View {
         defer { isLoading = false }
 
         do {
-            users = try await API.get("/api/admin-users", as: AdminUsersResponse.self).users
+            let response = try await API.get("/api/admin-users", as: AdminUsersResponse.self)
+            users = response.users
+            requests = response.trainerRequests ?? []
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -107,6 +162,7 @@ struct AdminUserEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var username = ""
     @State private var role = "viewer"
+    @State private var permissions = Permissions.preset(.viewer)
     @State private var password = ""
     @State private var isSaving = false
     @State private var isConfirmingDelete = false
@@ -147,11 +203,35 @@ struct AdminUserEditView: View {
             }
 
             if user?.roleValue != .admin {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Role").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Předvolba").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
                     ChoicePills(options: Self.roles, selection: $role)
+                    if user != nil {
+                        Divider()
+                        Text("Práva po sekcích").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
+                        ForEach(Permissions.sections) { section in
+                            HStack {
+                                Text(section.label).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                                Spacer()
+                                Picker(section.label, selection: Binding(
+                                    get: { permissions[keyPath: section.key] },
+                                    set: { permissions[keyPath: section.key] = $0 }
+                                )) {
+                                    ForEach(section.options, id: \.0) { option in
+                                        Text(option.1).tag(option.0)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.accent)
+                            }
+                        }
+                        FieldNote(text: "Předvolba nastaví sekce, pak je můžeš upravit.")
+                    }
                 }
                 .card()
+                .onChange(of: role) {
+                    permissions = Permissions.preset(Role(rawValue: role))
+                }
             }
 
             VStack(spacing: 10) {
@@ -180,7 +260,10 @@ struct AdminUserEditView: View {
             Text("Účet se už nepřihlásí. Jeho lekce a akce zůstanou.")
         }
         .onAppear {
-            if let user { role = user.role }
+            if let user {
+                role = user.role
+                permissions = user.permissions ?? Permissions.preset(user.roleValue)
+            }
         }
     }
 
@@ -193,23 +276,37 @@ struct AdminUserEditView: View {
         isSaving = true
         defer { isSaving = false }
 
-        var payload: [String: Any] = ["username": user?.username ?? username.trimmingCharacters(in: .whitespaces)]
-
-        if user?.roleValue != .admin, role != user?.role || user == nil {
-            payload["role"] = role
-        }
-        if !password.isEmpty {
-            payload["password"] = password
-        }
-
-        guard payload.count > 1 else {
-            dismiss()
-            return
-        }
+        let name = user?.username ?? username.trimmingCharacters(in: .whitespaces)
 
         do {
-            let response = try await API.send("POST", "/api/admin-users", body: payload, as: MessageResponse.self)
-            onDone(response.message ?? "Uloženo.")
+            var messages: [String] = []
+
+            // An existing account: its sections (PATCH); a new one gets the
+            // preset with its password.
+            if let user, user.roleValue != .admin,
+               role != user.role || permissions != (user.permissions ?? Permissions.preset(user.roleValue)) {
+                let response = try await API.send(
+                    "PATCH",
+                    "/api/admin-users",
+                    body: [
+                        "permissions": ["hall": permissions.hall, "lessons": permissions.lessons, "schedule": permissions.schedule, "stats": permissions.stats, "users": permissions.users],
+                        "role": role,
+                        "username": name,
+                    ],
+                    as: MessageResponse.self
+                )
+                messages.append(response.message ?? "Práva jsou uložená.")
+            }
+
+            if user == nil || !password.isEmpty {
+                var payload: [String: Any] = ["username": name]
+                if user == nil { payload["role"] = role }
+                if !password.isEmpty { payload["password"] = password }
+                let response = try await API.send("POST", "/api/admin-users", body: payload, as: MessageResponse.self)
+                messages.append(response.message ?? "Uloženo.")
+            }
+
+            if !messages.isEmpty { onDone(messages.joined(separator: " ")) }
             dismiss()
         } catch {
             self.error = error.localizedDescription

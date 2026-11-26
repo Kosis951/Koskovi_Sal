@@ -74,11 +74,10 @@ fun CalendarScreen(hall: HallModel, session: SessionModel, onSignIn: () -> Unit)
     var cancelled by remember { mutableStateOf<CancellationNotice?>(null) }
     var adding by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
-    val role = session.role
 
     ScreenScaffold(header = {
         BrandHeader("Sál", "TK Koškovi") {
-            if (role?.canAddBookings == true) {
+            if (session.canAddHallEvents) {
                 HeaderButton(Icons.Filled.Add, "Přidat akci") { adding = true }
                 Spacer(Modifier.width(8.dp))
             }
@@ -129,7 +128,7 @@ fun CalendarScreen(hall: HallModel, session: SessionModel, onSignIn: () -> Unit)
                     when (entry) {
                         is DayItem.Reserved -> detail = entry.booking
                         is DayItem.Cancelled -> cancelled = entry.notice
-                        is DayItem.Free -> if (role?.canAddBookings == true) adding = true
+                        is DayItem.Free -> if (session.canAddHallEvents) adding = true
                     }
                 }
             }
@@ -155,7 +154,7 @@ fun CalendarScreen(hall: HallModel, session: SessionModel, onSignIn: () -> Unit)
                 Text(item.title, color = P.ink, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Muted("Tento pravidelný trénink v tento den odpadá.")
             }
-            if (role?.canManageBookings == true) {
+            if (session.canManageHall) {
                 SecondaryButton("Vrátit trénink zpět") {
                     scope.launch {
                         runCatching { hall.reinstate(item) }

@@ -99,28 +99,36 @@ fun AdminScreen(session: SessionModel) {
 @Composable
 private fun AdminHome(session: SessionModel, open: (AdminPage) -> Unit) {
     ScreenScaffold(header = { BrandHeader("Správa", session.role?.label) }) {
-        item { SectionTitle("Sál") }
-        item {
-            Card(padding = 6) {
-                AdminLink(Icons.Filled.CalendarMonth, "Akce", "Nadcházející akce v sále") { open(AdminPage.Bookings) }
-                AdminLink(Icons.Filled.Repeat, "Pravidelné tréninky", "Přidat, upravit, pozastavit") { open(AdminPage.Trainings) }
-                AdminLink(Icons.Filled.BeachAccess, "Prázdniny", "Období bez tréninků") { open(AdminPage.Holidays) }
-            }
-        }
-        item { SectionTitle("Externí trenér") }
-        item {
-            Card(padding = 6) {
-                AdminLink(Icons.Filled.EditNote, "Rozpis", "Text rozpisu a zveřejnění") { open(AdminPage.Schedule) }
-                AdminLink(Icons.Filled.Inbox, "Žádosti o zrušení a přesun", "Z veřejného rozpisu") { open(AdminPage.Requests) }
-            }
-        }
-        item { SectionTitle("Lidé a historie") }
-        item {
-            Card(padding = 6) {
-                if (session.role == Role.admin) {
-                    AdminLink(Icons.Filled.ManageAccounts, "Uživatelé", "Účty, role, hesla") { open(AdminPage.Users) }
+        if (session.canManageHall) {
+            item { SectionTitle("Sál") }
+            item {
+                Card(padding = 6) {
+                    AdminLink(Icons.Filled.CalendarMonth, "Akce", "Nadcházející akce v sále") { open(AdminPage.Bookings) }
+                    AdminLink(Icons.Filled.Repeat, "Pravidelné tréninky", "Přidat, upravit, pozastavit") { open(AdminPage.Trainings) }
+                    AdminLink(Icons.Filled.BeachAccess, "Prázdniny", "Období bez tréninků") { open(AdminPage.Holidays) }
                 }
-                AdminLink(Icons.Filled.History, "Historie změn", "Kdo co změnil, vrácení změny") { open(AdminPage.History) }
+            }
+        }
+        if (session.canEditSchedule) {
+            item { SectionTitle("Externí trenér") }
+            item {
+                Card(padding = 6) {
+                    AdminLink(Icons.Filled.EditNote, "Rozpis", "Text rozpisu a zveřejnění") { open(AdminPage.Schedule) }
+                    AdminLink(Icons.Filled.Inbox, "Žádosti o zrušení a přesun", "Z veřejného rozpisu") { open(AdminPage.Requests) }
+                }
+            }
+        }
+        if (session.canManageUsers || session.canSeeStats) {
+            item { SectionTitle("Lidé a historie") }
+            item {
+                Card(padding = 6) {
+                    if (session.canManageUsers) {
+                        AdminLink(Icons.Filled.ManageAccounts, "Uživatelé", "Práva, žádosti trenérů, hesla") { open(AdminPage.Users) }
+                    }
+                    if (session.canSeeStats) {
+                        AdminLink(Icons.Filled.History, "Historie změn", "Kdo co změnil, vrácení změny") { open(AdminPage.History) }
+                    }
+                }
             }
         }
     }
@@ -863,6 +871,7 @@ private fun AdminUsers(onBack: () -> Unit) {
     var search by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<AdminUser?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var requests by remember { mutableStateOf<List<TrainerRequest>>(emptyList()) }
     val query = search.trim().lowercase()
     val filtered = if (query.isEmpty()) users else users.filter {
         listOf(it.username, it.displayName.orEmpty(), it.email.orEmpty()).joinToString(" ").lowercase().contains(query)
@@ -870,9 +879,10 @@ private fun AdminUsers(onBack: () -> Unit) {
 
     suspend fun load() {
         loading = true
-        runCatching { Api.get<AdminUsersResponse>("/api/admin-users").users }
+        runCatching { Api.get<AdminUsersResponse>("/api/admin-users") }
             .onSuccess {
-                users = it
+                users = it.users
+                requests = it.trainerRequests
                 error = null
             }
             .onFailure { error = it.message }
@@ -892,6 +902,38 @@ private fun AdminUsers(onBack: () -> Unit) {
         notice?.let { item { NoticeBanner(it) } }
         item { Field("Hledat", search, { search = it }, placeholder = "jméno nebo e-mail") }
         item { ListState(loading, error, users.isEmpty(), "Zatím žádní uživatelé.") }
+        if (requests.isNotEmpty()) {
+            item { SectionTitle("Žádosti o trenérský účet (${requests.size})") }
+            requests.forEach { request ->
+                item(key = "request-${request.username}") {
+                    Card {
+                        Text(request.name, color = P.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Muted(listOfNotNull(request.username, request.email, request.requestedAt?.let { Dates.dateTime(it) }).joinToString(" · "), 12)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(false to "Zamítnout", true to "Schválit").forEach { (approve, label) ->
+                                val action = {
+                                    scope.launch {
+                                        runCatching {
+                                            Api.send<MessageResponse>(
+                                                "PATCH",
+                                                "/api/admin-users",
+                                                mapOf("trainerRequest" to if (approve) "approve" else "decline", "username" to request.username),
+                                            )
+                                        }
+                                            .onSuccess { notice = it.message }
+                                            .onFailure { error = it.message }
+                                        load()
+                                    }
+                                    Unit
+                                }
+                                if (approve) PrimaryButton(label, Modifier.weight(1f), onClick = action)
+                                else SecondaryButton(label, Modifier.weight(1f), onClick = action)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         filtered.forEach { user ->
             item(key = user.username) {
                 Row(
@@ -920,7 +962,11 @@ private fun AdminUsers(onBack: () -> Unit) {
                             maxLines = 1,
                         )
                     }
-                    Badge(user.roleValue?.label ?: user.role, roleStyle(user.roleValue))
+                    val custom = user.roleValue != Role.admin && user.permissions != null && user.preset == null
+                    Badge(
+                        if (custom) "Vlastní práva" else (Role.of(user.preset)?.label ?: user.roleValue?.label ?: user.role),
+                        if (custom) P.cleanup else roleStyle(user.roleValue),
+                    )
                 }
             }
         }
@@ -951,6 +997,8 @@ private fun UserSheet(user: AdminUser?, onDismiss: () -> Unit, onDone: (String) 
     val scope = rememberCoroutineScope()
     var username by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(user?.role ?: "viewer") }
+    val initialPermissions = user?.permissions ?: Permissions.preset(user?.roleValue)
+    var permissions by remember { mutableStateOf(initialPermissions) }
     var password by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
@@ -965,19 +1013,36 @@ private fun UserSheet(user: AdminUser?, onDismiss: () -> Unit, onDone: (String) 
         primaryEnabled = user != null || (username.trim().length >= 3 && password.length >= 8),
         working = working,
         onPrimary = {
-            val payload = mutableMapOf<String, Any?>("username" to (user?.username ?: username.trim()))
-            if (!isMainAdmin && (user == null || role != user.role)) payload["role"] = role
-            if (password.isNotEmpty()) payload["password"] = password
+            val name = user?.username ?: username.trim()
+            // An existing account: its sections (PATCH); a new one gets the
+            // preset with its password (POST).
+            val changesRights = user != null && !isMainAdmin && (role != user.role || permissions != initialPermissions)
+            val post = mutableMapOf<String, Any?>("username" to name)
+            if (user == null) post["role"] = role
+            if (password.isNotEmpty()) post["password"] = password
 
             if (password.isNotEmpty() && password.length < 8) {
                 error = "Heslo musí mít aspoň 8 znaků."
-            } else if (payload.size == 1) {
+            } else if (!changesRights && post.size == 1) {
                 onDismiss()
             } else {
                 working = true
                 scope.launch {
-                    runCatching { Api.send<MessageResponse>("POST", "/api/admin-users", payload) }
-                        .onSuccess { onDone(it.message ?: "Uloženo.") }
+                    runCatching {
+                        val messages = mutableListOf<String>()
+                        if (changesRights) {
+                            messages += Api.send<MessageResponse>(
+                                "PATCH",
+                                "/api/admin-users",
+                                mapOf("permissions" to permissions.asMap(), "role" to role, "username" to name),
+                            ).message ?: "Práva jsou uložená."
+                        }
+                        if (post.size > 1) {
+                            messages += Api.send<MessageResponse>("POST", "/api/admin-users", post).message ?: "Uloženo."
+                        }
+                        messages.joinToString(" ")
+                    }
+                        .onSuccess { onDone(it) }
                         .onFailure { error = it.message }
                     working = false
                 }
@@ -996,8 +1061,19 @@ private fun UserSheet(user: AdminUser?, onDismiss: () -> Unit, onDone: (String) 
         }
         if (!isMainAdmin) {
             Card {
-                Text("Role", color = P.inkMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                ChoicePills(listOf("viewer" to "Tanečník", "trainer" to "Trenér", "manager" to "Správa sálu"), role) { role = it }
+                Text("Předvolba", color = P.inkMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                ChoicePills(listOf("viewer" to "Tanečník", "trainer" to "Trenér", "manager" to "Správa sálu"), role) {
+                    role = it
+                    permissions = Permissions.preset(Role.of(it))
+                }
+                if (user != null) {
+                    Text("Práva po sekcích", color = P.inkMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Permissions.sections.forEach { section ->
+                        Text(section.label, color = P.ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        ChoicePills(section.options, permissions.get(section.key)) { permissions = permissions.with(section.key, it) }
+                    }
+                    FieldNote("Předvolba nastaví sekce, pak je můžeš upravit.")
+                }
             }
         }
         Card {
