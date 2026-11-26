@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AccountScreen: View {
+    // Whether the Rozpis tab is there (for the guide).
+    var hasSchedule = false
     @Environment(SessionModel.self) private var session
     @Environment(PushModel.self) private var push
     @Environment(\.refreshApp) private var refreshApp
@@ -21,6 +23,7 @@ struct AccountScreen: View {
                     if session.isSignedIn {
                         profileCard
                         PartnerCard()
+                            .tourTarget(.partner)
                     } else {
                         SignInPrompt(
                             icon: "person.crop.circle",
@@ -30,6 +33,7 @@ struct AccountScreen: View {
                     }
 
                     notificationsCard
+                        .tourTarget(.notifications)
                     linksCard
 
                     Text("TK Koškovi \(appVersion)")
@@ -37,14 +41,17 @@ struct AccountScreen: View {
                         .foregroundStyle(Theme.inkSoft)
                         .padding(.top, 4)
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
+            .tourScroll(.account)
             .pageBackground()
             .safeAreaInset(edge: .top, spacing: 0) {
                 BrandHeader(title: "Účet", subtitle: session.isSignedIn ? session.displayName : "Nepřihlášen/a")
             }
             .toolbar(.hidden, for: .navigationBar)
+            .tourOverlay(.account)
             .refreshable { await refreshApp() }
             .fullScreenCover(isPresented: $isSigningIn) {
                 LoginView()
@@ -93,6 +100,10 @@ struct AccountScreen: View {
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "key", title: "Změnit heslo", detail: nil) {
                     isChangingPassword = true
+                }
+                Divider().padding(.leading, 44)
+                AccountRow(icon: "sparkles", title: "Průvodce aplikací", detail: "Ukáže, kde co najdeš") {
+                    TourModel.shared.start(hasSchedule: hasSchedule)
                 }
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "rectangle.portrait.and.arrow.right", title: "Odhlásit se", detail: nil, tint: Theme.busy.ink) {

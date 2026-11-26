@@ -50,7 +50,7 @@ struct RootView: View {
                     .tag(AppTab.admin)
             }
 
-            AccountScreen()
+            AccountScreen(hasSchedule: schedule.isPublished)
                 .tabItem { Label("Účet", systemImage: "person.crop.circle") }
                 .tag(AppTab.account)
         }
@@ -63,6 +63,21 @@ struct RootView: View {
         // The phone's notifications follow the signed-in account (own lessons).
         .onChange(of: session.username) {
             Task { await push.accountChanged() }
+        }
+        // The guide switches the tabs as it goes.
+        .onChange(of: TourModel.shared.index) {
+            if let step = TourModel.shared.step {
+                tab = step.tab
+            }
+        }
+        // After registration, once the sign-in window has closed.
+        .onChange(of: session.isSignedIn) {
+            guard session.isSignedIn, TourModel.shared.startsAfterRegistration else { return }
+            TourModel.shared.startsAfterRegistration = false
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                TourModel.shared.start(hasSchedule: schedule.isPublished)
+            }
         }
         // A schedule published while the app was away shows its tab without a restart.
         .onChange(of: scenePhase) {

@@ -33,6 +33,7 @@ struct LessonsScreen: View {
                         content
                     }
                 }
+                .tourTarget(.lessons)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
@@ -56,6 +57,7 @@ struct LessonsScreen: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .tourOverlay(.lessons)
             .task(id: session.isSignedIn) { await loadTrainers() }
             .refreshable {
                 async let lessons: Void = loadCalendar()

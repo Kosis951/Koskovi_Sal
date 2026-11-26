@@ -67,7 +67,10 @@ struct ScheduleScreen: View {
                         ErrorBanner(text: error)
                     }
 
-                    myLessonsCard
+                    VStack(spacing: 14) {
+                        myLessonsCard
+                    }
+                    .tourTarget(.scheduleMine)
 
                     if let until = model.requestsUntil {
                         HStack(alignment: .top, spacing: 12) {
@@ -129,6 +132,7 @@ struct ScheduleScreen: View {
                 BrandHeader(title: "Rozpis", subtitle: model.schedule?.title)
             }
             .toolbar(.hidden, for: .navigationBar)
+            .tourOverlay(.schedule)
             .refreshable { await model.load() }
             .sheet(isPresented: $isLinking) {
                 ScheduleNameView(current: session.scheduleName ?? "") {

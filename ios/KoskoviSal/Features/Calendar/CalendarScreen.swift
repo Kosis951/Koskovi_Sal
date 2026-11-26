@@ -32,15 +32,20 @@ struct CalendarScreen: View {
                             isCleaning: cleaningId != nil,
                             onCleaned: { booking in Task { await clean(booking) } }
                         )
+                        .tourTarget(.hallStatus)
                     }
 
                     CalendarCard(mode: $mode, selectedDay: $selectedDay, kinds: { model.kinds(on: $0) })
+                        .tourTarget(.calendarCard)
 
                     dayCard
+                        .tourTarget(.dayCard)
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
+            .tourScroll(.calendar)
             .pageBackground()
             .safeAreaInset(edge: .top, spacing: 0) {
                 BrandHeader(title: "Kalendář sálu", subtitle: Dates.monthTitle(selectedDay)) {
@@ -50,6 +55,7 @@ struct CalendarScreen: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .tourOverlay(.calendar)
             .refreshable {
                 async let hall: Void = model.load()
                 async let app: Void = refreshApp()
