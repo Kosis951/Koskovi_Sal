@@ -210,14 +210,10 @@ struct AdminUserEditView: View {
                         Divider()
                         Text("Práva po sekcích").font(.footnote.weight(.semibold)).foregroundStyle(Theme.inkMuted)
                         ForEach(Permissions.sections) { section in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(section.label).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
-                                PermissionPills(options: section.options, selection: Binding(
-                                    get: { permissions[keyPath: section.key] },
-                                    set: { permissions[keyPath: section.key] = $0 }
-                                ))
-                            }
-                            .padding(.top, 4)
+                            PermissionMenu(section: section, selection: Binding(
+                                get: { permissions[keyPath: section.key] },
+                                set: { permissions[keyPath: section.key] = $0 }
+                            ))
                         }
                         FieldNote(text: "Předvolba nastaví sekce, pak je můžeš upravit.")
                     }
@@ -320,33 +316,37 @@ struct AdminUserEditView: View {
     }
 }
 
-// The options of one section as buttons, two in a row, so longer names fit.
-private struct PermissionPills: View {
-    let options: [(String, String)]
+// One section's right as a drop-down in the field style: the name above,
+// the chosen option in the box.
+private struct PermissionMenu: View {
+    let section: Permissions.Section
     @Binding var selection: String
 
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-            ForEach(options, id: \.0) { option in
-                let isSelected = option.0 == selection
+    private var current: String {
+        section.options.first { $0.0 == selection }?.1 ?? selection
+    }
 
-                Button {
-                    withAnimation(.snappy) { selection = option.0 }
-                } label: {
-                    Text(option.1)
-                        .font(.subheadline.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
-                        .foregroundStyle(isSelected ? Color.white : Theme.ink)
-                        .padding(.horizontal, 10)
-                        .frame(maxWidth: .infinity, minHeight: 42)
-                        .background(
-                            Capsule().fill(isSelected ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.subtle))
-                        )
-                        .overlay(Capsule().stroke(isSelected ? Color.clear : Theme.line, lineWidth: 1))
+    var body: some View {
+        FieldBox(label: section.label) {
+            Menu {
+                Picker(section.label, selection: $selection) {
+                    ForEach(section.options, id: \.0) { option in
+                        Text(option.1).tag(option.0)
+                    }
                 }
-                .buttonStyle(.plain)
+            } label: {
+                HStack {
+                    Text(current)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
             }
         }
     }
