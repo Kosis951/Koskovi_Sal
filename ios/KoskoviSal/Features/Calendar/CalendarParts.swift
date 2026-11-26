@@ -274,7 +274,7 @@ struct OccupancyBar: View {
                         }
 
                         if day == Dates.todayKey() {
-                            let now = Dates.minutes(Dates.nowTime())
+                            let now = Dates.minutes(Dates.nowTime(model.clock ?? Date()))
                             if now > open && now < close {
                                 Rectangle()
                                     .fill(Theme.now)

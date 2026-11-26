@@ -32,9 +32,11 @@ final class TourModel {
     }
 
     var isLast: Bool { index == steps.count - 1 }
+    // While on, the screens show made-up data (Demo.tour…).
+    var isActive: Bool { index != nil }
 
-    func start(hasSchedule: Bool) {
-        steps = Self.steps(hasSchedule: hasSchedule)
+    func start() {
+        steps = Self.steps
         withAnimation(.snappy) { index = 0 }
     }
 
@@ -59,38 +61,28 @@ final class TourModel {
         step?.tab == tab ? step?.target : nil
     }
 
-    private static func steps(hasSchedule: Bool) -> [TourStep] {
-        var steps = [
-            TourStep(tab: .calendar, target: nil, title: "Vítej v TK Koškovi!",
-                     text: "Za minutku ti ukážu, kde co najdeš. Průvodce můžeš kdykoli přeskočit a pustit si ho znovu v Účtu."),
-            TourStep(tab: .calendar, target: .hallStatus, title: "Je sál volný?",
-                     text: "Tady hned vidíš, jestli je sál teď volný, obsazený, nebo čeká na úklid."),
-            TourStep(tab: .calendar, target: .calendarCard, title: "Kalendář sálu",
-                     text: "Klepni na den a uvidíš jeho program. Přetažením prstem doleva nebo doprava přepneš týden či měsíc."),
-            TourStep(tab: .calendar, target: .dayCard, title: "Program dne",
-                     text: "Akce, tréninky i volné časy vybraného dne. Klepnutím na akci uvidíš podrobnosti."),
-            TourStep(tab: .lessons, target: .lessons, title: "Lekce u trenérů",
-                     text: "Volné termíny tvého trenéra. Klepni na termín, objednej si lekci a trenér ji potvrdí."),
-        ]
-
-        if hasSchedule {
-            steps.append(TourStep(tab: .schedule, target: .scheduleMine, title: "Rozpis externího trenéra",
-                                  text: "Tvoje lekce se tu zvýrazní. Potvrď, že jsi to ty, a připomeneme ti je hodinu předem."))
-        } else {
-            steps.append(TourStep(tab: .schedule, target: .scheduleMine, title: "Rozpis externího trenéra",
-                                  text: "Až přijede externí trenér, najdeš tu jeho rozpis. Tvoje lekce v něm najdeme podle příjmení a připomeneme ti je hodinu předem."))
-        }
-
-        steps += [
-            TourStep(tab: .account, target: .notifications, title: "Upozornění",
-                     text: "Zapni si, co chceš vědět: obsazený sál, úklid, nebo připomínku své lekce s odpočtem."),
-            TourStep(tab: .account, target: .partner, title: "Partner/ka",
-                     text: "Tančíte každý na svůj účet? Najdi partnera nebo partnerku a uvidíte lekce společně."),
-            TourStep(tab: .account, target: nil, title: "Hotovo!",
-                     text: "Průvodce najdeš kdykoli v Účtu. Ať se ti dobře tančí!"),
-        ]
-        return steps
-    }
+    private static let steps = [
+        TourStep(tab: .calendar, target: nil, title: "Vítej v TK Koškovi!",
+                 text: "Za minutku ti ukážu, kde co najdeš – na smyšlených ukázkových datech, tvoje skutečná se vrátí hned po průvodci. Můžeš ho kdykoli přeskočit a pustit si ho znovu v Účtu."),
+        TourStep(tab: .calendar, target: .hallStatus, title: "Je sál volný?",
+                 text: "Tady hned vidíš, co je v sále právě teď: zelená = volno, červená = obsazeno, šedá = zavřeno."),
+        TourStep(tab: .calendar, target: .hallStatus, title: "„Čeká na úklid“ není obsazeno",
+                 text: "Žlutá znamená, že sál je volný a klidně můžeš jít trénovat. Jen po předchozí akci ještě nikdo nepotvrdil úklid. Kdo sál uklidí, klepne na „Uklidil jsem sál“."),
+        TourStep(tab: .calendar, target: .calendarCard, title: "Kalendář sálu",
+                 text: "Klepni na den a uvidíš jeho program. Přetažením prstem doleva nebo doprava přepneš týden či měsíc."),
+        TourStep(tab: .calendar, target: .dayCard, title: "Program dne",
+                 text: "Akce, tréninky i volné časy vybraného dne. Štítek „Čeká na úklid“ u akce neznamená obsazeno – po jejím konci je sál volný."),
+        TourStep(tab: .lessons, target: .lessons, title: "Lekce u trenérů",
+                 text: "Volné termíny tvého trenéra. Klepni na termín, objednej si lekci a trenér ji potvrdí."),
+        TourStep(tab: .schedule, target: .scheduleMine, title: "Rozpis externího trenéra",
+                 text: "Když přijede externí trenér, najdeš tu jeho rozpis. Tvoje lekce najdeme podle příjmení, zvýrazní se a připomeneme ti je hodinu předem."),
+        TourStep(tab: .account, target: .notifications, title: "Upozornění",
+                 text: "Zapni si, co chceš vědět: obsazený sál, úklid, nebo připomínku své lekce s odpočtem."),
+        TourStep(tab: .account, target: .partner, title: "Partner/ka",
+                 text: "Tančíte každý na svůj účet? Najdi partnera nebo partnerku a uvidíte lekce společně."),
+        TourStep(tab: .account, target: nil, title: "Hotovo!",
+                 text: "Průvodce najdeš kdykoli v Účtu. Ať se ti dobře tančí!"),
+    ]
 }
 
 struct TourAnchorKey: PreferenceKey {

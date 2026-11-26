@@ -27,8 +27,8 @@ struct CalendarScreen: View {
                     if model.hasLoaded {
                         HallStatusCard(
                             status: model.status(),
-                            hours: model.hours(on: Dates.todayKey()),
-                            freeHours: model.freeHours(on: Dates.todayKey()),
+                            hours: model.hours(on: Dates.key(model.clock ?? Date())),
+                            freeHours: model.freeHours(on: Dates.key(model.clock ?? Date())),
                             isCleaning: cleaningId != nil,
                             onCleaned: { booking in Task { await clean(booking) } }
                         )
@@ -63,6 +63,13 @@ struct CalendarScreen: View {
             }
             .task { await model.load() }
             .onChange(of: session.isSignedIn) {
+                Task { await model.load() }
+            }
+            // The guide shows made-up data (today), then the real again.
+            .onChange(of: TourModel.shared.isActive) {
+                if TourModel.shared.isActive {
+                    selectedDay = Dates.todayKey()
+                }
                 Task { await model.load() }
             }
             .sheet(item: $openBooking) { booking in

@@ -7,6 +7,7 @@ import SwiftUI
 final class ScheduleModel {
     private(set) var schedule: PublicScheduleResponse?
     private(set) var days: [ScheduleDay] = []
+    private var showsTour = false
     var error: String?
 
     var isPublished: Bool { schedule?.published == true }
@@ -27,7 +28,17 @@ final class ScheduleModel {
         do {
             let schedule: PublicScheduleResponse
 
-            if Demo.isOn {
+            let isTour = TourModel.shared.isActive
+            if isTour || showsTour {
+                // The guide's made-up schedule goes, even if loading fails.
+                self.schedule = nil
+                days = []
+                showsTour = isTour
+            }
+
+            if isTour {
+                schedule = Demo.tourSchedule
+            } else if Demo.isOn {
                 schedule = Demo.schedule
             } else {
                 schedule = try await API.get("/api/rozpis", as: PublicScheduleResponse.self)

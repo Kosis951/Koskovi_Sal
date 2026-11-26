@@ -59,6 +59,14 @@ struct LessonsScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .tourOverlay(.lessons)
             .task(id: session.isSignedIn) { await loadTrainers() }
+            // The guide shows made-up lessons, then the real again.
+            .onChange(of: TourModel.shared.isActive) {
+                if !TourModel.shared.isActive {
+                    trainers = []
+                    calendar = nil
+                }
+                Task { await loadTrainers() }
+            }
             .refreshable {
                 async let lessons: Void = loadCalendar()
                 async let app: Void = refreshApp()
@@ -211,7 +219,7 @@ struct LessonsScreen: View {
         defer { isLoading = false }
 
         do {
-            if Demo.isOn {
+            if Demo.isOn || TourModel.shared.isActive {
                 trainers = Demo.trainers
             } else {
                 trainers = try await API.get("/api/lessons", as: TrainersResponse.self).trainers
@@ -228,7 +236,7 @@ struct LessonsScreen: View {
         guard let selected else { return }
 
         do {
-            if Demo.isOn {
+            if Demo.isOn || TourModel.shared.isActive {
                 calendar = Demo.trainerCalendar
             } else {
                 calendar = try await API.get("/api/lessons/\(API.segment(selected))", as: TrainerCalendar.self)

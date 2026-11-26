@@ -50,7 +50,7 @@ struct RootView: View {
                     .tag(AppTab.admin)
             }
 
-            AccountScreen(hasSchedule: schedule.isPublished)
+            AccountScreen()
                 .tabItem { Label("Účet", systemImage: "person.crop.circle") }
                 .tag(AppTab.account)
         }
@@ -70,13 +70,17 @@ struct RootView: View {
                 tab = step.tab
             }
         }
+        // It shows a made-up schedule, then the real one again.
+        .onChange(of: TourModel.shared.isActive) {
+            Task { await schedule.load() }
+        }
         // After registration, once the sign-in window has closed.
         .onChange(of: session.isSignedIn) {
             guard session.isSignedIn, TourModel.shared.startsAfterRegistration else { return }
             TourModel.shared.startsAfterRegistration = false
             Task {
                 try? await Task.sleep(for: .seconds(1))
-                TourModel.shared.start(hasSchedule: schedule.isPublished)
+                TourModel.shared.start()
             }
         }
         // A schedule published while the app was away shows up without a restart.

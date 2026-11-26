@@ -102,6 +102,31 @@ enum Demo {
         return AvailabilityResponse(bookings: bookings, hall: HallSettings(openingHours: hours), recurringCancellations: cancelled)
     }
 
+    // --- The guide (after registration): made-up data, so it can show everything ---
+
+    // The guide's "now": today at 17:00, just after a seminar that waits for cleanup.
+    static var tourClock: Date {
+        Dates.calendar.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    }
+
+    static var tourAvailability: AvailabilityResponse {
+        let week = availability
+        var bookings = week.bookings.filter { $0.date != today }
+        bookings += [
+            booking("demo-tour-a", today, "14:00", "16:30", "Seminář STT", eventType: "seminar", trainer: "Šárka", cleanup: true),
+            booking("recurring-tour-b-\(today)", today, "18:00", "19:30", "Společná LAT"),
+        ]
+        let cancelled = (week.recurringCancellations ?? []).filter { $0.date != today }
+        return AvailabilityResponse(bookings: bookings, hall: week.hall, recurringCancellations: cancelled)
+    }
+
+    // The schedule with two of "your" lessons highlighted.
+    static var tourSchedule: PublicScheduleResponse {
+        var result = schedule
+        result.mine = ["\(day(1))|10:00", "\(day(1))|13:45"]
+        return result
+    }
+
     static let trainers = [TrainerInfo(name: "Jirka", trainer: "jirka")]
 
     static var trainerCalendar: TrainerCalendar {

@@ -42,6 +42,8 @@ final class HallModel {
     private(set) var openingHours: [OpeningHours] = []
     private(set) var isLoading = false
     private(set) var hasLoaded = false
+    // The guide's made-up "now" while it shows its data; nil: the real time.
+    private(set) var clock: Date?
     var error: String?
 
     // Minutes before closing reserved for leaving the hall (as on the web).
@@ -51,15 +53,26 @@ final class HallModel {
 
     func load() async {
         #if !WIDGET
-        if Demo.isOn {
-            let response = Demo.availability
+        let isTour = TourModel.shared.isActive
+        if Demo.isOn || isTour {
+            let response = isTour ? Demo.tourAvailability : Demo.availability
             bookings = response.bookings
             cancellations = response.recurringCancellations ?? []
             openingHours = response.hall?.openingHours ?? []
+            clock = isTour ? Demo.tourClock : nil
             hasLoaded = true
             return
         }
         #endif
+
+        // The guide is over: its made-up day goes, even if loading fails.
+        if clock != nil {
+            clock = nil
+            bookings = []
+            cancellations = []
+            openingHours = []
+            hasLoaded = false
+        }
 
         isLoading = true
         defer { isLoading = false }
@@ -109,7 +122,8 @@ final class HallModel {
     }
 
     // The day as the web shows it: bookings, cancelled trainings and free time.
-    func items(on day: String, at date: Date = Date()) -> [DayItem] {
+    func items(on day: String, at date: Date? = nil) -> [DayItem] {
+        let date = date ?? clock ?? Date()
         let now = day == Dates.key(date) ? Dates.minutes(Dates.nowTime(date)) : 0
         var items = bookings(on: day).map(DayItem.booking)
         items += cancellations.filter { $0.date == day }.map(DayItem.cancelled)
@@ -118,12 +132,14 @@ final class HallModel {
     }
 
     func freeHours(on day: String) -> Double {
-        let now = day == Dates.todayKey() ? Dates.minutes(Dates.nowTime()) : 0
+        let date = clock ?? Date()
+        let now = day == Dates.key(date) ? Dates.minutes(Dates.nowTime(date)) : 0
         let minutes = freeWindows(on: day, from: now).reduce(0) { $0 + $1.end - $1.start }
         return (Double(minutes) / 30).rounded() / 2
     }
 
-    func status(now: Date = Date()) -> HallStatus {
+    func status(now: Date? = nil) -> HallStatus {
+        let now = now ?? clock ?? Date()
         let today = Dates.key(now)
         let nowMinutes = Dates.minutes(Dates.nowTime(now))
 
@@ -150,7 +166,7 @@ final class HallModel {
         if current == nil, let waiting = dayBookings.last(where: { $0.waitsForCleanup && Dates.minutes($0.end) <= nowMinutes }) {
             return HallStatus(
                 title: "Sál čeká na úklid",
-                detail: "Po akci \(waiting.title) je potřeba sál uklidit.",
+                detail: "Není obsazeno, sál je volný. Jen po akci \(waiting.title) je potřeba uklidit – kdo uklidí, potvrdí to tady.",
                 tone: .cleanup,
                 cleanupBooking: waiting
             )

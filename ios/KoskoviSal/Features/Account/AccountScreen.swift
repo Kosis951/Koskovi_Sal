@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct AccountScreen: View {
-    // Whether a visiting trainer's schedule is published (for the guide).
-    var hasSchedule = false
     @Environment(SessionModel.self) private var session
     @Environment(PushModel.self) private var push
     @Environment(\.refreshApp) private var refreshApp
@@ -103,7 +101,7 @@ struct AccountScreen: View {
                 }
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "sparkles", title: "Průvodce aplikací", detail: "Ukáže, kde co najdeš") {
-                    TourModel.shared.start(hasSchedule: hasSchedule)
+                    TourModel.shared.start()
                 }
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "rectangle.portrait.and.arrow.right", title: "Odhlásit se", detail: nil, tint: Theme.busy.ink) {
