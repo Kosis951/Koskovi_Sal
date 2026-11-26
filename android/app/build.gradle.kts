@@ -5,6 +5,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Notifications through Google: the Firebase project's settings
+// (google-services.json, from the GitHub secret GOOGLE_SERVICES_JSON). Without
+// them the app builds, just without notifications.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // The release key comes from GitHub secrets (see android/README.md); without
 // it the APK is signed with the debug key (installs, but cannot update a
 // release build).
@@ -67,4 +74,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

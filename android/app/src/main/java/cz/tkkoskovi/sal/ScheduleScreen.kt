@@ -80,7 +80,7 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
         BrandHeader("Rozpis", model.schedule?.title?.takeIf { it.isNotBlank() } ?: "Externí trenér") {
             HeaderButton(Icons.Filled.Refresh, "Obnovit") { scope.launch { model.load() } }
         }
-    }) {
+    }, onRefresh = { model.load() }) {
         model.error?.let { item { ErrorBanner(it) } }
         notice?.let { item { NoticeBanner(it) } }
 
@@ -175,7 +175,7 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
 }
 
 @Composable
-private fun ScheduleRowView(row: ScheduleRow, past: Boolean, current: Boolean, mine: Boolean, onClick: () -> Unit) {
+internal fun ScheduleRowView(row: ScheduleRow, past: Boolean, current: Boolean, mine: Boolean, onClick: () -> Unit) {
     if (row.kind == RowKind.Note) {
         Muted(row.text)
         return

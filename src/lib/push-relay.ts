@@ -29,6 +29,11 @@ export function isApnsToken(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64,200}$/i.test(value);
 }
 
+// An Android phone's Firebase (FCM) registration token.
+export function isFcmToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_:-]{100,400}$/.test(value);
+}
+
 // An Android phone's UnifiedPush address: only on the relay's own ntfy, so
 // the server never sends to an address a phone made up.
 export function isRelayEndpoint(value: unknown): value is string {

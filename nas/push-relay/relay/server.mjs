@@ -3,7 +3,8 @@
 //   POST /relay/send     – from the web (VPS), with `Authorization: Bearer
 //                          RELAY_SECRET`: { payload, devices } → per device
 //                          "delivered" | "failed" | "gone". iPhones go to Apple
-//                          (APNs, the key stays here), Android phones to ntfy.
+//                          (APNs, the key stays here), Android phones to
+//                          Google (FCM) or, with an ntfy address, to ntfy.
 //   GET  /relay/health   – what is set up.
 //   GET  /app/<name>.apk – the Android app to download (./downloads, else
 //                          the GitHub release "android-latest").
@@ -247,6 +248,136 @@ async function sendNtfy(endpoints, payload, results) {
   }
 }
 
+// --- Android (Firebase Cloud Messaging) ---
+
+// The Firebase project's service account (Project settings → Service
+// accounts → Generate new private key), saved as secrets/fcm.json.
+let fcm = null;
+
+try {
+  const account = JSON.parse(readFileSync(env.FCM_ACCOUNT_PATH || "/secrets/fcm.json", "utf8"));
+
+  if (account.client_email && account.private_key && account.project_id) {
+    fcm = {
+      email: account.client_email,
+      key: createPrivateKey(account.private_key),
+      projectId: account.project_id,
+      tokenUri: account.token_uri || "https://oauth2.googleapis.com/token",
+    };
+  }
+} catch (error) {
+  if (error.code !== "ENOENT") {
+    console.error("[relay] účet FCM (secrets/fcm.json) nejde načíst:", error.message);
+  }
+}
+
+let fcmAccess = null;
+
+// Google's access token for sending, valid for an hour.
+async function getFcmAccess() {
+  const now = Math.floor(Date.now() / 1000);
+
+  if (fcmAccess && now < fcmAccess.expiresAt - 300) {
+    return fcmAccess.value;
+  }
+
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const unsigned = `${encode({ alg: "RS256", typ: "JWT" })}.${encode({
+    aud: fcm.tokenUri,
+    exp: now + 3600,
+    iat: now,
+    iss: fcm.email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+  })}`;
+  const assertion = `${unsigned}.${sign("sha256", Buffer.from(unsigned), fcm.key).toString("base64url")}`;
+  const response = await fetch(fcm.tokenUri, {
+    body: new URLSearchParams({ assertion, grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer" }),
+    method: "POST",
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`přihlášení ke Googlu ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  fcmAccess = { expiresAt: now + Number(data.expires_in || 3600), value: data.access_token };
+  return fcmAccess.value;
+}
+
+async function sendFcm(tokens, payload, results) {
+  if (tokens.length === 0) {
+    return;
+  }
+
+  let access;
+
+  try {
+    if (!fcm) {
+      throw new Error("chybí secrets/fcm.json");
+    }
+    access = await getFcmAccess();
+  } catch (error) {
+    console.error("[relay] FCM:", error.message);
+    tokens.forEach((token) => results.set(token, "failed"));
+    return;
+  }
+
+  const url = `${env.FCM_API_URL || "https://fcm.googleapis.com"}/v1/projects/${fcm.projectId}/messages:send`;
+
+  for (let index = 0; index < tokens.length; index += 20) {
+    await Promise.all(
+      tokens.slice(index, index + 20).map(async (token) => {
+        try {
+          const response = await fetch(url, {
+            body: JSON.stringify({
+              message: {
+                // Shown by the system when the app is closed; the app shows it
+                // itself while open (PushService).
+                android: {
+                  notification: { channel_id: "hall", ...(payload.tag ? { tag: payload.tag } : {}) },
+                  priority: "high",
+                  ttl: `${6 * 60 * 60}s`,
+                },
+                data: { body: payload.body, title: payload.title, ...(payload.url ? { url: payload.url } : {}) },
+                notification: { body: payload.body, title: payload.title },
+                token,
+              },
+            }),
+            headers: { authorization: `Bearer ${access}`, "content-type": "application/json" },
+            method: "POST",
+            signal: AbortSignal.timeout(15000),
+          });
+
+          if (response.ok) {
+            results.set(token, "delivered");
+            return;
+          }
+
+          const error = (await response.json().catch(() => null))?.error;
+          const code = error?.details?.find((detail) => detail.errorCode)?.errorCode || error?.status || "";
+          const device = `…${token.slice(-6)}`;
+
+          // The app was removed or the token replaced (a bad message of ours
+          // is also INVALID_ARGUMENT, so only when it is about the token).
+          const badToken = response.status === 400 && /registration token/i.test(error?.message ?? "");
+
+          if (response.status === 404 || code === "UNREGISTERED" || badToken) {
+            results.set(token, "gone");
+            console.warn("[relay] FCM: zařízení neplatí:", device, response.status, code);
+          } else {
+            results.set(token, "failed");
+            console.error("[relay] FCM odmítl:", device, response.status, code, error?.message ?? "");
+          }
+        } catch (error) {
+          results.set(token, "failed");
+          console.error("[relay] FCM nedostupný:", error.message);
+        }
+      }),
+    );
+  }
+}
+
 // --- HTTP ---
 
 function json(response, status, value) {
@@ -311,12 +442,19 @@ async function handleSend(request, response) {
   const ios = devices
     .filter((device) => device?.platform === "ios" && /^[0-9a-f]{64,200}$/i.test(device.token ?? ""))
     .map((device) => device.token);
+  // Android phones: a Firebase token, or an ntfy address (UnifiedPush).
   const android = devices
     .filter((device) => device?.platform === "android" && typeof device.token === "string")
     .map((device) => device.token);
+  const ntfyEndpoints = android.filter((token) => token.startsWith("https://"));
+  const fcmTokens = android.filter((token) => !token.startsWith("https://"));
   const results = new Map();
 
-  await Promise.all([sendApns(ios, clean, results), sendNtfy(android, clean, results)]);
+  await Promise.all([
+    sendApns(ios, clean, results),
+    sendFcm(fcmTokens, clean, results),
+    sendNtfy(ntfyEndpoints, clean, results),
+  ]);
 
   const delivered = [...results.values()].filter((result) => result === "delivered").length;
   console.info(`[relay] ${clean.title} → ${delivered}/${results.size}`);
@@ -333,7 +471,7 @@ async function handleHealth(response) {
     // Not reachable.
   }
 
-  json(response, 200, { apns: Boolean(apns), ntfy: ntfyHealthy, ok: true });
+  json(response, 200, { apns: Boolean(apns), fcm: Boolean(fcm), ntfy: ntfyHealthy, ok: true });
 }
 
 // Browsers that once opened ntfy's web app here keep showing it from its
@@ -521,5 +659,5 @@ server.headersTimeout = 30000;
 server.keepAliveTimeout = 65000;
 
 server.listen(port, () => {
-  console.info(`[relay] běží na portu ${port}; APNs ${apns ? "zapnuté" : "vypnuté"}, ntfy ${ntfy.origin}`);
+  console.info(`[relay] běží na portu ${port}; APNs ${apns ? "zapnuté" : "vypnuté"}, FCM ${fcm ? "zapnuté" : "vypnuté"}, ntfy ${ntfy.origin}`);
 });

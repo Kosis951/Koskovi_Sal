@@ -7,7 +7,7 @@ import {
   saveNativeDevice,
   sendToNativeDevice,
 } from "@/lib/push";
-import { getRelayUrl, isApnsToken, isRelayEndpoint } from "@/lib/push-relay";
+import { getRelayUrl, isApnsToken, isFcmToken, isRelayEndpoint } from "@/lib/push-relay";
 import { isRateLimited } from "@/lib/simple-rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +15,19 @@ export const dynamic = "force-dynamic";
 // Notifications for the native apps, delivered by the relay on the NAS.
 // Like web push, anyone may subscribe: the notifications only contain what
 // the public calendar shows.
-//   POST { platform: "ios", token, topics } or
-//        { platform: "android", endpoint, topics } – subscribe or change
+//   POST { platform: "ios", token, topics },
+//        { platform: "android", token, topics } (Firebase) or
+//        { platform: "android", endpoint, topics } (ntfy) – subscribe or change
 //        topics (no topics = unsubscribe); `test: true` sends a test.
 //   PUT { token } / { endpoint } – which topics this device receives.
 
 function deviceKey(body: Record<string, unknown> | null) {
   if (body?.platform === "ios" && isApnsToken(body.token)) {
     return { platform: "ios" as const, token: body.token };
+  }
+
+  if (body?.platform === "android" && isFcmToken(body.token)) {
+    return { platform: "android" as const, token: body.token };
   }
 
   if (body?.platform === "android" && isRelayEndpoint(body.endpoint)) {
@@ -82,7 +87,12 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  const token = isApnsToken(body?.token) ? body.token : isRelayEndpoint(body?.endpoint) ? body.endpoint : null;
+  const token =
+    isApnsToken(body?.token) || isFcmToken(body?.token)
+      ? body.token
+      : isRelayEndpoint(body?.endpoint)
+        ? body.endpoint
+        : null;
 
   if (!token) {
     return NextResponse.json({ message: "Neplatné zařízení." }, { status: 400 });

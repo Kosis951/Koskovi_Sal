@@ -96,7 +96,7 @@ fun LessonsScreen(session: SessionModel, onSignIn: () -> Unit) {
                 HeaderButton(Icons.Filled.Refresh, "Obnovit") { scope.launch { loadTrainers() } }
             }
         }
-    }) {
+    }, onRefresh = { if (trainers.isEmpty()) loadTrainers() else loadCalendar() }) {
         if (!session.isSignedIn) {
             item {
                 SignInPrompt(

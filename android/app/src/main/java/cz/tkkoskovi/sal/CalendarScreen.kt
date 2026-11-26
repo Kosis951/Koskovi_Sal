@@ -69,7 +69,7 @@ fun CalendarScreen(hall: HallModel, session: SessionModel, onSignIn: () -> Unit)
             }
             HeaderButton(Icons.Filled.Refresh, "Obnovit") { scope.launch { hall.load() } }
         }
-    }) {
+    }, onRefresh = { hall.load() }) {
         hall.error?.let { item { ErrorBanner(it) } }
         notice?.let { item { NoticeBanner(it) } }
 
@@ -405,7 +405,7 @@ private fun LegendLine(dot: Color, style: KindStyle, label: String) {
 }
 
 @Composable
-private fun DayItemRow(item: DayItem, onClick: () -> Unit) {
+internal fun DayItemRow(item: DayItem, onClick: () -> Unit) {
     val style: KindStyle
     val title: String
     val time: String
@@ -462,7 +462,7 @@ private fun DayItemRow(item: DayItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BookingDetailSheet(
+internal fun BookingDetailSheet(
     booking: Booking,
     hall: HallModel,
     session: SessionModel,
@@ -562,7 +562,7 @@ private fun BookingDetailSheet(
 }
 
 @Composable
-private fun AddBookingSheet(hall: HallModel, date: String, onDismiss: () -> Unit, onDone: () -> Unit) {
+internal fun AddBookingSheet(hall: HallModel, date: String, onDismiss: () -> Unit, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var eventType by remember { mutableStateOf("seminar") }

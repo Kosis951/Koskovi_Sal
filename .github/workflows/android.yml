@@ -47,6 +47,18 @@ jobs:
             echo "::warning::Chybí secret ANDROID_KEYSTORE_B64 – APK je podepsané ladicím klíčem (aktualizace bude chtít přeinstalovat)."
           fi
 
+      # The Firebase project's settings for notifications through Google.
+      - name: Nastavení Firebase
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "Upozornění přes Google jsou zapnutá."
+          else
+            echo "::warning::Chybí secret GOOGLE_SERVICES_JSON – aplikace bude bez upozornění."
+          fi
+
       - name: Sestavení
         working-directory: android
         env:

@@ -1,5 +1,9 @@
 package cz.tkkoskovi.sal
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
@@ -42,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,11 +99,10 @@ fun AccountScreen(session: SessionModel) {
             Card(padding = 6) {
                 LinkRow(Icons.Filled.Person, "Upravit profil") { editingProfile = true }
                 LinkRow(Icons.Filled.Lock, "Změnit heslo") { changingPassword = true }
-                if (session.role?.canManageBookings == true) {
-                    LinkRow(Icons.Filled.Badge, "Správa sálu na webu") { uri.openUri(Api.web("/admin")) }
-                }
             }
         }
+
+        item { NotificationsCard() }
 
         item {
             Card(padding = 6) {
@@ -137,6 +140,48 @@ fun AccountScreen(session: SessionModel) {
             notice = message
             changingPassword = false
         }
+    }
+}
+
+// Notifications through Google, as in the iPhone app.
+@Composable
+private fun NotificationsCard() {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<PushTopic?>(null) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val topic = pending
+        pending = null
+        if (granted && topic != null) {
+            scope.launch { Push.set(topic, true) }
+        } else if (!granted) {
+            Push.message = "Upozornění jsou pro aplikaci vypnutá. Zapni je v Nastavení → Aplikace → TK Koškovi → Oznámení."
+        }
+    }
+
+    Card {
+        SectionTitle("Upozornění")
+        if (!Push.isAvailable) {
+            Muted("Upozornění v této verzi aplikace nejsou zapnutá.")
+        } else {
+            Muted("Dáme ti vědět, když bude sál dnes obsazený, trénink odpadne nebo sál čeká na úklid.")
+            PushTopic.entries.forEach { topic ->
+                ToggleRow(topic.title, topic in Push.topics) { enabled ->
+                    if (enabled && !Push.hasPermission(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        pending = topic
+                        permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        scope.launch { Push.set(topic, enabled) }
+                    }
+                }
+            }
+            if (Push.topics.isNotEmpty()) {
+                SecondaryButton("Poslat zkušební upozornění", enabled = !Push.busy) {
+                    scope.launch { Push.sendTest() }
+                }
+            }
+        }
+        Push.message?.let { FieldNote(it) }
     }
 }
 

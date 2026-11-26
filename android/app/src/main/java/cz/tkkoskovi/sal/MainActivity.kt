@@ -14,6 +14,16 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -43,6 +53,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Api.init(applicationContext)
+        Push.init(applicationContext)
+        Push.registerIfAllowed()
         enableEdgeToEdge()
         setContent {
             KoskoviTheme { App() }
@@ -96,6 +108,7 @@ private enum class Tab(val title: String, val icon: ImageVector) {
     Calendar("Kalendář", Icons.Filled.CalendarMonth),
     Lessons("Lekce", Icons.Filled.Groups),
     Schedule("Rozpis", Icons.Filled.ListAlt),
+    Admin("Správa", Icons.Filled.Tune),
     Account("Účet", Icons.Filled.AccountCircle),
 }
 
@@ -120,17 +133,35 @@ fun App() {
         }
     }
 
-    val tabs = Tab.entries.filter { it != Tab.Schedule || schedule.isPublished }
+    val tabs = Tab.entries.filter {
+        when (it) {
+            Tab.Schedule -> schedule.isPublished
+            Tab.Admin -> session.role?.canManageBookings == true
+            else -> true
+        }
+    }
     if (tab !in tabs) tab = Tab.Calendar
     val openAccount = { tab = Tab.Account }
 
+    // Pulling any screen down also checks the account and whether the visiting
+    // trainer's schedule was published (its tab shows up then).
+    val refreshApp: suspend () -> Unit = {
+        coroutineScope {
+            launch { session.refresh() }
+            launch { schedule.load() }
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(P.page)) {
         Box(Modifier.weight(1f)) {
-            when (tab) {
-                Tab.Calendar -> CalendarScreen(hall, session, openAccount)
-                Tab.Lessons -> LessonsScreen(session, openAccount)
-                Tab.Schedule -> ScheduleScreen(schedule, session, openAccount)
-                Tab.Account -> AccountScreen(session)
+            CompositionLocalProvider(LocalRefreshApp provides refreshApp) {
+                when (tab) {
+                    Tab.Calendar -> CalendarScreen(hall, session, openAccount)
+                    Tab.Lessons -> LessonsScreen(session, openAccount)
+                    Tab.Schedule -> ScheduleScreen(schedule, session, openAccount)
+                    Tab.Admin -> AdminScreen(session)
+                    Tab.Account -> AccountScreen(session)
+                }
             }
         }
         NavigationBar(containerColor = P.surface) {
@@ -153,19 +184,56 @@ fun App() {
     }
 }
 
-// A screen: header, then content scrolling under it.
+val LocalRefreshApp = staticCompositionLocalOf<suspend () -> Unit> { {} }
+
+// A screen: header, then content scrolling under it. Pulling it down runs
+// `onRefresh` together with the app's own refresh.
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenScaffold(
     header: @Composable () -> Unit,
+    onRefresh: (suspend () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
+    val refreshApp = LocalRefreshApp.current
+    val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    var refreshing by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize()) {
         header()
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    try {
+                        coroutineScope {
+                            onRefresh?.let { launch { it() } }
+                            launch { refreshApp() }
+                        }
+                    } finally {
+                        refreshing = false
+                    }
+                }
+            },
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // A tap outside a field puts the keyboard away.
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            focus.clearFocus()
+                            keyboard?.hide()
+                        }
+                    },
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+        }
     }
 }

@@ -5,3 +5,4 @@ local.properties
 *.keystore
 *.jks
 *.p12
+app/google-services.json
