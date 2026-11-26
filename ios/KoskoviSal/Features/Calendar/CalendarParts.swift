@@ -100,12 +100,19 @@ struct CalendarCard: View {
                     set: { mode = CalendarMode(rawValue: $0) ?? .week }
                 ))
                 if selectedDay != Dates.todayKey() {
-                    Button("Dnes") {
+                    Button {
                         withAnimation(.snappy) { selectedDay = Dates.todayKey() }
+                    } label: {
+                        Label("Dnes", systemImage: "calendar.badge.clock")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 40)
+                            .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                            .overlay(Capsule().stroke(Theme.accent.opacity(0.55), lineWidth: 1))
                     }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 6)
+                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
             }
 
