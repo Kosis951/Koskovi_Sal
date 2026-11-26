@@ -39,7 +39,7 @@ enum Dates {
     }
 
     static func todayKey() -> String { key(Date()) }
-    static func nowTime() -> String { timeFormatter.string(from: Date()) }
+    static func nowTime(_ date: Date = Date()) -> String { timeFormatter.string(from: date) }
 
     static func addDays(_ days: Int, to key: String) -> String {
         guard let date = date(key), let next = calendar.date(byAdding: .day, value: days, to: date) else { return key }

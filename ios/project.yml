@@ -63,8 +63,14 @@ targets:
     sources:
       - KoskoviWidgets
       - Shared
+      # The hall calendar's data and rules, shared with the app.
+      - KoskoviSal/Core/API.swift
+      - KoskoviSal/Core/Dates.swift
+      - KoskoviSal/Core/Models.swift
+      - KoskoviSal/Features/Calendar/HallModel.swift
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET
         PRODUCT_BUNDLE_IDENTIFIER: cz.tkkoskovi.sal.widgets
         PRODUCT_NAME: KoskoviWidgets
         TARGETED_DEVICE_FAMILY: "1"
@@ -76,5 +82,6 @@ targets:
         CFBundleDisplayName: TK Koškovi
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        KoskoviHost: $(KOSKOVI_HOST)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

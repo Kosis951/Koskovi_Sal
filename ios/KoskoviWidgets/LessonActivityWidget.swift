@@ -5,6 +5,7 @@ import WidgetKit
 @main
 struct KoskoviWidgets: WidgetBundle {
     var body: some Widget {
+        HallWidget()
         LessonActivityWidget()
     }
 }

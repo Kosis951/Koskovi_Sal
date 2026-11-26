@@ -50,6 +50,7 @@ final class HallModel {
     static let minimumFreeMinutes = 45
 
     func load() async {
+        #if !WIDGET
         if Demo.isOn {
             let response = Demo.availability
             bookings = response.bookings
@@ -58,6 +59,7 @@ final class HallModel {
             hasLoaded = true
             return
         }
+        #endif
 
         isLoading = true
         defer { isLoading = false }
@@ -107,8 +109,8 @@ final class HallModel {
     }
 
     // The day as the web shows it: bookings, cancelled trainings and free time.
-    func items(on day: String) -> [DayItem] {
-        let now = day == Dates.todayKey() ? Dates.minutes(Dates.nowTime()) : 0
+    func items(on day: String, at date: Date = Date()) -> [DayItem] {
+        let now = day == Dates.key(date) ? Dates.minutes(Dates.nowTime(date)) : 0
         var items = bookings(on: day).map(DayItem.booking)
         items += cancellations.filter { $0.date == day }.map(DayItem.cancelled)
         items += freeWindows(on: day, from: now).map { DayItem.free(start: Dates.time($0.start), end: Dates.time($0.end)) }
@@ -123,7 +125,7 @@ final class HallModel {
 
     func status(now: Date = Date()) -> HallStatus {
         let today = Dates.key(now)
-        let nowMinutes = Dates.minutes(Dates.nowTime())
+        let nowMinutes = Dates.minutes(Dates.nowTime(now))
 
         guard let hours = hours(on: today) else {
             return HallStatus(title: "Sál je dnes zavřený", detail: "Dnes je sál zavřený.", tone: .closed)
