@@ -45,7 +45,6 @@ export function AppHeader({
   session: HeaderSession;
 }) {
   const canManage = session?.role === "admin" || session?.role === "manager";
-  const hasSchedule = useIsSchedulePublished() || activeTab === "schedule";
   // From 640px the sections are tabs; phones get them as a dropdown.
   const tabClass = (isActive: boolean) =>
     `inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-3.5 text-sm font-semibold transition ${
@@ -54,9 +53,7 @@ export function AppHeader({
   const phoneSections = [
     { active: activeTab === "hall", href: "/", icon: CalendarDays, label: "Kalendář sálu" },
     ...(session ? [{ active: activeTab === "lessons", href: "/lekce", icon: GraduationCap, label: "Lekce" }] : []),
-    ...(hasSchedule
-      ? [{ active: activeTab === "schedule", href: "/rozpis", icon: ClipboardList, label: "Externí trenér" }]
-      : []),
+    { active: activeTab === "schedule", href: "/rozpis", icon: ClipboardList, label: "Externí trenér" },
     {
       active: activeTab === "app",
       // Not needed inside the installed app.
@@ -101,12 +98,10 @@ export function AppHeader({
               Lekce
             </Link>
           ) : null}
-          {/* A visiting trainer's public schedule, only while one is published. */}
-          {hasSchedule ? (
-            <Link className={tabClass(activeTab === "schedule")} href="/rozpis">
-              Externí trenér
-            </Link>
-          ) : null}
+          {/* A visiting trainer's public schedule (says so when none is planned). */}
+          <Link className={tabClass(activeTab === "schedule")} href="/rozpis">
+            Externí trenér
+          </Link>
           {/* Not needed inside the installed app. */}
           <Link
             className={`${tabClass(activeTab === "app")} [@media(display-mode:standalone)]:hidden`}
@@ -157,48 +152,6 @@ export function AppHeader({
       </div>
     </header>
   );
-}
-
-// Fired by the schedule editor after saving, so the tab appears or goes.
-export const scheduleChangeEvent = "koskovi-schedule-change";
-
-// Whether the public schedule (/rozpis) is published; asked once per page
-// load (and after each save) and shared by every header.
-let schedulePublished: Promise<boolean> | null = null;
-
-function useIsSchedulePublished() {
-  const [isPublished, setIsPublished] = useState(false);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    function load(refresh: boolean) {
-      if (refresh || !schedulePublished) {
-        schedulePublished = fetch("/api/rozpis", { cache: "no-store" })
-          .then((response) => (response.ok ? response.json() : { published: false }))
-          .then((data: { published?: boolean }) => data.published === true)
-          .catch(() => false);
-      }
-
-      void schedulePublished.then((value) => {
-        if (!isCancelled) {
-          setIsPublished(value);
-        }
-      });
-    }
-
-    const handleChange = () => load(true);
-
-    load(false);
-    window.addEventListener(scheduleChangeEvent, handleChange);
-
-    return () => {
-      isCancelled = true;
-      window.removeEventListener(scheduleChangeEvent, handleChange);
-    };
-  }, []);
-
-  return isPublished;
 }
 
 // Fired after the profile is saved, so the header shows the new name.

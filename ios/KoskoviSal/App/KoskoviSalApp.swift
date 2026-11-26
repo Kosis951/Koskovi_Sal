@@ -38,11 +38,11 @@ struct RootView: View {
                 .tabItem { Label("Lekce", systemImage: "figure.dance") }
                 .tag(AppTab.lessons)
 
-            if schedule.isPublished {
-                ScheduleScreen(model: schedule)
-                    .tabItem { Label("Rozpis", systemImage: "list.bullet.rectangle") }
-                    .tag(AppTab.schedule)
-            }
+            // Always there; without a published schedule it says no visiting
+            // trainer is planned.
+            ScheduleScreen(model: schedule)
+                .tabItem { Label("Rozpis", systemImage: "list.bullet.rectangle") }
+                .tag(AppTab.schedule)
 
             if session.role?.canManageBookings == true {
                 AdminScreen()
@@ -56,7 +56,7 @@ struct RootView: View {
         }
         .task { await schedule.load() }
         // Pulling any screen down also checks the account and whether the
-        // visiting trainer's schedule was published (its tab shows up then).
+        // visiting trainer's schedule was published.
         .environment(\.refreshApp, refreshApp)
         .onAppear(perform: Keyboard.installTapToHide)
         .onChange(of: tab) { Keyboard.hide() }
@@ -79,7 +79,7 @@ struct RootView: View {
                 TourModel.shared.start(hasSchedule: schedule.isPublished)
             }
         }
-        // A schedule published while the app was away shows its tab without a restart.
+        // A schedule published while the app was away shows up without a restart.
         .onChange(of: scenePhase) {
             if scenePhase == .active {
                 Keyboard.installTapToHide()

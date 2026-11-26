@@ -34,7 +34,8 @@ final class ScheduleModel {
             }
 
             self.schedule = schedule
-            days = ScheduleParser.parse(schedule.body, todayKey: Dates.todayKey())
+            // Hall managers also get the unpublished draft; that is for Správa only.
+            days = schedule.published ? ScheduleParser.parse(schedule.body, todayKey: Dates.todayKey()) : []
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -67,10 +68,19 @@ struct ScheduleScreen: View {
                         ErrorBanner(text: error)
                     }
 
-                    VStack(spacing: 14) {
-                        myLessonsCard
+                    if model.schedule != nil, !model.isPublished {
+                        EmptyCard(
+                            icon: "calendar.badge.clock",
+                            title: "Není naplánován externí trenér",
+                            text: "Až přijede, najdeš tu jeho rozpis a tvoje lekce se zvýrazní."
+                        )
+                        .tourTarget(.scheduleMine)
+                    } else {
+                        VStack(spacing: 14) {
+                            myLessonsCard
+                        }
+                        .tourTarget(.scheduleMine)
                     }
-                    .tourTarget(.scheduleMine)
 
                     if let until = model.requestsUntil {
                         HStack(alignment: .top, spacing: 12) {
@@ -129,7 +139,7 @@ struct ScheduleScreen: View {
             }
             .pageBackground()
             .safeAreaInset(edge: .top, spacing: 0) {
-                BrandHeader(title: "Rozpis", subtitle: model.schedule?.title)
+                BrandHeader(title: "Rozpis", subtitle: model.isPublished ? model.schedule?.title : "Externí trenér")
             }
             .toolbar(.hidden, for: .navigationBar)
             .tourOverlay(.schedule)

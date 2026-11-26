@@ -77,8 +77,8 @@ final class TourModel {
             steps.append(TourStep(tab: .schedule, target: .scheduleMine, title: "Rozpis externího trenéra",
                                   text: "Tvoje lekce se tu zvýrazní. Potvrď, že jsi to ty, a připomeneme ti je hodinu předem."))
         } else {
-            steps.append(TourStep(tab: .lessons, target: nil, title: "Rozpis externího trenéra",
-                                  text: "Když přijede externí trenér, objeví se dole záložka Rozpis. Tvoje lekce v ní najdeme podle příjmení."))
+            steps.append(TourStep(tab: .schedule, target: .scheduleMine, title: "Rozpis externího trenéra",
+                                  text: "Až přijede externí trenér, najdeš tu jeho rozpis. Tvoje lekce v něm najdeme podle příjmení a připomeneme ti je hodinu předem."))
         }
 
         steps += [

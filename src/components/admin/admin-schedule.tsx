@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ScheduleRequests, ScheduleWhatsApp } from "@/components/admin/admin-schedule-messages";
 import { ScheduleView } from "@/components/schedule/schedule-view";
-import { scheduleChangeEvent } from "@/components/ui/app-header";
 import { buttonPrimary, buttonSecondary, noticeTone } from "@/components/ui/styles";
 import {
   getScheduleBlocks,
@@ -118,10 +117,6 @@ export function AdminSchedule() {
         text: data.message ?? (response.ok ? "Uloženo." : "Uložení se nepodařilo."),
         tone: !response.ok ? "error" : data.skipped ? "warning" : "success",
       });
-
-      if (response.ok) {
-        window.dispatchEvent(new Event(scheduleChangeEvent));
-      }
     } finally {
       setIsSaving(false);
     }

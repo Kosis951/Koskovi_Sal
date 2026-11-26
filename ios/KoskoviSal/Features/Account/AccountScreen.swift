@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AccountScreen: View {
-    // Whether the Rozpis tab is there (for the guide).
+    // Whether a visiting trainer's schedule is published (for the guide).
     var hasSchedule = false
     @Environment(SessionModel.self) private var session
     @Environment(PushModel.self) private var push

@@ -54,7 +54,8 @@ class ScheduleModel {
         runCatching { Api.get<PublicScheduleResponse>("/api/rozpis") }
             .onSuccess {
                 schedule = it
-                days = ScheduleParser.parse(it.body, Dates.todayKey())
+                // Hall managers also get the unpublished draft; that is for Správa only.
+                days = if (it.published) ScheduleParser.parse(it.body, Dates.todayKey()) else emptyList()
                 error = null
             }
             .onFailure { error = it.message }
@@ -85,12 +86,22 @@ fun ScheduleScreen(model: ScheduleModel, session: SessionModel, onSignIn: () -> 
     }
 
     ScreenScaffold(header = {
-        BrandHeader("Rozpis", model.schedule?.title?.takeIf { it.isNotBlank() } ?: "Externí trenér") {
+        BrandHeader("Rozpis", model.schedule?.title?.takeIf { model.isPublished && it.isNotBlank() } ?: "Externí trenér") {
             HeaderButton(Icons.Filled.Refresh, "Obnovit") { scope.launch { model.load() } }
         }
     }, onRefresh = { model.load() }) {
         model.error?.let { item { ErrorBanner(it) } }
         notice?.let { item { NoticeBanner(it) } }
+
+        if (model.schedule != null && !model.isPublished) {
+            item {
+                Card {
+                    SectionTitle("Není naplánován externí trenér")
+                    Muted("Až přijede, najdeš tu jeho rozpis a tvoje lekce se zvýrazní.")
+                }
+            }
+            return@ScreenScaffold
+        }
 
         // "Is this you?" – lessons found by the account's surname.
         model.schedule?.linkSuggestion?.takeIf { session.isSignedIn }?.let { suggestion ->

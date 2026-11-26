@@ -131,8 +131,7 @@ fun App() {
         Push.accountChanged()
     }
 
-    // The schedule tab appears once the visiting trainer's schedule is
-    // published; checked whenever the app comes back.
+    // The visiting trainer's schedule is checked whenever the app comes back.
     val context = LocalContext.current
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         scope.launch {
@@ -145,7 +144,6 @@ fun App() {
 
     val tabs = Tab.entries.filter {
         when (it) {
-            Tab.Schedule -> schedule.isPublished
             Tab.Admin -> session.role?.canManageBookings == true
             else -> true
         }
@@ -154,7 +152,7 @@ fun App() {
     val openAccount = { tab = Tab.Account }
 
     // Pulling any screen down also checks the account and whether the visiting
-    // trainer's schedule was published (its tab shows up then).
+    // trainer's schedule was published.
     val refreshApp: suspend () -> Unit = {
         coroutineScope {
             launch { session.refresh() }

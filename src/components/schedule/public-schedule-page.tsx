@@ -110,7 +110,7 @@ export function PublicSchedulePage({
           ) : (
             <div className="rounded-xl border border-line bg-surface px-5 py-10 text-center">
               <CalendarX2 className="mx-auto text-ink-soft" size={28} />
-              <p className="mt-3 font-semibold text-ink">Teď tu žádný rozpis není.</p>
+              <p className="mt-3 font-semibold text-ink">Není naplánován externí trenér.</p>
               <p className="mt-1 text-sm text-ink-muted">Až přijede externí trenér, objeví se tady jeho lekce.</p>
             </div>
           )}
