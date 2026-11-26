@@ -91,6 +91,9 @@ export type LessonSwap = {
 export type TrainerCalendar = {
   canManage: boolean;
   dayLessons: DayLesson[];
+  // The viewer is this trainer. Anybody else – an administrator who manages
+  // the calendar too – may also sign up for a lesson here.
+  isOwnCalendar: boolean;
   swaps: LessonSwap[];
   // Confirmed lessons (canManage) with names.
   lessons: TrainerLesson[];
@@ -286,6 +289,7 @@ export function getTrainerCalendar(
   return {
     canManage: viewer.canManage,
     dayLessons,
+    isOwnCalendar: viewerKey === trainerKey,
     swaps,
     lessons: viewer.canManage
       ? upcoming.filter((lesson) => lesson.status === "confirmed").map(forTrainer)

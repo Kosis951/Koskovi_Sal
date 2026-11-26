@@ -190,6 +190,8 @@ data class TrainerCalendar(
     // Only for the trainer (and whoever manages all calendars).
     val windows: List<TrainerWindow> = emptyList(),
     val canManage: Boolean = false,
+    // The viewer is this trainer (an administrator who manages it may sign up).
+    val isOwnCalendar: Boolean? = null,
     val lessons: List<TrainerLesson> = emptyList(),
     val mine: List<TrainerLesson> = emptyList(),
     val requests: List<TrainerLesson> = emptyList(),

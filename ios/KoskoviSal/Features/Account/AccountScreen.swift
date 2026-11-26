@@ -35,6 +35,21 @@ struct AccountScreen: View {
                         .tourTarget(.notifications)
                     linksCard
 
+                    // Out of the way at the very bottom, so nobody taps it by chance.
+                    if session.isSignedIn {
+                        Button {
+                            isDeletingAccount = true
+                        } label: {
+                            Label("Smazat účet", systemImage: "trash")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.busy.ink)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 16)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 18)
+                    }
+
                     Text("TK Koškovi \(appVersion)")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
@@ -121,10 +136,6 @@ struct AccountScreen: View {
                 Divider().padding(.leading, 44)
                 AccountRow(icon: "rectangle.portrait.and.arrow.right", title: "Odhlásit se", detail: nil, tint: Theme.busy.ink) {
                     isConfirmingSignOut = true
-                }
-                Divider().padding(.leading, 44)
-                AccountRow(icon: "trash", title: "Smazat účet", detail: "Natrvalo, i s údaji v profilu", tint: Theme.busy.ink) {
-                    isDeletingAccount = true
                 }
             }
         }

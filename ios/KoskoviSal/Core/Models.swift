@@ -179,6 +179,8 @@ struct TrainerCalendar: Decodable {
     // Only for the trainer (and whoever manages all calendars).
     var windows: [TrainerWindow]?
     let canManage: Bool
+    // The viewer is this trainer (an administrator who manages it may sign up).
+    var isOwnCalendar: Bool?
     let lessons: [TrainerLesson]
     let mine: [TrainerLesson]
     let requests: [TrainerLesson]

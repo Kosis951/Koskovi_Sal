@@ -104,6 +104,11 @@ struct LessonsScreen: View {
         if let calendar {
             if calendar.canManage {
                 trainerContent(calendar)
+                // An administrator managing someone else's calendar may also
+                // sign up for a lesson there, like a dancer.
+                if calendar.isOwnCalendar == false {
+                    dancerContent(calendar)
+                }
             } else {
                 dancerContent(calendar)
             }

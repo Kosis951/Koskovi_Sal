@@ -324,6 +324,27 @@ export function TrainerCalendarPage({
                 windows={calendar.windows}
               />
               <InviteCard trainer={calendar.trainer} />
+              {calendar.isOwnCalendar ? null : (
+                <>
+                  <Card count={calendar.mine.length} title="Moje lekce u tohoto trenéra">
+                    <LessonList
+                      empty="Zatím žádná. Na lekci se přihlásíš výběrem volného termínu níže."
+                      lessons={calendar.mine}
+                      renderActions={(lesson) =>
+                        lesson.status === "declined" ? null : (
+                          <CancelButton
+                            isBusy={isBusy}
+                            onCancel={() => send(`/${lesson.id}`, "PATCH", { action: "cancel" })}
+                            question={`Zrušit ${lesson.status === "pending" ? "žádost" : "lekci"} ${formatLesson(lesson)}?`}
+                          />
+                        )
+                      }
+                      showStatus
+                    />
+                  </Card>
+                  <SlotsCard onRequest={setRequestSlot} slots={calendar.slots} title="Přihlásit se na lekci" />
+                </>
+              )}
             </>
           ) : (
             <>

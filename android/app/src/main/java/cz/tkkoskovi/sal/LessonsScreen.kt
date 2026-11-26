@@ -170,6 +170,10 @@ fun LessonsScreen(session: SessionModel, onSignIn: () -> Unit) {
             }
         }
 
+        // The trainer does not sign up in their own calendar; an administrator
+        // managing someone else's may, like a dancer.
+        if (data.canManage && data.isOwnCalendar != false) return@ScreenScaffold
+
         val mine = data.mine.filter { it.date >= Dates.todayKey() && (it.status == "confirmed" || it.status == "pending") }
         item { SectionTitle("Moje lekce") }
         if (mine.isEmpty()) {
